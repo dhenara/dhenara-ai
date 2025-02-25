@@ -103,9 +103,7 @@ class AnthropicChat(AnthropicClientBase):
     ) -> AsyncGenerator[tuple[StreamingChatResponse | SSEErrorResponse, AIModelCallResponse | None]]:
         """Handle streaming response with progress tracking and final response"""
         stream_manager = StreamingManager(
-            model_name=self.model_endpoint.ai_model.model_name,
-            provider=self.model_endpoint.ai_model.provider,
-            api_provider=self.model_endpoint.api.provider,
+            model_endpoint=self.model_endpoint,
         )
 
         try:
@@ -184,6 +182,9 @@ class AnthropicChat(AnthropicClientBase):
                                 metadata=stream_metadata,
                             ),
                         )
+
+                        yield stream_response, final_response
+                        return  # Stop the generator
 
                 # Yield stream response and final response if available
                 if stream_response:

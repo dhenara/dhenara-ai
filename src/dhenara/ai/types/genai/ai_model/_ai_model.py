@@ -50,10 +50,9 @@ class BaseCostData(BaseModel):
 
     def get_charge(self, cost: float):
         if self.cost_multiplier_percentage:
-            charge = cost * (1 + (self.cost_multiplier_percentage / 100))
+            charge = round(cost * (1 + (self.cost_multiplier_percentage / 100)), 6)
         else:
             charge = None
-
         return UsageCharge(cost=cost, charge=charge)
 
 
@@ -75,7 +74,7 @@ class ChatModelCostData(BaseCostData):
             input_per_token_cost = self.input_token_cost_per_million / 1000000
             output_per_token_cost = self.output_token_cost_per_million / 1000000
 
-            cost = usage.prompt_tokens * input_per_token_cost + usage.completion_tokens * output_per_token_cost
+            cost = round(usage.prompt_tokens * input_per_token_cost + usage.completion_tokens * output_per_token_cost, 6)
 
             return self.get_charge(cost)
         except Exception as e:
@@ -120,7 +119,7 @@ class ImageModelCostData(BaseCostData):
             if cost_per_image is None:
                 raise ValueError("calculate_image_charges: Failed to fix cost_per_image")
 
-            cost = cost_per_image * usage.number_of_images
+            cost = round(cost_per_image * usage.number_of_images, 6)
             return self.get_charge(cost)
 
         except Exception as e:

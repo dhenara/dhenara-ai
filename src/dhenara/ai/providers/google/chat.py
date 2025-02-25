@@ -126,9 +126,7 @@ class GoogleAIChat(GoogleAIClientBase):
         stream: Any,
     ) -> AsyncGenerator[tuple[StreamingChatResponse | SSEErrorResponse, AIModelCallResponse | None]]:
         stream_manager = StreamingManager(
-            model_name=self.model_endpoint.ai_model.model_name,
-            provider=self.model_endpoint.ai_model.provider,
-            api_provider=self.model_endpoint.api.provider,
+            model_endpoint=self.model_endpoint,
         )
 
         try:
@@ -146,7 +144,16 @@ class GoogleAIChat(GoogleAIClientBase):
 
                                     # Check if this is the final chunk
                                     is_done = bool(candidate.finish_reason)
-                                    stream_metadata = {}
+
+                                    stream_response = StreamingChatResponse(
+                                        id=None,
+                                        data=TokenStreamChunk(
+                                            index=candidate.index or 0,
+                                            content=part.text,
+                                            done=is_done,
+                                            metadata={},
+                                        ),
+                                    )
 
                                     if is_done:
                                         stream_manager.complete(
@@ -156,18 +163,14 @@ class GoogleAIChat(GoogleAIClientBase):
                                                 "safety_ratings": candidate.safety_ratings,
                                             },
                                         )
-                                        final_response = stream_manager.get_final_response()
-                                        stream_metadata = final_response.chat_response.get_visible_fields()
+                                        usage = self._get_usage_from_provider_response(chunk)
 
-                                    stream_response = StreamingChatResponse(
-                                        id=None,
-                                        data=TokenStreamChunk(
-                                            index=candidate.index or 0,
-                                            content=part.text,
-                                            done=is_done,
-                                            metadata=stream_metadata,
-                                        ),
-                                    )
+                                        stream_manager.update_usage(usage)
+
+                                        final_response = stream_manager.get_final_response()
+
+                                        yield stream_response, final_response
+                                        return  # Stop the generator
 
                                     yield stream_response, final_response
 

@@ -140,13 +140,15 @@ class AIModelProviderClientBase(ABC):
     def get_usage_and_charge(
         self,
         response,
+        usage=None,
     ) -> tuple[Union[ChatResponseUsage, ImageResponseUsage, None], Union[UsageCharge | None]]:
         """Parse the OpenAI response into our standard format"""
         usage = None
         usage_charge = None
 
         if settings.ENABLE_USAGE_TRACKING or settings.ENABLE_COST_TRACKING:
-            usage = self._get_usage_from_provider_response(response)
+            if usage is None:
+                usage = self._get_usage_from_provider_response(response)
 
             if settings.ENABLE_COST_TRACKING:
                 usage_charge = self.model_endpoint.calculate_usage_charge(usage)

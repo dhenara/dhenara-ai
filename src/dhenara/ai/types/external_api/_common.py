@@ -11,6 +11,7 @@ class ExternalApiCallStatusEnum(BaseEnum):
     RESPONSE_RECEIVED_SUCCESS = "response_received_success"
     RESPONSE_RECEIVED_API_ERROR = "response_received_api_error"
     RESPONSE_TIMEOUT = "response_timeout"
+    INTERNAL_PROCESSING_ERROR = "internal_processing_error"
 
 
 class ExternalApiCallStatus(BaseModel):

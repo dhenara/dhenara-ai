@@ -129,14 +129,13 @@ class OpenAIChat(OpenAIClientBase):
     ) -> AsyncGenerator[tuple[StreamingChatResponse | SSEErrorResponse, AIModelCallResponse | None]]:
         """Handle streaming response with progress tracking and final response"""
         stream_manager = StreamingManager(
-            model_name=self.model_endpoint.ai_model.model_name,
-            provider=self.model_endpoint.ai_model.provider,
-            api_provider=self.model_endpoint.api.provider,
+            model_endpoint=self.model_endpoint,
         )
+        _second_last_chunk = None
+        _last_chunk = None
 
         try:
             async for chunk in stream:
-                # Second last chunk will have usage
                 stream_response: StreamingChatResponse | None = None
                 final_response: AIModelCallResponse | None = None
 
@@ -149,17 +148,22 @@ class OpenAIChat(OpenAIClientBase):
                     )
                     stream_manager.update_usage(usage)
 
+                if _second_last_chunk:
+                    _last_chunk = chunk
+
                 # Process content
                 if chunk.choices:
                     choice = chunk.choices[0]
                     delta = choice.delta.content or ""
-                    stream_metadata = {}
 
                     # Update streaming progress
                     stream_manager.update(delta)
 
+                    is_final_chunk = bool(choice.finish_reason)
                     # Prepare streaming response
-                    if choice.finish_reason:
+                    if is_final_chunk:
+                        _second_last_chunk = chunk
+
                         stream_manager.complete(
                             metadata={
                                 "id": chunk.id,
@@ -170,21 +174,24 @@ class OpenAIChat(OpenAIClientBase):
                                 "finish_reason": choice.finish_reason if hasattr(choice, "finish_reason") else None,
                             },
                         )
-                        final_response = stream_manager.get_final_response()
-                        stream_metadata = final_response.chat_response.get_visible_fields()
 
-                # Create StreamingChatResponse
-                stream_response = StreamingChatResponse(
-                    id=None,  # str(uuid.uuid4()),
-                    data=TokenStreamChunk(
-                        index=choice.index,
-                        content=delta,
-                        done=bool(choice.finish_reason),
-                        metadata=stream_metadata,
-                    ),
-                )
+                    # Create StreamingChatResponse
+                    stream_response = StreamingChatResponse(
+                        id=None,
+                        data=TokenStreamChunk(
+                            index=choice.index,
+                            content=delta,
+                            done=is_final_chunk,
+                            metadata={},
+                        ),
+                    )
 
-                yield stream_response, final_response
+                    yield stream_response, final_response
+
+                if _last_chunk:
+                    final_response = stream_manager.get_final_response()
+                    yield None, final_response
+                    return  # Stop the generator
 
         except Exception as e:
             logger.exception(f"Error during streaming: {e}")

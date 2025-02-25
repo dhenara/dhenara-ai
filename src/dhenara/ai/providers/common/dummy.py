@@ -123,9 +123,7 @@ class DummyAIModelResponseFns:
     ) -> AsyncGenerator[tuple[StreamingChatResponse | SSEErrorResponse, ChatResponse | None]]:
         """Handle streaming response with progress tracking and final response"""
         stream_manager = StreamingManager(
-            model_name=ai_model_ep.ai_model.model_name,
-            provider=ai_model_ep.ai_model.provider,
-            api_provider=ai_model_ep.api.provider,
+            model_endpoint=ai_model_ep,
         )
 
         try:
