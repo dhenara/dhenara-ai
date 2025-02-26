@@ -1,4 +1,5 @@
 import base64
+from typing import Union
 
 from dhenara.ai.types.shared.base import BaseEnum, BaseModel
 from pydantic import Field
@@ -38,7 +39,28 @@ class BaseResponseContentItem(BaseModel):
     )
 
 
-class ChatResponseContentItem(BaseResponseContentItem):
+class ChatResponseContentItemType(BaseEnum):
+    """Enum representing different types of content items in chat responses"""
+
+    TEXT = "text"
+    REASONING = "reasoning"
+    GENERIC = "generic"
+    TOOL_CALL = "tool_call"
+
+
+class BaseChatResponseContentItem(BaseResponseContentItem):
+    type: ChatResponseContentItemType = Field(
+        ...,
+        description="Type of the content item",
+        serialization_alias="type",  # Ensures type is serialized correctly
+    )
+    role: str | None = Field(
+        default=None,
+        description="Role of the message sender in the chat context",
+    )
+
+
+class ChatResponseTextContentItem(BaseChatResponseContentItem):
     """Content item specific to chat responses
 
     Contains the role, text content, and optional function calls for chat interactions
@@ -49,20 +71,52 @@ class ChatResponseContentItem(BaseResponseContentItem):
         function_call: Optional function call details if the message involves function calling
     """
 
-    role: str = Field(
-        ...,
-        description="Role of the message sender in the chat context",
-    )
+    type: ChatResponseContentItemType = ChatResponseContentItemType.TEXT
+
     text: str | None = Field(
         None,
-        description="Text content of the message",
-        min_length=1,
-        max_length=100000,
+        description="Plain text content of the message for chat interaction (without reasoning)",
     )
-    function_call: dict | None = Field(
+
+    def get_text(self) -> str:
+        return self.text
+
+
+class ChatResponseReasoningContentItem(BaseChatResponseContentItem):
+    type: ChatResponseContentItemType = ChatResponseContentItemType.REASONING
+
+    thinking_text: str | None = Field(
         None,
-        description="Function call details including name and arguments",
+        description="Thinking text content, for reasoning mode",
     )
+
+    def get_text(self) -> str:
+        return self.thinking_text
+
+
+class ChatResponseToolCallContentItem(BaseChatResponseContentItem):
+    type: ChatResponseContentItemType = ChatResponseContentItemType.TOOL_CALL
+    # Use metadata to store the content
+    # TODO
+
+    def get_text(self) -> str:
+        return str(self.metadata)
+
+
+class ChatResponseGenericContentItem(BaseChatResponseContentItem):
+    type: ChatResponseContentItemType = ChatResponseContentItemType.GENERIC
+    # Use metadata to store the content
+
+    def get_text(self) -> str:
+        return str(self.metadata)
+
+
+ChatResponseContentItem = Union[
+    ChatResponseTextContentItem,
+    ChatResponseReasoningContentItem,
+    ChatResponseToolCallContentItem,
+    ChatResponseGenericContentItem,
+]
 
 
 class ImageResponseContentItem(BaseResponseContentItem):

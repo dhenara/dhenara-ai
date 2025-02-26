@@ -151,16 +151,29 @@ class ImageModelCostData(BaseCostData):
 
 class ChatModelSettings(BaseModel):
     max_context_window_tokens: int | None = Field(
-        None,
+        default=None,
         description="Maximum context window size in tokens",
     )
     max_input_tokens: int | None = Field(
-        None,
+        default=None,
         description="Maximum input tokens allowed",
     )
-    max_output_tokens: int | None = Field(
-        None,
+    max_output_tokens: int = Field(
+        ...,
         description="Maximum output tokens allowed",
+    )
+    # Reasoning settings
+    supports_reasoning: bool = Field(
+        default=False,
+        description="If reasoning is supported or not",
+    )
+    max_reasoning_tokens: int | None = Field(
+        default=None,
+        description="Maximum reasoning tokens allowed",
+    )
+    max_output_tokens_reasoning_mode: int | None = Field(
+        default=None,
+        description="Maximum output tokens (including reasoning) in reasoning mode",
     )
 
     @model_validator(mode="after")
@@ -174,6 +187,10 @@ class ChatModelSettings(BaseModel):
             self.max_context_window_tokens = self.max_input_tokens + self.max_output_tokens
         else:
             self.max_input_tokens = self.max_context_window_tokens - self.max_output_tokens
+
+        if self.supports_reasoning:
+            if self.max_reasoning_tokens and self.max_reasoning_tokens > self.max_output_tokens_reasoning_mode:
+                raise ValueError("set_token_limits: max_reasoning_tokens must be less than max_output_tokens_reasoning_mode")
 
         return self
 

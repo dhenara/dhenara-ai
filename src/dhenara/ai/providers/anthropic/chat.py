@@ -1,7 +1,7 @@
 import logging
 from collections.abc import AsyncGenerator
 
-from anthropic.types.message import Message
+from anthropic.types import ContentBlock, Message, RedactedThinkingBlock, TextBlock, ThinkingBlock, ToolUseBlock
 from dhenara.ai.providers.anthropic import AnthropicClientBase
 from dhenara.ai.providers.common import StreamingManager
 from dhenara.ai.types.external_api import (
@@ -13,6 +13,10 @@ from dhenara.ai.types.genai import (
     ChatResponse,
     ChatResponseChoice,
     ChatResponseContentItem,
+    ChatResponseGenericContentItem,
+    ChatResponseReasoningContentItem,
+    ChatResponseTextContentItem,
+    ChatResponseToolCallContentItem,
     ChatResponseUsage,
     StreamingChatResponse,
     TokenStreamChunk,
@@ -63,9 +67,19 @@ class AnthropicChat(AnthropicClientBase):
         if user:
             chat_args["metadata"] = {"user_id": user}
 
-        max_tokens = self.config.get_max_tokens(self.model_endpoint.ai_model)
-        if max_tokens is not None:
-            chat_args["max_tokens"] = max_tokens
+        max_output_tokens, max_reasoning_tokens = self.config.get_max_output_tokens(self.model_endpoint.ai_model)
+        if max_output_tokens is not None:
+            chat_args["max_tokens"] = max_output_tokens
+
+        if max_reasoning_tokens is None:
+            chat_args["thinking"] = {
+                "type": "disabled",
+            }
+        else:
+            chat_args["thinking"] = {
+                "type": "enabled",
+                "budget_tokens": max_reasoning_tokens,
+            }
 
         if self.config.options:
             chat_args.update(self.config.options)
@@ -135,6 +149,12 @@ class AnthropicChat(AnthropicClientBase):
 
                     case "content_block_delta":
                         # Content block update
+                        # TODO
+                        if chunk.delta.type == "thinking_delta":
+                            print(f"Thinking: {chunk.delta.thinking}", end="", flush=True)
+                        elif chunk.delta.type == "text_delta":
+                            print(f"Response: {chunk.delta.text}", end="", flush=True)
+
                         delta_text = chunk.delta.text
                         if delta_text:
                             stream_manager.update(delta_text)
@@ -213,6 +233,7 @@ class AnthropicChat(AnthropicClientBase):
 
     def parse_response(self, response: Message) -> ChatResponse:
         usage, usage_charge = self.get_usage_and_charge(response)
+
         return ChatResponse(
             model=response.model,
             provider=self.model_endpoint.ai_model.provider,
@@ -221,13 +242,12 @@ class AnthropicChat(AnthropicClientBase):
             usage_charge=usage_charge,
             choices=[
                 ChatResponseChoice(
-                    index=index,
-                    content=ChatResponseContentItem(
+                    index=0,  # Only one choice
+                    contents=self.process_choice(
                         role=response.role,
-                        text=content_item.text,
+                        choice=response.content,
                     ),
                 )
-                for index, content_item in enumerate(response.content)
             ],
             metadata=AIModelCallResponseMetaData(
                 streaming=False,
@@ -238,3 +258,55 @@ class AnthropicChat(AnthropicClientBase):
                 },
             ),
         )
+
+    def process_choice(self, role, choice: list[ContentBlock]) -> list[ChatResponseContentItem]:
+        return [
+            self.process_content_item(
+                role=role,
+                content_item=content_item,
+            )
+            for content_item in choice
+        ]
+
+    def process_content_item(self, role, content_item: ContentBlock) -> ChatResponseContentItem:
+        if isinstance(content_item, TextBlock):
+            return ChatResponseTextContentItem(
+                role=role,
+                text=content_item.text,
+            )
+        elif isinstance(content_item, ThinkingBlock):
+            return ChatResponseReasoningContentItem(
+                role=role,
+                thinking_text=content_item.thinking,
+                metadata={
+                    "signature": content_item.signature,
+                },
+            )
+
+        elif isinstance(content_item, RedactedThinkingBlock):
+            return ChatResponseReasoningContentItem(
+                role=role,
+                metadata={
+                    "redacted_thinking_data": content_item.data,
+                },
+            )
+
+        elif isinstance(content_item, ToolUseBlock):
+            return ChatResponseToolCallContentItem(
+                role=role,
+                metadata={
+                    "tool_use": {
+                        "id": content_item.id,
+                        "input": content_item.input,
+                        "name": content_item.name,
+                    }
+                },
+            )
+        else:
+            logger.fatal(f"process_content_item: Unknown content item type {type(content_item)}")
+            return ChatResponseGenericContentItem(
+                role=role,
+                metadata={
+                    "unknonwn": f"Unknown content item of type {type(content_item)}",
+                },
+            )

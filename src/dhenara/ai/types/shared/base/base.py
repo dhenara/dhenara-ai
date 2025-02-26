@@ -56,6 +56,7 @@ class BaseModel(PydanticBaseModel):
         json_schema_extra={
             "examples": []  # can be overridden by child classes
         },
+        # use_enum_values=True,  # This will serialize enums as their values
     )
 
     def to_dict(

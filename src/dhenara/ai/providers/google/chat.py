@@ -16,12 +16,14 @@ from dhenara.ai.types.genai import (
     ChatResponse,
     ChatResponseChoice,
     ChatResponseContentItem,
+    ChatResponseGenericContentItem,
+    ChatResponseTextContentItem,
     ChatResponseUsage,
     StreamingChatResponse,
     TokenStreamChunk,
 )
 from dhenara.ai.types.shared.api import SSEErrorCode, SSEErrorData, SSEErrorResponse
-from google.genai.types import GenerateContentConfig, GenerateContentResponse, SafetySetting
+from google.genai.types import Candidate, GenerateContentConfig, GenerateContentResponse, Part, SafetySetting
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +105,7 @@ class GoogleAIChat(GoogleAIClientBase):
         )
 
     def get_default_generate_config_args(self) -> dict:
-        max_tokens = self.config.get_max_tokens(self.model_endpoint.ai_model)
+        max_output_tokens, max_reasoning_tokens = self.config.get_max_output_tokens(self.model_endpoint.ai_model)
         safety_settings = [
             SafetySetting(
                 category="HARM_CATEGORY_DANGEROUS_CONTENT",
@@ -116,8 +118,8 @@ class GoogleAIChat(GoogleAIClientBase):
             "safety_settings": safety_settings,
         }
 
-        if max_tokens:
-            config_params["max_output_tokens"] = max_tokens
+        if max_output_tokens:
+            config_params["max_output_tokens"] = max_output_tokens
 
         return config_params
 
@@ -209,10 +211,9 @@ class GoogleAIChat(GoogleAIClientBase):
             choices=[
                 ChatResponseChoice(
                     index=index,
-                    content=ChatResponseContentItem(
+                    contents=self.process_choice(
                         role=candidate.content.role,
-                        text=candidate.content.parts[0].text,
-                        function_call=None,
+                        choice=candidate,
                     ),
                 )
                 for index, candidate in enumerate(response.candidates)
@@ -227,3 +228,33 @@ class GoogleAIChat(GoogleAIClientBase):
                 },
             ),
         )
+
+    def process_choice(self, role, choice: Candidate) -> list[ChatResponseContentItem]:
+        return [
+            self.process_content_item(
+                role=role,
+                content_item=content_item,
+            )
+            for content_item in choice.content.parts
+        ]
+
+    def process_content_item(self, role, content_item: Part) -> ChatResponseContentItem:
+        if isinstance(content_item, Part):
+            if content_item.text:
+                return ChatResponseTextContentItem(
+                    role=role,
+                    text=content_item.text,
+                )
+            else:
+                return ChatResponseGenericContentItem(
+                    role=role,
+                    metadata={"part": content_item.model_dump()},
+                )
+        else:
+            logger.fatal(f"process_content_item: Unknown content item type {type(content_item)}")
+            return ChatResponseGenericContentItem(
+                role=role,
+                metadata={
+                    "unknonwn": f"Unknown content item of type {type(content_item)}",
+                },
+            )

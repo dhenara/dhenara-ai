@@ -19,7 +19,7 @@ class ChatResponseChoice(BaseModel):
     index: int
     finish_reason: Any | None = None
     stop_sequence: Any | None = None
-    content: ChatResponseContentItem
+    contents: list[ChatResponseContentItem] | None = None
 
     class Config:
         json_schema_extra = {

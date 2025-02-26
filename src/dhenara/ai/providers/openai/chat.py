@@ -14,12 +14,15 @@ from dhenara.ai.types.genai import (
     ChatResponse,
     ChatResponseChoice,
     ChatResponseContentItem,
+    ChatResponseGenericContentItem,
+    ChatResponseTextContentItem,
+    ChatResponseToolCallContentItem,
     ChatResponseUsage,
     StreamingChatResponse,
     TokenStreamChunk,
 )
 from dhenara.ai.types.shared.api import SSEErrorCode, SSEErrorData, SSEErrorResponse
-from openai.types.chat import ChatCompletion
+from openai.types.chat import ChatCompletion, ChatCompletionMessage
 
 logger = logging.getLogger(__name__)
 
@@ -65,14 +68,15 @@ class OpenAIChat(OpenAIClientBase):
             if self.model_endpoint.api.provider != AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
                 chat_args["user"] = user
 
-        max_tokens = self.config.get_max_tokens(self.model_endpoint.ai_model)
-        if max_tokens is not None:
+        max_output_tokens, max_reasoning_tokens = self.config.get_max_output_tokens(self.model_endpoint.ai_model)
+
+        if max_output_tokens is not None:
             if self.model_endpoint.api.provider != AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
-                # NOTE: With resasoning models, max_tokens Deprecated in favour of max_completion_tokens
-                chat_args["max_completion_tokens"] = max_tokens
+                # NOTE: With resasoning models, max_output_tokens Deprecated in favour of max_completion_tokens
+                chat_args["max_completion_tokens"] = max_output_tokens
 
             else:
-                chat_args["max_tokens"] = max_tokens
+                chat_args["max_tokens"] = max_output_tokens
 
         if self.config.streaming:
             if self.model_endpoint.api.provider != AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
@@ -233,10 +237,9 @@ class OpenAIChat(OpenAIClientBase):
                 ChatResponseChoice(
                     index=choice.index,
                     finish_reason=choice.finish_reason if hasattr(choice, "finish_reason") else None,
-                    content=ChatResponseContentItem(
+                    contents=self.process_choice(
                         role=choice.message.role,
-                        text=choice.message.content,
-                        function_call=choice.message.function_call if hasattr(choice.message, "function_call") else None,
+                        choice=choice,
                     ),
                 )
                 for choice in response.choices
@@ -252,3 +255,45 @@ class OpenAIChat(OpenAIClientBase):
                 },
             ),
         )
+
+    def process_choice(self, role, choice) -> list[ChatResponseContentItem]:
+        return [
+            # self.process_content_item(
+            #    role=role,
+            #    content_item=content_item,
+            # )
+            # for content_item in choice.message
+            #
+            #
+            # Only one content item in choice.message, might change with reasoning responses ?
+            self.process_content_item(
+                role=role,
+                content_item=choice.message,
+            )
+        ]
+
+    def process_content_item(self, role, content_item: ChatCompletionMessage) -> ChatResponseContentItem:
+        if isinstance(content_item, ChatCompletionMessage):
+            if content_item.content:
+                return ChatResponseTextContentItem(
+                    role=role,
+                    text=content_item.content,
+                )
+            elif content_item.tool_calls:
+                return ChatResponseToolCallContentItem(
+                    role=role,
+                    metadata={"tool_calls": [tool_call.model_dump() for tool_call in content_item.tool_calls]},
+                )
+            else:
+                return ChatResponseGenericContentItem(
+                    role=role,
+                    metadata={"part": content_item.model_dump()},
+                )
+        else:
+            logger.fatal(f"process_content_item: Unknown content item type {type(content_item)}")
+            return ChatResponseGenericContentItem(
+                role=role,
+                metadata={
+                    "unknonwn": f"Unknown content item of type {type(content_item)}",
+                },
+            )

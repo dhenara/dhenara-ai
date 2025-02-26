@@ -11,7 +11,7 @@ from dhenara.ai.types.genai import (
     AIModelFunctionalTypeEnum,
     ChatResponse,
     ChatResponseChoice,
-    ChatResponseContentItem,
+    ChatResponseTextContentItem,
     ChatResponseUsage,
     ImageResponseUsage,
     UsageCharge,
@@ -103,10 +103,12 @@ class StreamingManager:
                 choices=[
                     ChatResponseChoice(
                         index=0,
-                        content=ChatResponseContentItem(
-                            role="assistant",
-                            text=self.progress.total_content,
-                        ),
+                        contents=[
+                            ChatResponseTextContentItem(
+                                role="assistant",
+                                text=self.progress.total_content,
+                            )
+                        ],
                     )
                 ],
                 metadata=self._response_metadata,

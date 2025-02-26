@@ -15,7 +15,7 @@ from dhenara.ai.types.genai import (
     AIModelFunctionalTypeEnum,
     ChatResponse,
     ChatResponseChoice,
-    ChatResponseContentItem,
+    ChatResponseTextContentItem,
     ChatResponseUsage,
     ImageResponseUsage,
     StreamingChatResponse,
@@ -64,11 +64,12 @@ class DummyAIModelResponseFns:
             choices=[
                 ChatResponseChoice(
                     index=0,
-                    content=ChatResponseContentItem(
-                        role="assistant",
-                        text=text,
-                        function_call=None,
-                    ),
+                    contents=[
+                        ChatResponseTextContentItem(
+                            role="assistant",
+                            text=text,
+                        )
+                    ],
                 )
             ],
             metadata=AIModelCallResponseMetaData(

@@ -10,7 +10,7 @@ from dhenara.ai.types.external_api import (
     GoogleAiMessageRoleEnum,
     OpenAiMessageRoleEnum,
 )
-from dhenara.ai.types.genai import AIModel, ChatResponse, ImageResponse
+from dhenara.ai.types.genai import AIModel, ChatResponse, ChatResponseChoice, ImageResponse
 from dhenara.ai.types.shared.file import GenericFile
 
 logger = logging.getLogger(__name__)
@@ -60,6 +60,7 @@ class PromptFormatter:
         max_words_files: int | None = None,
         max_words_response: int | None = None,
         response_before_query: bool = False,
+        concat_previous_response_content_items: bool = True,
     ) -> list[FormattedPrompt]:
         """
         Formats conversation elements into model-specific prompts.
@@ -78,8 +79,10 @@ class PromptFormatter:
             list of formatted prompt messages
         """
         # Extract and truncate previous response if available
-        response_text = None
+        response_messages = []
         _previous_response_text = None
+        config = PromptFormatter.PROVIDER_CONFIG[model.provider]
+        formatter = config["formatter"]
 
         if (attached_files and not isinstance(attached_files, list)) or not all(isinstance(f, GenericFile) for f in attached_files):
             raise ValueError(f"Invalid type {type(attached_files)} for attached files. Should be list of GenericFile")
@@ -87,17 +90,47 @@ class PromptFormatter:
         if previous_response:
             try:
                 if isinstance(previous_response, dict):
-                    choices = previous_response.get("choices", [])
-                    if choices:
-                        _previous_response_text = choices[0].get("content", {}).get("text", None)
+                    _choices = previous_response.get("choices", [])
+                    if _choices:
+                        choices = [ChatResponseChoice(**choice) for choice in _choices]
                 elif isinstance(previous_response, (ChatResponse, ImageResponse)):
-                    if previous_response.choices:
-                        _previous_response_text = previous_response.choices[0].content.text
+                    choices = previous_response.choices
                 else:
                     raise ValueError(f"format_as_prompts: previous_response type {type(previous_response)} not supported")
 
-                if _previous_response_text:
-                    response_text = PromptFormatter._truncate_text_by_words(_previous_response_text, max_words_response)
+                _previous_content_items = [content_item for choice in choices for content_item in choice.contents]
+
+                # NOTE: Output files generated in previous response are not handled.
+                # They need to be passed in as attached_files to be included in the prompt.
+                # TODO: Add docs
+                if concat_previous_response_content_items:
+                    response_text = None
+                    _previous_response_text = " ".join([f"type:{content_item.type}, content: {content_item.get_text()}" for content_item in _previous_content_items])
+
+                    if _previous_response_text:
+                        response_text = PromptFormatter._truncate_text_by_words(_previous_response_text, max_words_response)
+                    # Format previous response if present
+                    if response_text:
+                        response_message = formatter.get_prompt(
+                            model=model,
+                            role=config["assistant_role"],
+                            text=response_text,
+                            file_contents=[],
+                        )
+                        response_messages = [response_message]
+
+                else:
+                    # TODO_FUTURE: max_words_response has no effect here
+                    response_messages = [
+                        formatter.get_prompt(
+                            model=model,
+                            role=config["assistant_role"],
+                            text=content_item.get_text(),
+                            file_contents=[],
+                        )
+                        for content_item in _previous_content_items
+                    ]
+
             except Exception as e:
                 logger.error(f"Failed to extract previous response text: {e}")
 
@@ -107,14 +140,10 @@ class PromptFormatter:
         # Initialize prompt components
         file_contents = []
         query_message = None
-        response_message = None
 
         # Validate provider
         if model.provider not in PromptFormatter.PROVIDER_CONFIG:
             raise ValueError(f"Unsupported model provider: {model.provider}")
-
-        config = PromptFormatter.PROVIDER_CONFIG[model.provider]
-        formatter = config["formatter"]
 
         # Format query if present
         if query_text:
@@ -131,26 +160,17 @@ class PromptFormatter:
                 file_contents=file_contents,
             )
 
-        # Format previous response if present
-        if response_text:
-            response_message = formatter.get_prompt(
-                model=model,
-                role=config["assistant_role"],
-                text=response_text,
-                file_contents=[],
-            )
-
         # Arrange messages in requested order
         messages = []
         if response_before_query:
-            if response_message:
-                messages.append(response_message)
+            if response_messages:
+                messages.extend(response_messages)
             if query_message:
                 messages.append(query_message)
         else:
             if query_message:
                 messages.append(query_message)
-            if response_message:
-                messages.append(response_message)
+            if response_messages:
+                messages.extend(response_messages)
 
         return messages
