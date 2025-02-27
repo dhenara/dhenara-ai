@@ -17,32 +17,6 @@ class SSEEventType(BaseEnum):
     ERROR = "error"  # Error events
 
 
-class SSEDataChunk(BaseModel):
-    """Base model for successful response data"""
-
-    index: int = Field(
-        default=0,
-        description="Chunk index in the stream",
-    )
-    content: str = Field(
-        ...,
-        description="Chunk content",
-    )
-    done: bool = Field(
-        default=False,
-        description="Indicates if this is the final chunk",
-    )
-    metadata: dict[str, Any] | None = Field(
-        default=None,
-        description="Additional metadata for the event",
-    )
-
-    @property
-    def is_done(self) -> bool:
-        """Check if this is the final chunk"""
-        return self.done
-
-
 class SSEErrorCode(BaseEnum):
     server_error = "server_error"
     external_api_error = "external_api_error"
@@ -125,7 +99,7 @@ class SSEResponse(BaseModel, Generic[T]):
         return "\n".join(lines) + "\n\n"
 
     @classmethod
-    def parse_sse(cls, sse_str: str) -> "SSEResponse[Any]":
+    def parse_sse(cls, sse_str: str, data_type: T | None = None) -> "SSEResponse[Any]":
         """Parse SSE format string into response object"""
         lines = sse_str.strip().split("\n")
         event_data = {
@@ -177,13 +151,12 @@ class SSEResponse(BaseModel, Generic[T]):
                         details=raw_data.get("details"),
                     )
                 else:
-                    # For normal events, create SSEDataChunk
-                    data = SSEDataChunk(
-                        index=raw_data.get("index", 0),
-                        content=raw_data.get("content", ""),
-                        done=raw_data.get("done", False),
-                        metadata=raw_data.get("metadata"),
-                    )
+                    # For normal events, create T object
+                    if data_type is not None:
+                        data = data_type(**raw_data)
+                    else:
+                        data = raw_data
+
             except json.JSONDecodeError:
                 return SSEErrorResponse(
                     data=SSEErrorData(

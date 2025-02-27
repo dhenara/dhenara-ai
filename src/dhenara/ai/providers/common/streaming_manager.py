@@ -11,11 +11,17 @@ from dhenara.ai.types.genai import (
     AIModelFunctionalTypeEnum,
     ChatResponse,
     ChatResponseChoice,
+    ChatResponseChoiceDelta,
+    ChatResponseContentItemType,
+    ChatResponseGenericContentItem,
+    ChatResponseReasoningContentItem,
     ChatResponseTextContentItem,
+    ChatResponseToolCallContentItem,
     ChatResponseUsage,
     ImageResponseUsage,
     UsageCharge,
 )
+from dhenara.ai.types.genai.dhenara import ChatResponseChunk
 from dhenara.ai.types.shared.base import BaseModel
 from django.utils import timezone
 
@@ -25,8 +31,8 @@ logger = logging.getLogger(__name__)
 class INTStreamingProgress(BaseModel):
     """INTERNAL : Tracks the progress of a streaming response"""
 
-    total_content: str = ""
-    token_count: int = 0
+    # total_content: str = ""
+    updates_count: int = 0
     start_time: datetime_type
     last_token_time: datetime_type
     is_complete: bool = False
@@ -40,51 +46,38 @@ class StreamingManager:
         model_endpoint: AIModelEndpoint,
     ):
         self.model_endpoint = model_endpoint
-        self.metadata = {}
-        self._response_metadata = {}
-        start_time = timezone.now()
+
+        # Fields required  to create  final ChatResponse
+        # self.final_response: ChatResponse | None = None
         self.usage: ChatResponseUsage | None = None
+        self.usage_charge: UsageCharge | None = None
+        self.choices: list[ChatResponseChoice] = []
+        self.response_metadata = AIModelCallResponseMetaData(streaming=True)
+
+        start_time = timezone.now()
+        # TODO_FUTURE: Create progress per choices ?
         self.progress = INTStreamingProgress(
             start_time=start_time,
             last_token_time=start_time,
         )
-
-    def update(self, chunk: str):
-        """Update streaming progress with new chunk"""
-
-        self.progress.total_content += chunk
-        self.progress.token_count += 1
-        self.progress.last_token_time = timezone.now()
 
     def update_usage(self, usage: ChatResponseUsage | None = None):
         """Update usgae"""
         if usage:
             self.usage = usage
 
-    def complete(self, metadata: dict | None = None):
+    def complete(self, provider_metadata: dict | None = None) -> AIModelCallResponse:
         """Mark streaming as complete and set final stats"""
-        if metadata is None:
-            metadata = {}
         self.progress.is_complete = True
 
         # Calculate duration
         duration = self.progress.last_token_time - self.progress.start_time
         duration_seconds = duration.total_seconds()
 
-        metadata_copy = metadata.copy()  # Create a copy of the metadata
-        self.metadata.update(metadata_copy)
+        self.response_metadata.duration_seconds = duration_seconds
+        self.response_metadata.provider_metadata = provider_metadata
 
-        _resp_data = {
-            "streaming": True,
-            "duration_seconds": duration_seconds,
-            "token_count": self.progress.token_count,
-            "provider_data": self.metadata,
-        }
-
-        try:
-            self._response_metadata = AIModelCallResponseMetaData(**_resp_data)
-        except:
-            self._response_metadata = _resp_data
+        return self.get_final_response()
 
     def get_final_response(self) -> AIModelCallResponse:
         """Convert streaiming progress to ChatResponse format"""
@@ -100,18 +93,8 @@ class StreamingManager:
                 api_provider=self.model_endpoint.api.provider,
                 usage=usage,
                 usage_charge=usage_charge,
-                choices=[
-                    ChatResponseChoice(
-                        index=0,
-                        contents=[
-                            ChatResponseTextContentItem(
-                                role="assistant",
-                                text=self.progress.total_content,
-                            )
-                        ],
-                    )
-                ],
-                metadata=self._response_metadata,
+                choices=self.choices,
+                metadata=self.response_metadata,
             )
         else:
             logger.fatal("Streaming is only supported for Chat generation models")
@@ -156,3 +139,135 @@ class StreamingManager:
                 usage_charge = self.model_endpoint.calculate_usage_charge(self.usage)
 
         return (self.usage, usage_charge)
+
+    def update(
+        self,
+        choice_deltas: list[ChatResponseChoiceDelta],
+        response_metadata: dict | None = None,
+    ) -> ChatResponseChunk:
+        """Update streaming progress with new chunk of deltas"""
+        # Update metadata if provided
+        if response_metadata:
+            self.response_metadata.update(response_metadata)
+
+        # Update last token time
+        self.progress.last_token_time = timezone.now()
+
+        if settings.ENABLE_STREAMING_CONSOLIDATION and choice_deltas:
+            # Initialize choices list if empty
+            if not self.choices:
+                self.choices = [ChatResponseChoice(index=i, contents=[]) for i in range(len(choice_deltas))]
+
+            # Process each choice delta
+            for choice_delta in choice_deltas:
+                choice_index = choice_delta.index
+
+                # Ensure we have enough choices initialized
+                while len(self.choices) <= choice_index:
+                    self.choices.append(ChatResponseChoice(index=len(self.choices), contents=[]))
+
+                choice = self.choices[choice_index]
+
+                # Update finish reason if provided
+                if choice_delta.finish_reason is not None:
+                    choice.finish_reason = choice_delta.finish_reason
+
+                if choice_delta.metadata:
+                    choice.metadata.update(choice_delta.metadata)
+
+                # Process content deltas if any
+                if choice_delta.content_deltas:
+                    # Initialize contents list if empty
+                    if not choice.contents:
+                        choice.contents = []
+
+                    for content_delta in choice_delta.content_deltas:
+                        content_index = content_delta.index
+
+                        # Ensure we have enough content slots
+                        while len(choice.contents) <= content_index:
+                            # Add placeholder None values
+                            choice.contents.append(None)
+
+                        # Get existing content or create new
+                        matching_content = choice.contents[content_index]
+
+                        if matching_content is None:
+                            # Create new content item based on delta type
+                            if content_delta.type == ChatResponseContentItemType.TEXT:
+                                matching_content = ChatResponseTextContentItem(
+                                    index=content_index,
+                                    type=ChatResponseContentItemType.TEXT,
+                                    role=content_delta.role,
+                                    text="",
+                                    metadata=content_delta.metadata,
+                                    storage_metadata=content_delta.storage_metadata,
+                                    custom_metadata=content_delta.custom_metadata,
+                                )
+                            elif content_delta.type == ChatResponseContentItemType.REASONING:
+                                matching_content = ChatResponseReasoningContentItem(
+                                    index=content_index,
+                                    type=ChatResponseContentItemType.REASONING,
+                                    role=content_delta.role,
+                                    thinking_text="",
+                                    metadata=content_delta.metadata,
+                                    storage_metadata=content_delta.storage_metadata,
+                                    custom_metadata=content_delta.custom_metadata,
+                                )
+                            elif content_delta.type == ChatResponseContentItemType.TOOL_CALL:
+                                matching_content = ChatResponseToolCallContentItem(
+                                    index=content_index,
+                                    type=ChatResponseContentItemType.TOOL_CALL,
+                                    role=content_delta.role,
+                                    metadata=content_delta.metadata,
+                                    storage_metadata=content_delta.storage_metadata,
+                                    custom_metadata=content_delta.custom_metadata,
+                                )
+                            elif content_delta.type == ChatResponseContentItemType.GENERIC:
+                                matching_content = ChatResponseGenericContentItem(
+                                    index=content_index,
+                                    type=ChatResponseContentItemType.GENERIC,
+                                    role=content_delta.role,
+                                    metadata=content_delta.metadata,
+                                    storage_metadata=content_delta.storage_metadata,
+                                    custom_metadata=content_delta.custom_metadata,
+                                )
+                            else:
+                                logger.error(f"stream_manager: Unknown content_delta type {content_delta.type}")
+
+                            choice.contents[content_index] = matching_content
+
+                        # Verify type matches
+                        if matching_content.type != content_delta.type and matching_content.index != content_delta.index:
+                            logger.error(f"stream_manager: Content type mismatch at index {content_index}")
+                            continue
+
+                        # Update content based on delta type
+                        if content_delta.type == ChatResponseContentItemType.TEXT:
+                            delta_text = content_delta.get_text_delta()
+                            if delta_text:
+                                matching_content.text = (matching_content.text or "") + delta_text
+
+                        elif content_delta.type == ChatResponseContentItemType.REASONING:
+                            delta_text = content_delta.get_text_delta()
+                            if delta_text:
+                                matching_content.thinking_text = (matching_content.thinking_text or "") + delta_text
+
+                        elif content_delta.type in (ChatResponseContentItemType.TOOL_CALL, ChatResponseContentItemType.GENERIC):
+                            # Update metadata for tool calls and generic content
+                            matching_content.metadata.update(content_delta.metadata)
+
+        # Update token count
+        self.progress.updates_count += 1
+
+        # Create and return stream chunk
+        return ChatResponseChunk(
+            model=self.model_endpoint.ai_model.model_name,
+            provider=self.model_endpoint.ai_model.provider,
+            api_provider=self.model_endpoint.api.provider,
+            usage=self.usage,
+            usage_charge=self.usage_charge,
+            choice_deltas=choice_deltas,
+            metadata=self.response_metadata,
+            done=False,
+        )

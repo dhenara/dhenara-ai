@@ -1,10 +1,21 @@
 import logging
 from abc import ABC, abstractmethod
-from typing import Union
+from typing import Any, Union
 
 from dhenara.ai.config import settings
-from dhenara.ai.types import AIModelCallConfig, AIModelCallResponse, AIModelEndpoint, AIModelFunctionalTypeEnum, ChatResponseUsage, ImageResponseUsage, UsageCharge
+from dhenara.ai.types import (
+    AIModelCallConfig,
+    AIModelCallResponse,
+    AIModelEndpoint,
+    AIModelFunctionalTypeEnum,
+    ChatResponseGenericContentItem,
+    ChatResponseGenericContentItemDelta,
+    ChatResponseUsage,
+    ImageResponseUsage,
+    UsageCharge,
+)
 from dhenara.ai.types.external_api import ExternalApiCallStatus, ExternalApiCallStatusEnum, FormattedPrompt, SystemInstructions
+from dhenara.ai.types.shared.api import SSEErrorCode, SSEErrorData, SSEErrorResponse
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +167,6 @@ class AIModelProviderClientBase(ABC):
         return (usage, usage_charge)
 
     # -------------------------------------------------------------------------
-
     def _create_success_status(
         self,
         message: str = "Output generated",
@@ -186,3 +196,40 @@ class AIModelProviderClientBase(ABC):
             code="external_api_error",
             http_status_code=400,
         )
+
+    def _create_streaming_error_response(self, exc: Exception | None = None, message: str | None = None):
+        if exc:
+            logger.exception(f"Error during streaming: {exc}")
+
+        if message:
+            detail_msg = message
+        elif exc:
+            detail_msg = f"Error: {exc}"
+        else:
+            detail_msg = "Streaming Error"
+
+        return SSEErrorResponse(
+            data=SSEErrorData(
+                error_code=SSEErrorCode.external_api_error,
+                message=f"Error While Streaming: {detail_msg}",
+                details={
+                    "error": detail_msg,
+                },
+            )
+        )
+
+    def get_unknown_content_type_item(self, role: str, unknown_item: Any, streaming: bool):
+        logger.debug(f"process_content_item_delta: Unknown content item type {type(unknown_item)}")
+        try:
+            data = unknown_item.model_dump()
+        except:
+            data = None
+
+        item_dict = {
+            "role": role,
+            "metadata": {
+                "unknonwn": f"Unknown content item of type {type(unknown_item)}",
+                "data": data,
+            },
+        }
+        return ChatResponseGenericContentItemDelta(**item_dict) if streaming else ChatResponseGenericContentItem(**item_dict)

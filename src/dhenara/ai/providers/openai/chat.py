@@ -13,16 +13,20 @@ from dhenara.ai.types.genai import (
     AIModelCallResponseMetaData,
     ChatResponse,
     ChatResponseChoice,
+    ChatResponseChoiceDelta,
     ChatResponseContentItem,
+    ChatResponseContentItemDelta,
     ChatResponseGenericContentItem,
     ChatResponseTextContentItem,
+    ChatResponseTextContentItemDelta,
     ChatResponseToolCallContentItem,
+    ChatResponseToolCallContentItemDelta,
     ChatResponseUsage,
     StreamingChatResponse,
-    TokenStreamChunk,
 )
-from dhenara.ai.types.shared.api import SSEErrorCode, SSEErrorData, SSEErrorResponse
+from dhenara.ai.types.shared.api import SSEErrorResponse
 from openai.types.chat import ChatCompletion, ChatCompletionMessage
+from openai.types.chat.chat_completion_chunk import ChatCompletionChunk, ChoiceDelta
 
 logger = logging.getLogger(__name__)
 
@@ -129,19 +133,28 @@ class OpenAIChat(OpenAIClientBase):
     # -------------------------------------------------------------------------
     async def _handle_streaming_response(
         self,
-        stream: Any,
+        stream: AsyncGenerator[ChatCompletionChunk],
     ) -> AsyncGenerator[tuple[StreamingChatResponse | SSEErrorResponse, AIModelCallResponse | None]]:
         """Handle streaming response with progress tracking and final response"""
         stream_manager = StreamingManager(
             model_endpoint=self.model_endpoint,
         )
-        _second_last_chunk = None
-        _last_chunk = None
+
+        provider_metadata = None
+        persistant_choice_metadata_list = []
 
         try:
             async for chunk in stream:
                 stream_response: StreamingChatResponse | None = None
                 final_response: AIModelCallResponse | None = None
+
+                if not provider_metadata:  # Grab the metadata once
+                    provider_metadata = {
+                        "id": chunk.id,
+                        "created": str(chunk.created),  # Microsoft sdk returns datetim obj
+                        "object": chunk.object if hasattr(chunk, "object") else None,
+                        "system_fingerprint": chunk.system_fingerprint if hasattr(chunk, "system_fingerprint") else None,
+                    }
 
                 # Process usage
                 if hasattr(chunk, "usage") and chunk.usage:  # Microsoft is slow in adopting openai changes 😶
@@ -152,60 +165,53 @@ class OpenAIChat(OpenAIClientBase):
                     )
                     stream_manager.update_usage(usage)
 
-                if _second_last_chunk:
-                    _last_chunk = chunk
-
                 # Process content
                 if chunk.choices:
-                    choice = chunk.choices[0]
-                    delta = choice.delta.content or ""
+                    choice_deltas = []
+                    for choice in chunk.choices:
+                        # Only first chunk has few fields
+                        if len(persistant_choice_metadata_list) < choice.index + 1:
+                            persistant_choice_metadata_list.append(
+                                {
+                                    "role": choice.delta.role,
+                                    "refusal": choice.delta.refusal,
+                                }
+                            )
 
-                    # Update streaming progress
-                    stream_manager.update(delta)
+                        role = choice.delta.role or persistant_choice_metadata_list[choice.index]["role"]
 
-                    is_final_chunk = bool(choice.finish_reason)
-                    # Prepare streaming response
-                    if is_final_chunk:
-                        _second_last_chunk = chunk
-
-                        stream_manager.complete(
-                            metadata={
-                                "id": chunk.id,
-                                "created": str(chunk.created),  # Microsoft sdk returns datetim obj
-                                "object": chunk.object if hasattr(chunk, "object") else None,
-                                "system_fingerprint": chunk.system_fingerprint if hasattr(chunk, "system_fingerprint") else None,
-                                # TODO_FUTURE: Support  multiple chat completion choices, and move finish reason to choice
-                                "finish_reason": choice.finish_reason if hasattr(choice, "finish_reason") else None,
-                            },
+                        choice_deltas.append(
+                            ChatResponseChoiceDelta(
+                                index=choice.index,
+                                finish_reason=choice.finish_reason if hasattr(choice, "finish_reason") else None,
+                                stop_sequence=None,
+                                content_deltas=[
+                                    self.process_content_item_delta(
+                                        index=0,  # Only one content item. Might change with reasoing response?
+                                        role=role,
+                                        delta=choice.delta,
+                                    ),
+                                ],
+                                metadata={},
+                            )
                         )
 
-                    # Create StreamingChatResponse
+                    response_chunk = stream_manager.update(choice_deltas=choice_deltas)
                     stream_response = StreamingChatResponse(
-                        id=None,
-                        data=TokenStreamChunk(
-                            index=choice.index,
-                            content=delta,
-                            done=is_final_chunk,
-                            metadata={},
-                        ),
+                        id=chunk.id,
+                        data=response_chunk,
                     )
 
                     yield stream_response, final_response
 
-                if _last_chunk:
-                    final_response = stream_manager.get_final_response()
-                    yield None, final_response
-                    return  # Stop the generator
+            # API has stopped streaming, get final response
+            logger.debug("API has stopped streaming, processsing final response")
+            final_response = stream_manager.complete(provider_metadata=provider_metadata)
 
+            yield None, final_response
+            return  # Stop the generator
         except Exception as e:
-            logger.exception(f"Error during streaming: {e}")
-            error_response = SSEErrorResponse(
-                data=SSEErrorData(
-                    error_code=SSEErrorCode.external_api_error,
-                    message="External API Server Error",
-                    details={"error_type": type(e).__name__},
-                )
-            )
+            error_response = self._create_streaming_error_response(exc=e)
             yield error_response, None
 
     # -------------------------------------------------------------------------
@@ -237,63 +243,90 @@ class OpenAIChat(OpenAIClientBase):
                 ChatResponseChoice(
                     index=choice.index,
                     finish_reason=choice.finish_reason if hasattr(choice, "finish_reason") else None,
-                    contents=self.process_choice(
-                        role=choice.message.role,
-                        choice=choice,
-                    ),
+                    stop_sequence=None,
+                    contents=[
+                        self.process_content_item(
+                            index=0,  # Only one content item. Might change with reasoing response?
+                            role=choice.message.role,
+                            content_item=choice.message,
+                        )
+                    ],
+                    metadata={},  # Choice metadata
                 )
                 for choice in response.choices
             ],
+            # Response Metadata
             metadata=AIModelCallResponseMetaData(
                 streaming=False,
                 duration_seconds=0,  # TODO
-                provider_data={
+                provider_metadata={
                     "id": response.id,
                     "created": str(response.created),  # Microsoft sdk returns datetim obj
                     "object": response.object if hasattr(response, "object") else None,
-                    "system_fingerprint": response.system_fingerprint if hasattr(response, "system_fingerprint") else None,
+                    "system_fingerprint": response.system_fingerprint if hasattr(response, "system_fingerprint") else None,  # TODO: Move to choice
                 },
             ),
         )
 
-    def process_choice(self, role, choice) -> list[ChatResponseContentItem]:
-        return [
-            # self.process_content_item(
-            #    role=role,
-            #    content_item=content_item,
-            # )
-            # for content_item in choice.message
-            #
-            #
-            # Only one content item in choice.message, might change with reasoning responses ?
-            self.process_content_item(
-                role=role,
-                content_item=choice.message,
-            )
-        ]
-
-    def process_content_item(self, role, content_item: ChatCompletionMessage) -> ChatResponseContentItem:
+    def process_content_item(
+        self,
+        index: int,
+        role: str,
+        content_item: ChatCompletionMessage,
+    ) -> ChatResponseContentItem:
         if isinstance(content_item, ChatCompletionMessage):
             if content_item.content:
                 return ChatResponseTextContentItem(
+                    index=index,
                     role=role,
                     text=content_item.content,
                 )
             elif content_item.tool_calls:
                 return ChatResponseToolCallContentItem(
+                    index=index,
                     role=role,
                     metadata={"tool_calls": [tool_call.model_dump() for tool_call in content_item.tool_calls]},
                 )
             else:
                 return ChatResponseGenericContentItem(
+                    index=index,
                     role=role,
                     metadata={"part": content_item.model_dump()},
                 )
         else:
-            logger.fatal(f"process_content_item: Unknown content item type {type(content_item)}")
-            return ChatResponseGenericContentItem(
-                role=role,
-                metadata={
-                    "unknonwn": f"Unknown content item of type {type(content_item)}",
-                },
-            )
+            return self.get_unknown_content_type_item(role=role, unknown_item=content_item, streaming=False)
+
+    # Streaming
+    def process_content_item_delta(
+        self,
+        index: int,
+        role: str,
+        delta: ChoiceDelta,
+    ) -> ChatResponseContentItemDelta:
+        if isinstance(delta, ChoiceDelta):
+            if delta.content:
+                return ChatResponseTextContentItemDelta(
+                    index=index,
+                    role=role,
+                    text_delta=delta.content,
+                )
+            elif delta.tool_calls:
+                return ChatResponseToolCallContentItemDelta(
+                    index=index,
+                    role=role,
+                    metadata={"tool_calls": [tool_call.model_dump() for tool_call in delta.tool_calls]},
+                )
+            else:
+                # NOTE: There is no way to identify content type for OpenAI streaming response.
+                # Also they sends few extra chuckw with no content.
+                # Eg: The very first chunk will only have the `role` set (and role in other chunks will be None)
+                # Therefore, dont't send a `ChatResponseGenericContentItemDelta`  here,
+                # asit will messup streaming manager content updation
+                return ChatResponseTextContentItemDelta(
+                    index=index,
+                    role=role,
+                    text_delta="",
+                    metadata={"part": delta.model_dump()},
+                )
+        else:
+            return self.get_unknown_content_type_item(role=role, unknown_item=delta, streaming=True)

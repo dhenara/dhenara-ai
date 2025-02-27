@@ -15,11 +15,12 @@ from dhenara.ai.types.genai import (
     AIModelFunctionalTypeEnum,
     ChatResponse,
     ChatResponseChoice,
+    ChatResponseChoiceDelta,
     ChatResponseTextContentItem,
+    ChatResponseTextContentItemDelta,
     ChatResponseUsage,
     ImageResponseUsage,
     StreamingChatResponse,
-    TokenStreamChunk,
     UsageCharge,
 )
 from dhenara.ai.types.genai.ai_model import AIModelEndpoint
@@ -38,7 +39,7 @@ class DummyAIModelResponseFns:
         if streaming:
             stream_generator = DummyAIModelResponseFns._handle_streaming_response(
                 stream=DummyAIModelResponseFns.gen_dummy_stream(ai_model_ep),
-                ai_model_ep=ai_model_ep,
+                model_endpoint=ai_model_ep,
             )
 
             return AIModelCallResponse(
@@ -75,7 +76,7 @@ class DummyAIModelResponseFns:
             metadata=AIModelCallResponseMetaData(
                 streaming=False,
                 duration_seconds=0,  # TODO
-                provider_data={
+                provider_metadata={
                     "id": "test_msg_id",
                     "object": "test_object",
                     "created": "",
@@ -119,62 +120,63 @@ class DummyAIModelResponseFns:
     # -------------------------------------------------------------------------
     @staticmethod
     async def _handle_streaming_response(
-        stream,
-        ai_model_ep: AIModelEndpoint,
-    ) -> AsyncGenerator[tuple[StreamingChatResponse | SSEErrorResponse, ChatResponse | None]]:
+        stream: AsyncGenerator,
+        model_endpoint: AIModelEndpoint,
+    ) -> AsyncGenerator[tuple[StreamingChatResponse | SSEErrorResponse, AIModelCallResponse | None]]:
         """Handle streaming response with progress tracking and final response"""
         stream_manager = StreamingManager(
-            model_endpoint=ai_model_ep,
+            model_endpoint=model_endpoint,
         )
+        _second_last_chunk = None
+        _last_chunk = None
 
         try:
             async for chunk in stream:
+                stream_response: StreamingChatResponse | None = None
+                final_response: AIModelCallResponse | None = None
+
+                # Process usage
+                if chunk.usage:
+                    usage = ChatResponseUsage(
+                        total_tokens=chunk.usage["total_tokens"],
+                        prompt_tokens=chunk.usage["prompt_tokens"],
+                        completion_tokens=chunk.usage["completion_tokens"],
+                    )
+                    stream_manager.update_usage(usage)
+
+                if _second_last_chunk:
+                    _last_chunk = chunk
+
                 # Process content
                 if chunk.choices:
-                    choice = chunk.choices[0]
-                    delta = choice.delta.content or ""
-                    stream_metadata = {}
-
-                    # Update streaming progress
-                    stream_manager.update(delta)
-
-                    # Process usage if present
-                    if chunk.usage:
-                        usage = ChatResponseUsage(
-                            total_tokens=chunk.usage["total_tokens"],
-                            prompt_tokens=chunk.usage["prompt_tokens"],
-                            completion_tokens=chunk.usage["completion_tokens"],
-                        )
-                        stream_manager.update_usage(usage)
-
-                    # Prepare final response if complete
-                    final_response = None
-                    if choice.finish_reason:
-                        stream_manager.complete(
-                            metadata={
-                                "id": chunk.id,
-                                "object": chunk.object,
-                                "created": chunk.created,
-                                "system_fingerprint": chunk.system_fingerprint,
-                                "finish_reason": choice.finish_reason,
-                            },
-                        )
-                        final_response = stream_manager.get_final_response()
-                        stream_metadata = final_response.chat_response.get_visible_fields()
-
-                    # Create streaming response
-                    stream_response = StreamingChatResponse(
-                        id=chunk.id,
-                        data=TokenStreamChunk(
+                    choice_deltas = [
+                        ChatResponseChoiceDelta(
                             index=choice.index,
-                            content=delta,
-                            done=bool(choice.finish_reason),
-                            metadata=stream_metadata,
-                        ),
+                            finish_reason=choice.finish_reason if hasattr(choice, "finish_reason") else None,
+                            content_deltas=[
+                                ChatResponseTextContentItemDelta(
+                                    role="assistant",
+                                    text_delta=choice.delta.content or "xyz",
+                                )
+                            ],
+                            metadata={},
+                        )
+                        for choice in chunk.choices
+                    ]
+
+                    response_chunk = stream_manager.update(choice_deltas=choice_deltas)
+                    stream_response = StreamingChatResponse(
+                        id=None,
+                        data=response_chunk,
                     )
 
                     yield stream_response, final_response
 
+            # API has stopped streaming, get final response
+            logger.debug("API has stopped streaming, processsing final response")
+            final_response = stream_manager.get_final_response()
+            yield None, final_response
+            return  # Stop the generator
         except Exception as e:
             logger.exception(f"Error during streaming: {e}")
             error_response = SSEErrorResponse(

@@ -15,15 +15,15 @@ from dhenara.ai.types.genai import (
     AIModelCallResponseMetaData,
     ChatResponse,
     ChatResponseChoice,
+    ChatResponseChunk,
     ChatResponseContentItem,
     ChatResponseGenericContentItem,
     ChatResponseTextContentItem,
     ChatResponseUsage,
     StreamingChatResponse,
-    TokenStreamChunk,
 )
 from dhenara.ai.types.shared.api import SSEErrorCode, SSEErrorData, SSEErrorResponse
-from google.genai.types import Candidate, GenerateContentConfig, GenerateContentResponse, Part, SafetySetting
+from google.genai.types import GenerateContentConfig, GenerateContentResponse, Part, SafetySetting
 
 logger = logging.getLogger(__name__)
 
@@ -149,7 +149,7 @@ class GoogleAIChat(GoogleAIClientBase):
 
                                     stream_response = StreamingChatResponse(
                                         id=None,
-                                        data=TokenStreamChunk(
+                                        data=ChatResponseChunk(
                                             index=candidate.index or 0,
                                             content=part.text,
                                             done=is_done,
@@ -210,18 +210,25 @@ class GoogleAIChat(GoogleAIClientBase):
             usage_charge=usage_charge,
             choices=[
                 ChatResponseChoice(
-                    index=index,
-                    contents=self.process_choice(
-                        role=candidate.content.role,
-                        choice=candidate,
-                    ),
+                    index=choice_index,
+                    finish_reason=candidate.finish_reason,
+                    stop_sequence=None,
+                    contents=[
+                        self.process_content_item(
+                            index=part_index,
+                            role=candidate.content.role,
+                            content_item=part,
+                        )
+                        for part_index, part in enumerate(candidate.content.parts)
+                    ],
+                    metadata={},  # Choice metadata
                 )
-                for index, candidate in enumerate(response.candidates)
+                for choice_index, candidate in enumerate(response.candidates)
             ],
             metadata=AIModelCallResponseMetaData(
                 streaming=False,
                 duration_seconds=0,  # TODO
-                provider_data={
+                provider_metadata={
                     "prompt_feedback": generic_obj_to_dict(
                         response.prompt_feedback,
                     )
@@ -229,32 +236,24 @@ class GoogleAIChat(GoogleAIClientBase):
             ),
         )
 
-    def process_choice(self, role, choice: Candidate) -> list[ChatResponseContentItem]:
-        return [
-            self.process_content_item(
-                role=role,
-                content_item=content_item,
-            )
-            for content_item in choice.content.parts
-        ]
-
-    def process_content_item(self, role, content_item: Part) -> ChatResponseContentItem:
+    def process_content_item(
+        self,
+        index: int,
+        role: str,
+        content_item: Part,
+    ) -> ChatResponseContentItem:
         if isinstance(content_item, Part):
             if content_item.text:
                 return ChatResponseTextContentItem(
+                    index=index,
                     role=role,
                     text=content_item.text,
                 )
             else:
                 return ChatResponseGenericContentItem(
+                    index=index,
                     role=role,
                     metadata={"part": content_item.model_dump()},
                 )
         else:
-            logger.fatal(f"process_content_item: Unknown content item type {type(content_item)}")
-            return ChatResponseGenericContentItem(
-                role=role,
-                metadata={
-                    "unknonwn": f"Unknown content item of type {type(content_item)}",
-                },
-            )
+            return self.get_unknown_content_type_item(role=role, unknown_item=content_item, streaming=False)

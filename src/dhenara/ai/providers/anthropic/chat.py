@@ -1,7 +1,24 @@
 import logging
 from collections.abc import AsyncGenerator
 
-from anthropic.types import ContentBlock, Message, RedactedThinkingBlock, TextBlock, ThinkingBlock, ToolUseBlock
+from anthropic.types import (
+    ContentBlock,
+    Message,
+    MessageStreamEvent,
+    RawContentBlockDeltaEvent,
+    RawContentBlockStartEvent,
+    RawContentBlockStopEvent,
+    RawMessageDeltaEvent,
+    RawMessageStartEvent,
+    RawMessageStopEvent,
+    RedactedThinkingBlock,
+    SignatureDelta,
+    TextBlock,
+    TextDelta,
+    ThinkingBlock,
+    ThinkingDelta,
+    ToolUseBlock,
+)
 from dhenara.ai.providers.anthropic import AnthropicClientBase
 from dhenara.ai.providers.common import StreamingManager
 from dhenara.ai.types.external_api import (
@@ -12,16 +29,18 @@ from dhenara.ai.types.genai import (
     AIModelCallResponseMetaData,
     ChatResponse,
     ChatResponseChoice,
+    ChatResponseChoiceDelta,
     ChatResponseContentItem,
-    ChatResponseGenericContentItem,
+    ChatResponseContentItemDelta,
     ChatResponseReasoningContentItem,
+    ChatResponseReasoningContentItemDelta,
     ChatResponseTextContentItem,
+    ChatResponseTextContentItemDelta,
     ChatResponseToolCallContentItem,
     ChatResponseUsage,
     StreamingChatResponse,
-    TokenStreamChunk,
 )
-from dhenara.ai.types.shared.api import SSEErrorCode, SSEErrorData, SSEErrorResponse
+from dhenara.ai.types.shared.api import SSEErrorResponse
 
 logger = logging.getLogger(__name__)
 
@@ -113,112 +132,137 @@ class AnthropicChat(AnthropicClientBase):
 
     async def _handle_streaming_response(
         self,
-        stream: AsyncGenerator,
+        stream: AsyncGenerator[MessageStreamEvent],
     ) -> AsyncGenerator[tuple[StreamingChatResponse | SSEErrorResponse, AIModelCallResponse | None]]:
         """Handle streaming response with progress tracking and final response"""
         stream_manager = StreamingManager(
             model_endpoint=self.model_endpoint,
         )
 
+        # message_metadata is used to preserve params of initial message across chunks
+        message_metadata = {}
+
         try:
             async for chunk in stream:
                 stream_response: StreamingChatResponse | None = None
-                final_response: AIModelCallResponse | None = None
-                stream_metadata = {}
 
-                match chunk.type:
-                    case "message_start":
-                        # Initialize message metadata
-                        stream_metadata = {
-                            "message_id": chunk.message.id,
-                            "model": chunk.message.model,
-                            "type": chunk.type,
-                        }
-                        stream_manager.metadata["id"] = chunk.message.id
+                if isinstance(chunk, RawMessageStartEvent):
+                    message = chunk.message
 
-                        # Anthropic has a wieded way of reporint usage on streaming
-                        _usage = chunk.message.usage
-                        if _usage:
-                            # Initialize usage in stream_manager
-                            usage = ChatResponseUsage(
-                                total_tokens=0,
-                                prompt_tokens=_usage.input_tokens,
-                                completion_tokens=_usage.output_tokens,
+                    # Initialize message metadata
+                    message_metadata = {
+                        "id": message.id,
+                        "model": message.model,
+                        "role": message.role,
+                        "type": type,
+                        "index": 0,  # Only one choice from Antropic
+                    }
+
+                    # Anthropic has a wieded way of reporint usage on streaming
+                    # On message_start, usage will have input tokens and few output tokens
+                    _usage = chunk.message.usage
+                    if _usage:
+                        # Initialize usage in stream_manager
+                        usage = ChatResponseUsage(
+                            total_tokens=0,
+                            prompt_tokens=_usage.input_tokens,
+                            completion_tokens=_usage.output_tokens,
+                        )
+                        stream_manager.update_usage(usage)
+
+                elif isinstance(chunk, RawContentBlockStartEvent):
+                    block_type = chunk.content_block.type
+                    if block_type == "redacted_thinking":
+                        content_deltas = [
+                            ChatResponseReasoningContentItem(
+                                index=chunk.index,
+                                role=message_metadata["role"],
+                                metadata={
+                                    "redacted_thinking_data": chunk.content_block.data,
+                                },
                             )
-                            stream_manager.update_usage(usage)
+                        ]
 
-                    case "content_block_delta":
-                        # Content block update
-                        # TODO
-                        if chunk.delta.type == "thinking_delta":
-                            print(f"Thinking: {chunk.delta.thinking}", end="", flush=True)
-                        elif chunk.delta.type == "text_delta":
-                            print(f"Response: {chunk.delta.text}", end="", flush=True)
-
-                        delta_text = chunk.delta.text
-                        if delta_text:
-                            stream_manager.update(delta_text)
-
-                            stream_response = StreamingChatResponse(
-                                data=TokenStreamChunk(
-                                    index=0,  # Anthropic doesn't provide choice index
-                                    content=delta_text,
-                                    done=False,
-                                    metadata=stream_metadata,
-                                ),
+                        choice_deltas = [
+                            ChatResponseChoiceDelta(
+                                index=message_metadata["index"],
+                                content_deltas=content_deltas,
+                                metadata=None,
                             )
+                        ]
 
-                    case "message_delta":
-                        if hasattr(chunk, "usage") and chunk.usage:
-                            stream_manager.usage.completion_tokens += chunk.usage.output_tokens
-
-                        if hasattr(chunk.delta, "stop_reason"):
-                            stream_manager.metadata["stop_reason"] = chunk.delta.stop_reason
-                        if hasattr(chunk.delta, "stop_sequence"):
-                            stream_manager.metadata["stop_sequence"] = chunk.delta.stop_sequence
-
-                    case "message_delta":
-                        _usage = chunk.delta.usage
-                        if _usage:
-                            stream_manager.usage.completion_tokens += _usage.output_tokens
-
-                        stream_manager.metadata["stop_reason"] = chunk.delta.stop_reason
-                        stream_manager.metadata["stop_sequence"] = chunk.delta.stop_sequence
-
-                    case "message_stop":
-                        stream_manager.usage.total_tokens = stream_manager.usage.prompt_tokens + stream_manager.usage.completion_tokens
-                        stream_manager.complete()
-                        final_response = stream_manager.get_final_response()
-
-                        # Get final metadata for the last chunk
-                        if final_response and final_response.chat_response:
-                            stream_metadata = final_response.chat_response.get_visible_fields()
-
+                        response_chunk = stream_manager.update(choice_deltas=choice_deltas)
                         stream_response = StreamingChatResponse(
-                            data=TokenStreamChunk(
-                                index=0,
-                                content="",  # Empty content for final chunk
-                                done=True,
-                                metadata=stream_metadata,
-                            ),
+                            id=message_metadata["id"],
+                            data=response_chunk,
                         )
 
-                        yield stream_response, final_response
-                        return  # Stop the generator
+                        yield stream_response, None
+                    elif block_type in ["text", "thinking"]:
+                        pass
+                    else:
+                        logger.debug(f"anthropic: Unhandled content_block_type {block_type}")
 
-                # Yield stream response and final response if available
-                if stream_response:
-                    yield stream_response, final_response
+                elif isinstance(chunk, RawContentBlockDeltaEvent):
+                    content_deltas = [
+                        self.process_content_item_delta(
+                            index=chunk.index,
+                            role=message_metadata["role"],
+                            delta=chunk.delta,
+                        )
+                    ]
+
+                    choice_deltas = [
+                        ChatResponseChoiceDelta(
+                            index=message_metadata["index"],
+                            content_deltas=content_deltas,
+                            metadata=None,
+                        )
+                    ]
+                    response_chunk = stream_manager.update(choice_deltas=choice_deltas)
+                    stream_response = StreamingChatResponse(
+                        id=message_metadata["id"],
+                        data=response_chunk,
+                    )
+                    yield stream_response, None
+                elif isinstance(chunk, RawContentBlockStopEvent):
+                    pass
+                elif isinstance(chunk, RawMessageDeltaEvent):
+                    # Update output tokens
+                    stream_manager.usage.completion_tokens += chunk.usage.output_tokens
+                    stream_manager.usage.total_tokens = stream_manager.usage.prompt_tokens + stream_manager.usage.completion_tokens
+
+                    # Update choice metatdata
+                    choice_deltas = [
+                        ChatResponseChoiceDelta(
+                            index=message_metadata["index"],
+                            finish_reason=chunk.delta.stop_reason,
+                            stop_sequence=chunk.delta.stop_sequence,
+                            content_deltas=[],
+                            metadata={},
+                        )
+                    ]
+                    response_chunk = stream_manager.update(choice_deltas=choice_deltas)
+                    stream_response = StreamingChatResponse(
+                        id=message_metadata["id"],
+                        data=response_chunk,
+                    )
+                    yield stream_response, None
+
+                elif isinstance(chunk, RawMessageStopEvent):
+                    pass
+                else:
+                    logger.debug(f"anthropic: Unhandled message type {chunk.type}")
+
+            # API has stopped streaming, get final response
+            logger.debug("API has stopped streaming, processsing final response")
+            final_response = stream_manager.complete()
+
+            yield None, final_response
+            return  # Stop the generator
 
         except Exception as e:
-            logger.exception(f"Error during streaming: {e}")
-            error_response = SSEErrorResponse(
-                data=SSEErrorData(
-                    error_code=SSEErrorCode.external_api_error,
-                    message="External API Server Error",
-                    details={"error_type": type(e).__name__},
-                )
-            )
+            error_response = self._create_streaming_error_response(exc=e)
             yield error_response, None
 
     def _get_usage_from_provider_response(
@@ -243,39 +287,44 @@ class AnthropicChat(AnthropicClientBase):
             choices=[
                 ChatResponseChoice(
                     index=0,  # Only one choice
-                    contents=self.process_choice(
-                        role=response.role,
-                        choice=response.content,
-                    ),
-                )
+                    finish_reason=response.stop_reason,
+                    stop_sequence=response.stop_sequence,
+                    contents=[
+                        self.process_content_item(
+                            index=content_index,  # For non-streaming response, Anthropic APIs doesn't provide index, so enumerate
+                            role=response.role,
+                            content_item=content_item,
+                        )
+                        for content_index, content_item in enumerate(response.content)
+                    ],
+                    metadata={},  # Choice metadata
+                ),
             ],
+            # Response Metadata
             metadata=AIModelCallResponseMetaData(
                 streaming=False,
                 duration_seconds=0,  # TODO
-                provider_data={
+                provider_metadata={
                     "id": response.id,
-                    "type": response.type,
                 },
             ),
         )
 
-    def process_choice(self, role, choice: list[ContentBlock]) -> list[ChatResponseContentItem]:
-        return [
-            self.process_content_item(
-                role=role,
-                content_item=content_item,
-            )
-            for content_item in choice
-        ]
-
-    def process_content_item(self, role, content_item: ContentBlock) -> ChatResponseContentItem:
+    def process_content_item(
+        self,
+        index: int,
+        role: str,
+        content_item: ContentBlock,
+    ) -> ChatResponseContentItem:
         if isinstance(content_item, TextBlock):
             return ChatResponseTextContentItem(
+                index=index,
                 role=role,
                 text=content_item.text,
             )
         elif isinstance(content_item, ThinkingBlock):
             return ChatResponseReasoningContentItem(
+                index=index,
                 role=role,
                 thinking_text=content_item.thinking,
                 metadata={
@@ -285,6 +334,7 @@ class AnthropicChat(AnthropicClientBase):
 
         elif isinstance(content_item, RedactedThinkingBlock):
             return ChatResponseReasoningContentItem(
+                index=index,
                 role=role,
                 metadata={
                     "redacted_thinking_data": content_item.data,
@@ -293,6 +343,7 @@ class AnthropicChat(AnthropicClientBase):
 
         elif isinstance(content_item, ToolUseBlock):
             return ChatResponseToolCallContentItem(
+                index=index,
                 role=role,
                 metadata={
                     "tool_use": {
@@ -303,10 +354,36 @@ class AnthropicChat(AnthropicClientBase):
                 },
             )
         else:
-            logger.fatal(f"process_content_item: Unknown content item type {type(content_item)}")
-            return ChatResponseGenericContentItem(
+            return self.get_unknown_content_type_item(role=role, unknown_item=content_item, streaming=False)
+
+    def process_content_item_delta(
+        self,
+        index: int,
+        role: str,
+        delta,
+    ) -> ChatResponseContentItemDelta:
+        if isinstance(delta, TextDelta):
+            return ChatResponseTextContentItemDelta(
+                index=index,
                 role=role,
+                text_delta=delta.text,
+            )
+        elif isinstance(delta, ThinkingDelta):
+            return ChatResponseReasoningContentItemDelta(
+                index=index,
+                role=role,
+                thinking_text_delta=delta.thinking,
+                metadata={},
+            )
+        elif isinstance(delta, SignatureDelta):
+            return ChatResponseReasoningContentItemDelta(
+                index=index,
+                role=role,
+                thinking_text_delta="",
                 metadata={
-                    "unknonwn": f"Unknown content item of type {type(content_item)}",
+                    "signature": delta.signature,
                 },
             )
+
+        else:
+            return self.get_unknown_content_type_item(role=role, unknown_item=delta, streaming=True)

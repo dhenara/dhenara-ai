@@ -14,7 +14,7 @@ setup(
     description="Dhenara Inc AI Model Clients",
     author="Dhenara",
     author_email="support@dhenara.com",
-    url="https://github.com/dhenara/dhenai",
+    url="https://github.com/dhenara/dhen-ai",
     classifiers=[
         "Development Status :: 5 - Production/Stable",
         "Intended Audience :: Developers",

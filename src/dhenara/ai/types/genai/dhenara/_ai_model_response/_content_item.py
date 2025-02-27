@@ -49,6 +49,10 @@ class ChatResponseContentItemType(BaseEnum):
 
 
 class BaseChatResponseContentItem(BaseResponseContentItem):
+    index: int = Field(
+        default=0,
+        description="Content item index",
+    )
     type: ChatResponseContentItemType = Field(
         ...,
         description="Type of the content item",
@@ -116,6 +120,70 @@ ChatResponseContentItem = Union[
     ChatResponseReasoningContentItem,
     ChatResponseToolCallContentItem,
     ChatResponseGenericContentItem,
+]
+
+
+# Deltas for streamin
+class BaseChatResponseContentItemDelta(BaseResponseContentItem):
+    index: int = Field(
+        default=0,
+        description="Content item index",
+    )
+    type: ChatResponseContentItemType = Field(
+        ...,
+        description="Type of the content item",
+        serialization_alias="type",  # Ensures type is serialized correctly
+    )
+    role: str | None = Field(
+        default=None,
+        description="Role of the message sender in the chat context",
+    )
+
+
+class ChatResponseTextContentItemDelta(BaseChatResponseContentItemDelta):
+    type: ChatResponseContentItemType = ChatResponseContentItemType.TEXT
+
+    text_delta: str | None = Field(
+        None,
+    )
+
+    def get_text_delta(self) -> str:
+        return self.text_delta
+
+
+class ChatResponseReasoningContentItemDelta(BaseChatResponseContentItemDelta):
+    type: ChatResponseContentItemType = ChatResponseContentItemType.REASONING
+
+    thinking_text_delta: str | None = Field(
+        None,
+    )
+
+    def get_text_delta(self) -> str:
+        return self.thinking_text_delta
+
+
+class ChatResponseToolCallContentItemDelta(BaseChatResponseContentItemDelta):
+    type: ChatResponseContentItemType = ChatResponseContentItemType.TOOL_CALL
+    # Use metadata to store the content
+    # TODO
+
+    def get_text_delta(self) -> str:
+        return str(self.metadata)
+
+
+class ChatResponseGenericContentItemDelta(BaseChatResponseContentItemDelta):
+    type: ChatResponseContentItemType = ChatResponseContentItemType.GENERIC
+    # Use metadata to store the content
+
+    def get_text_delta(self) -> str:
+        return str(self.metadata)
+
+
+ChatResponseContentItemDelta = Union[
+    ChatResponseTextContentItemDelta,
+    ChatResponseReasoningContentItemDelta,
+    ChatResponseToolCallContentItemDelta,
+    ChatResponseGenericContentItemDelta,
 ]
 
 
