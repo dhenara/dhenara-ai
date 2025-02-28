@@ -128,7 +128,7 @@ class GoogleAIChat(GoogleAIClientBase):
         self,
         stream: AsyncGenerator[GenerateContentResponse],
     ) -> AsyncGenerator[tuple[StreamingChatResponse | SSEErrorResponse, AIModelCallResponse | None]]:
-        stream_manager = StreamingManager(
+        self.streaming_manager = StreamingManager(
             model_endpoint=self.model_endpoint,
         )
 
@@ -161,7 +161,7 @@ class GoogleAIChat(GoogleAIClientBase):
                             )
                         )
 
-                    response_chunk = stream_manager.update(choice_deltas=choice_deltas)
+                    response_chunk = self.streaming_manager.update(choice_deltas=choice_deltas)
                     stream_response = StreamingChatResponse(
                         id=None,  # No 'id' from google
                         data=response_chunk,
@@ -174,11 +174,11 @@ class GoogleAIChat(GoogleAIClientBase):
 
                     if is_done:
                         usage = self._get_usage_from_provider_response(chunk)
-                        stream_manager.update_usage(usage)
+                        self.streaming_manager.update_usage(usage)
 
             # API has stopped streaming, get final response
             logger.debug("API has stopped streaming, processsing final response")
-            final_response = stream_manager.complete(provider_metadata=provider_metadata)
+            final_response = self.streaming_manager.complete(provider_metadata=provider_metadata)
 
             yield None, final_response
             return  # Stop the generator

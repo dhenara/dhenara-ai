@@ -4,6 +4,7 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 from azure.ai.inference.models import ChatResponseMessage as AzureChatResponseMessage
+from azure.ai.inference.models import StreamingChatResponseMessageUpdate as AzureStreamingChatResponseMessageUpdate
 from dhenara.ai.providers.common import StreamingManager
 from dhenara.ai.providers.openai import OpenAIClientBase
 from dhenara.ai.types.external_api import (
@@ -20,7 +21,9 @@ from dhenara.ai.types.genai import (
     ChatResponseContentItem,
     ChatResponseContentItemDelta,
     ChatResponseGenericContentItem,
+    ChatResponseGenericContentItemDelta,
     ChatResponseReasoningContentItem,
+    ChatResponseReasoningContentItemDelta,
     ChatResponseTextContentItem,
     ChatResponseTextContentItemDelta,
     ChatResponseToolCallContentItem,
@@ -140,7 +143,7 @@ class OpenAIChat(OpenAIClientBase):
         stream: AsyncGenerator[ChatCompletionChunk],
     ) -> AsyncGenerator[tuple[StreamingChatResponse | SSEErrorResponse, AIModelCallResponse | None]]:
         """Handle streaming response with progress tracking and final response"""
-        stream_manager = StreamingManager(
+        self.streaming_manager = StreamingManager(
             model_endpoint=self.model_endpoint,
         )
 
@@ -167,7 +170,7 @@ class OpenAIChat(OpenAIClientBase):
                         prompt_tokens=chunk.usage.prompt_tokens,
                         completion_tokens=chunk.usage.completion_tokens,
                     )
-                    stream_manager.update_usage(usage)
+                    self.streaming_manager.update_usage(usage)
 
                 # Process content
                 if chunk.choices:
@@ -178,7 +181,7 @@ class OpenAIChat(OpenAIClientBase):
                             persistant_choice_metadata_list.append(
                                 {
                                     "role": choice.delta.role,
-                                    "refusal": choice.delta.refusal,
+                                    "refusal": choice.delta.refusal if hasattr(choice.delta, "refusal") else None,
                                 }
                             )
 
@@ -200,7 +203,7 @@ class OpenAIChat(OpenAIClientBase):
                             )
                         )
 
-                    response_chunk = stream_manager.update(choice_deltas=choice_deltas)
+                    response_chunk = self.streaming_manager.update(choice_deltas=choice_deltas)
                     stream_response = StreamingChatResponse(
                         id=chunk.id,
                         data=response_chunk,
@@ -210,7 +213,7 @@ class OpenAIChat(OpenAIClientBase):
 
             # API has stopped streaming, get final response
             logger.debug("API has stopped streaming, processsing final response")
-            final_response = stream_manager.complete(provider_metadata=provider_metadata)
+            final_response = self.streaming_manager.complete(provider_metadata=provider_metadata)
 
             yield None, final_response
             return  # Stop the generator
@@ -337,13 +340,65 @@ class OpenAIChat(OpenAIClientBase):
         role: str,
         delta: ChoiceDelta,
     ) -> ChatResponseContentItemDelta:
-        if isinstance(delta, ChoiceDelta):
+        if isinstance(delta, (ChoiceDelta, AzureStreamingChatResponseMessageUpdate)):
             if delta.content:
-                return ChatResponseTextContentItemDelta(
-                    index=index,
-                    role=role,
-                    text_delta=delta.content,
-                )
+                if self.model_endpoint.ai_model.provider == AIModelProviderEnum.DEEPSEEK:
+                    content = delta.content
+
+                    # Check for think tag markers
+                    think_start = "<think>" in content
+                    think_end = "</think>" in content
+
+                    # If we see a start tag, everything after it goes to reasoning
+                    if think_start:
+                        self.streaming_manager.progress.in_thinking_block = True
+                        # Split content at the tag
+                        _, reasoning_part = content.split("<think>", 1)
+                        return ChatResponseReasoningContentItemDelta(
+                            index=index,
+                            role=role,
+                            thinking_text_delta=reasoning_part,
+                        )
+
+                    # If we see an end tag, everything before it goes to reasoning
+                    elif think_end:
+                        self.streaming_manager.progress.in_thinking_block = False
+                        reasoning_part, answer_part = content.split("</think>", 1)
+                        return (
+                            ChatResponseReasoningContentItemDelta(
+                                index=index,
+                                role=role,
+                                thinking_text_delta=reasoning_part,
+                            )
+                            if reasoning_part
+                            else ChatResponseTextContentItemDelta(
+                                index=index + 1,
+                                role=role,
+                                text_delta=answer_part,
+                            )
+                        )
+
+                    # If we're inside a thinking block, content goes to reasoning
+                    elif self.streaming_manager.progress.in_thinking_block:
+                        return ChatResponseReasoningContentItemDelta(
+                            index=index,
+                            role=role,
+                            thinking_text_delta=content,
+                        )
+
+                    # Otherwise it's regular text content
+                    else:
+                        return ChatResponseTextContentItemDelta(
+                            index=index + 1,
+                            role=role,
+                            text_delta=content,
+                        )
+                else:
+                    return ChatResponseTextContentItemDelta(
+                        index=index,
+                        role=role,
+                        text_delta=delta.content,
+                    )
             elif delta.tool_calls:
                 return ChatResponseToolCallContentItemDelta(
                     index=index,
@@ -356,11 +411,12 @@ class OpenAIChat(OpenAIClientBase):
                 # Eg: The very first chunk will only have the `role` set (and role in other chunks will be None)
                 # Therefore, dont't send a `ChatResponseGenericContentItemDelta`  here,
                 # asit will messup streaming manager content updation
-                return ChatResponseTextContentItemDelta(
+
+                part = delta.model_dump() if hasattr(delta, "model_dump") else str(delta)  # Microsoft API model won't work with model_dump
+                return ChatResponseGenericContentItemDelta(
                     index=index,
                     role=role,
-                    text_delta="",
-                    metadata={"part": delta.model_dump()},
+                    metadata={"part": part},
                 )
         else:
             return self.get_unknown_content_type_item(role=role, unknown_item=delta, streaming=True)

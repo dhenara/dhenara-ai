@@ -90,11 +90,7 @@ class AnthropicChat(AnthropicClientBase):
         if max_output_tokens is not None:
             chat_args["max_tokens"] = max_output_tokens
 
-        if max_reasoning_tokens is None:
-            chat_args["thinking"] = {
-                "type": "disabled",
-            }
-        else:
+        if max_reasoning_tokens is not None:
             chat_args["thinking"] = {
                 "type": "enabled",
                 "budget_tokens": max_reasoning_tokens,
@@ -135,7 +131,7 @@ class AnthropicChat(AnthropicClientBase):
         stream: AsyncGenerator[MessageStreamEvent],
     ) -> AsyncGenerator[tuple[StreamingChatResponse | SSEErrorResponse, AIModelCallResponse | None]]:
         """Handle streaming response with progress tracking and final response"""
-        stream_manager = StreamingManager(
+        self.streaming_manager = StreamingManager(
             model_endpoint=self.model_endpoint,
         )
 
@@ -162,13 +158,13 @@ class AnthropicChat(AnthropicClientBase):
                     # On message_start, usage will have input tokens and few output tokens
                     _usage = chunk.message.usage
                     if _usage:
-                        # Initialize usage in stream_manager
+                        # Initialize usage in self.streaming_manager
                         usage = ChatResponseUsage(
                             total_tokens=0,
                             prompt_tokens=_usage.input_tokens,
                             completion_tokens=_usage.output_tokens,
                         )
-                        stream_manager.update_usage(usage)
+                        self.streaming_manager.update_usage(usage)
 
                 elif isinstance(chunk, RawContentBlockStartEvent):
                     block_type = chunk.content_block.type
@@ -191,7 +187,7 @@ class AnthropicChat(AnthropicClientBase):
                             )
                         ]
 
-                        response_chunk = stream_manager.update(choice_deltas=choice_deltas)
+                        response_chunk = self.streaming_manager.update(choice_deltas=choice_deltas)
                         stream_response = StreamingChatResponse(
                             id=message_metadata["id"],
                             data=response_chunk,
@@ -219,7 +215,7 @@ class AnthropicChat(AnthropicClientBase):
                             metadata=None,
                         )
                     ]
-                    response_chunk = stream_manager.update(choice_deltas=choice_deltas)
+                    response_chunk = self.streaming_manager.update(choice_deltas=choice_deltas)
                     stream_response = StreamingChatResponse(
                         id=message_metadata["id"],
                         data=response_chunk,
@@ -229,8 +225,8 @@ class AnthropicChat(AnthropicClientBase):
                     pass
                 elif isinstance(chunk, RawMessageDeltaEvent):
                     # Update output tokens
-                    stream_manager.usage.completion_tokens += chunk.usage.output_tokens
-                    stream_manager.usage.total_tokens = stream_manager.usage.prompt_tokens + stream_manager.usage.completion_tokens
+                    self.streaming_manager.usage.completion_tokens += chunk.usage.output_tokens
+                    self.streaming_manager.usage.total_tokens = self.streaming_manager.usage.prompt_tokens + self.streaming_manager.usage.completion_tokens
 
                     # Update choice metatdata
                     choice_deltas = [
@@ -242,7 +238,7 @@ class AnthropicChat(AnthropicClientBase):
                             metadata={},
                         )
                     ]
-                    response_chunk = stream_manager.update(choice_deltas=choice_deltas)
+                    response_chunk = self.streaming_manager.update(choice_deltas=choice_deltas)
                     stream_response = StreamingChatResponse(
                         id=message_metadata["id"],
                         data=response_chunk,
@@ -256,7 +252,7 @@ class AnthropicChat(AnthropicClientBase):
 
             # API has stopped streaming, get final response
             logger.debug("API has stopped streaming, processsing final response")
-            final_response = stream_manager.complete()
+            final_response = self.streaming_manager.complete()
 
             yield None, final_response
             return  # Stop the generator

@@ -36,6 +36,8 @@ class INTStreamingProgress(BaseModel):
     start_time: datetime_type
     last_token_time: datetime_type
     is_complete: bool = False
+    # Add tracking for Deepseek thinking state, which is embedded in content
+    in_thinking_block: bool = False
 
 
 class StreamingManager:
@@ -168,7 +170,7 @@ class StreamingManager:
 
                 choice = self.choices[choice_index]
 
-                # Update finish reason if provided
+                # Update choice metadata
                 if choice_delta.finish_reason is not None:
                     choice.finish_reason = choice_delta.finish_reason
 
@@ -182,21 +184,29 @@ class StreamingManager:
                         choice.contents = []
 
                     for content_delta in choice_delta.content_deltas:
-                        content_index = content_delta.index
+                        # Find matching content by type and index, or create new
+                        matching_content = None
 
-                        # Ensure we have enough content slots
-                        while len(choice.contents) <= content_index:
-                            # Add placeholder None values
-                            choice.contents.append(None)
+                        # First try to find exact match by type and index
+                        for content in choice.contents:
+                            if content and content.type == content_delta.type and content.index == content_delta.index:
+                                matching_content = content
+                                break
 
-                        # Get existing content or create new
-                        matching_content = choice.contents[content_index]
+                        # If no exact match, try to find by type only
+                        if not matching_content:
+                            reversed_contents = list(reversed(choice.contents))
+                            for content in reversed_contents:
+                                if content and content.type == content_delta.type:
+                                    matching_content = content
+                                    break
 
-                        if matching_content is None:
-                            # Create new content item based on delta type
+                        # If still no match, create new content item
+                        if not matching_content:
+                            # Create new content based on delta type
                             if content_delta.type == ChatResponseContentItemType.TEXT:
                                 matching_content = ChatResponseTextContentItem(
-                                    index=content_index,
+                                    index=content_delta.index,
                                     type=ChatResponseContentItemType.TEXT,
                                     role=content_delta.role,
                                     text="",
@@ -206,7 +216,7 @@ class StreamingManager:
                                 )
                             elif content_delta.type == ChatResponseContentItemType.REASONING:
                                 matching_content = ChatResponseReasoningContentItem(
-                                    index=content_index,
+                                    index=content_delta.index,
                                     type=ChatResponseContentItemType.REASONING,
                                     role=content_delta.role,
                                     thinking_text="",
@@ -216,7 +226,7 @@ class StreamingManager:
                                 )
                             elif content_delta.type == ChatResponseContentItemType.TOOL_CALL:
                                 matching_content = ChatResponseToolCallContentItem(
-                                    index=content_index,
+                                    index=content_delta.index,
                                     type=ChatResponseContentItemType.TOOL_CALL,
                                     role=content_delta.role,
                                     metadata=content_delta.metadata,
@@ -225,7 +235,7 @@ class StreamingManager:
                                 )
                             elif content_delta.type == ChatResponseContentItemType.GENERIC:
                                 matching_content = ChatResponseGenericContentItem(
-                                    index=content_index,
+                                    index=content_delta.index,
                                     type=ChatResponseContentItemType.GENERIC,
                                     role=content_delta.role,
                                     metadata=content_delta.metadata,
@@ -234,12 +244,13 @@ class StreamingManager:
                                 )
                             else:
                                 logger.error(f"stream_manager: Unknown content_delta type {content_delta.type}")
+                                continue
 
-                            choice.contents[content_index] = matching_content
+                            choice.contents.append(matching_content)
 
                         # Verify type matches
-                        if matching_content.type != content_delta.type and matching_content.index != content_delta.index:
-                            logger.error(f"stream_manager: Content type mismatch at index {content_index}")
+                        if matching_content.type != content_delta.type or matching_content.index != content_delta.index:
+                            logger.error(f"stream_manager: Content type mismatch at index {content_delta.index}")
                             continue
 
                         # Update content based on delta type

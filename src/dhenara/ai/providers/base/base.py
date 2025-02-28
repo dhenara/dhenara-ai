@@ -32,6 +32,7 @@ class AIModelProviderClientBase(ABC):
         self._client = None
         self._initialized = False
         self._input_validation_pending = True
+        self.streaming_manager = None
 
     async def __aenter__(self):
         if not self._initialized:
