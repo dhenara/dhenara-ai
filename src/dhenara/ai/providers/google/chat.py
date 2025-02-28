@@ -2,9 +2,7 @@ import logging
 
 # Copyright 2024-2025 Dhenara Inc. All rights reserved.
 from collections.abc import AsyncGenerator
-from typing import Any
 
-from dhenara.ai.libs.fns import generic_obj_to_dict
 from dhenara.ai.providers.common import StreamingManager
 from dhenara.ai.providers.google import GoogleAIClientBase
 from dhenara.ai.types.external_api import (
@@ -15,14 +13,17 @@ from dhenara.ai.types.genai import (
     AIModelCallResponseMetaData,
     ChatResponse,
     ChatResponseChoice,
-    ChatResponseChunk,
+    ChatResponseChoiceDelta,
     ChatResponseContentItem,
+    ChatResponseContentItemDelta,
     ChatResponseGenericContentItem,
+    ChatResponseGenericContentItemDelta,
     ChatResponseTextContentItem,
+    ChatResponseTextContentItemDelta,
     ChatResponseUsage,
     StreamingChatResponse,
 )
-from dhenara.ai.types.shared.api import SSEErrorCode, SSEErrorData, SSEErrorResponse
+from dhenara.ai.types.shared.api import SSEErrorResponse
 from google.genai.types import GenerateContentConfig, GenerateContentResponse, Part, SafetySetting
 
 logger = logging.getLogger(__name__)
@@ -125,7 +126,7 @@ class GoogleAIChat(GoogleAIClientBase):
 
     async def _handle_streaming_response(
         self,
-        stream: Any,
+        stream: AsyncGenerator[GenerateContentResponse],
     ) -> AsyncGenerator[tuple[StreamingChatResponse | SSEErrorResponse, AIModelCallResponse | None]]:
         stream_manager = StreamingManager(
             model_endpoint=self.model_endpoint,
@@ -135,56 +136,54 @@ class GoogleAIChat(GoogleAIClientBase):
             async for chunk in stream:
                 stream_response: StreamingChatResponse | None = None
                 final_response: AIModelCallResponse | None = None
+                provider_metadata = None
 
-                # Process content from candidates
+                # Process content
                 if chunk.candidates:
-                    for candidate in chunk.candidates:
-                        if candidate.content and candidate.content.parts:
-                            for part in candidate.content.parts:
-                                if part.text:
-                                    stream_manager.update(part.text)
+                    choice_deltas = []
+                    for candidate_index, candidate in enumerate(chunk.candidates):
+                        content_deltas = []
+                        for part_index, part in enumerate(candidate.content.parts):
+                            content_deltas.append(
+                                self.process_content_item_delta(
+                                    index=part_index,
+                                    role=candidate.content.role,
+                                    delta=part,
+                                )
+                            )
+                        choice_deltas.append(
+                            ChatResponseChoiceDelta(
+                                index=candidate_index,
+                                finish_reason=candidate.finish_reason,
+                                stop_sequence=None,
+                                content_deltas=content_deltas,
+                                metadata={"safety_ratings": candidate.safety_ratings, "": candidate.content},  # Choice metadata
+                            )
+                        )
 
-                                    # Check if this is the final chunk
-                                    is_done = bool(candidate.finish_reason)
+                    response_chunk = stream_manager.update(choice_deltas=choice_deltas)
+                    stream_response = StreamingChatResponse(
+                        id=None,  # No 'id' from google
+                        data=response_chunk,
+                    )
 
-                                    stream_response = StreamingChatResponse(
-                                        id=None,
-                                        data=ChatResponseChunk(
-                                            index=candidate.index or 0,
-                                            content=part.text,
-                                            done=is_done,
-                                            metadata={},
-                                        ),
-                                    )
+                    yield stream_response, final_response
 
-                                    if is_done:
-                                        stream_manager.complete(
-                                            metadata={
-                                                "prompt_feedback": chunk.prompt_feedback,
-                                                "finish_reason": candidate.finish_reason,
-                                                "safety_ratings": candidate.safety_ratings,
-                                            },
-                                        )
-                                        usage = self._get_usage_from_provider_response(chunk)
+                    # Check if this is the final chunk
+                    is_done = bool(candidate.finish_reason)
 
-                                        stream_manager.update_usage(usage)
+                    if is_done:
+                        usage = self._get_usage_from_provider_response(chunk)
+                        stream_manager.update_usage(usage)
 
-                                        final_response = stream_manager.get_final_response()
+            # API has stopped streaming, get final response
+            logger.debug("API has stopped streaming, processsing final response")
+            final_response = stream_manager.complete(provider_metadata=provider_metadata)
 
-                                        yield stream_response, final_response
-                                        return  # Stop the generator
-
-                                    yield stream_response, final_response
-
+            yield None, final_response
+            return  # Stop the generator
         except Exception as e:
-            logger.exception(f"Error during streaming: {e}")
-            error_response = SSEErrorResponse(
-                data=SSEErrorData(
-                    error_code=SSEErrorCode.external_api_error,
-                    message="External API Server Error",
-                    details={"error_type": type(e).__name__},
-                )
-            )
+            error_response = self._create_streaming_error_response(exc=e)
             yield error_response, None
 
     def _get_usage_from_provider_response(
@@ -228,11 +227,7 @@ class GoogleAIChat(GoogleAIClientBase):
             metadata=AIModelCallResponseMetaData(
                 streaming=False,
                 duration_seconds=0,  # TODO
-                provider_metadata={
-                    "prompt_feedback": generic_obj_to_dict(
-                        response.prompt_feedback,
-                    )
-                },
+                provider_metadata={},
             ),
         )
 
@@ -257,3 +252,27 @@ class GoogleAIChat(GoogleAIClientBase):
                 )
         else:
             return self.get_unknown_content_type_item(role=role, unknown_item=content_item, streaming=False)
+
+    # Streaming
+    def process_content_item_delta(
+        self,
+        index: int,
+        role: str,
+        delta,
+    ) -> ChatResponseContentItemDelta:
+        if isinstance(delta, Part):
+            if delta.text:
+                return ChatResponseTextContentItemDelta(
+                    index=index,
+                    role=role,
+                    text_delta=delta.text,
+                )
+            else:
+                return ChatResponseGenericContentItemDelta(
+                    index=index,
+                    role=role,
+                    metadata={"part": delta.model_dump()},
+                )
+
+        else:
+            return self.get_unknown_content_type_item(role=role, unknown_item=delta, streaming=True)

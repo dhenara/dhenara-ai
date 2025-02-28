@@ -1,11 +1,14 @@
 import logging
+import re
 from collections.abc import AsyncGenerator
 from typing import Any
 
+from azure.ai.inference.models import ChatResponseMessage as AzureChatResponseMessage
 from dhenara.ai.providers.common import StreamingManager
 from dhenara.ai.providers.openai import OpenAIClientBase
 from dhenara.ai.types.external_api import (
     AIModelAPIProviderEnum,
+    AIModelProviderEnum,
     ExternalApiCallStatus,
 )
 from dhenara.ai.types.genai import (
@@ -17,6 +20,7 @@ from dhenara.ai.types.genai import (
     ChatResponseContentItem,
     ChatResponseContentItemDelta,
     ChatResponseGenericContentItem,
+    ChatResponseReasoningContentItem,
     ChatResponseTextContentItem,
     ChatResponseTextContentItemDelta,
     ChatResponseToolCallContentItem,
@@ -233,28 +237,30 @@ class OpenAIChat(OpenAIClientBase):
         """Parse the OpenAI response into our standard format"""
         usage, usage_charge = self.get_usage_and_charge(response)
 
+        choices = []
+        for choice in response.choices:
+            _content = self.process_content_item(
+                index=0,  # Only one content item. Might change with reasoing response?
+                role=choice.message.role,
+                content_item=choice.message,
+            )
+            contents = _content if isinstance(_content, list) else [_content]
+            choice = ChatResponseChoice(
+                index=choice.index,
+                finish_reason=choice.finish_reason if hasattr(choice, "finish_reason") else None,
+                stop_sequence=None,
+                contents=contents,
+                metadata={},  # Choice metadata
+            )
+            choices.append(choice)
+
         return ChatResponse(
             model=response.model,
             provider=self.model_endpoint.ai_model.provider,
             api_provider=self.model_endpoint.api.provider,
             usage=usage,
             usage_charge=usage_charge,
-            choices=[
-                ChatResponseChoice(
-                    index=choice.index,
-                    finish_reason=choice.finish_reason if hasattr(choice, "finish_reason") else None,
-                    stop_sequence=None,
-                    contents=[
-                        self.process_content_item(
-                            index=0,  # Only one content item. Might change with reasoing response?
-                            role=choice.message.role,
-                            content_item=choice.message,
-                        )
-                    ],
-                    metadata={},  # Choice metadata
-                )
-                for choice in response.choices
-            ],
+            choices=choices,
             # Response Metadata
             metadata=AIModelCallResponseMetaData(
                 streaming=False,
@@ -273,14 +279,42 @@ class OpenAIChat(OpenAIClientBase):
         index: int,
         role: str,
         content_item: ChatCompletionMessage,
-    ) -> ChatResponseContentItem:
-        if isinstance(content_item, ChatCompletionMessage):
+    ) -> ChatResponseContentItem | list[ChatResponseContentItem]:
+        # INFO: response type will vary with API/Model providers.
+        if isinstance(content_item, (ChatCompletionMessage, AzureChatResponseMessage)):
             if content_item.content:
-                return ChatResponseTextContentItem(
-                    index=index,
-                    role=role,
-                    text=content_item.content,
+                all_items = []
+                _content = content_item.content
+                _index = index
+
+                if self.model_endpoint.ai_model.provider == AIModelProviderEnum.DEEPSEEK:
+                    answer_content = None
+                    reasoning_content = None
+                    # Extract reasoning and answer content
+                    think_match = re.search(r"<think>(.*?)</think>", _content, re.DOTALL)
+                    if think_match:
+                        reasoning_content = think_match.group(1).strip()
+                        answer_content = re.sub(r"<think>.*?</think>", "", _content, flags=re.DOTALL).strip()
+
+                    if reasoning_content:
+                        _index = index + 1
+                        _content = answer_content
+                        all_items.append(
+                            ChatResponseReasoningContentItem(
+                                index=index,
+                                role=role,
+                                thinking_text=reasoning_content,
+                            )
+                        )
+
+                all_items.append(
+                    ChatResponseTextContentItem(
+                        index=_index,
+                        role=role,
+                        text=_content,
+                    )
                 )
+                return all_items
             elif content_item.tool_calls:
                 return ChatResponseToolCallContentItem(
                     index=index,
