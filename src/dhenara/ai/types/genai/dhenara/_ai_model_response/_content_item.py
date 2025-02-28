@@ -56,7 +56,6 @@ class BaseChatResponseContentItem(BaseResponseContentItem):
     type: ChatResponseContentItemType = Field(
         ...,
         description="Type of the content item",
-        serialization_alias="type",  # Ensures type is serialized correctly
     )
     role: str | None = Field(
         default=None,

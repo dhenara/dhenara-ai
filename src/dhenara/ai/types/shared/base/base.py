@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any, Literal, TypeVar
+from typing import Any, TypeVar
 
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import ConfigDict, alias_generators
@@ -25,27 +25,6 @@ class BaseEnum(str, Enum):
 
 
 class BaseModel(PydanticBaseModel):
-    """Base model class with enhanced configuration and serialization capabilities.
-
-    This base class provides:
-    - Camel case conversion for API interactions
-    - Flexible serialization options
-    - Support for arbitrary types
-    - Strict validation by default
-    """
-
-    def model_dump(self, exclude: list | None = None) -> dict:
-        result = super().model_dump(
-            exclude=exclude,
-            exclude_unset=True,
-            # mode="json",
-            by_alias=False,  # Not to use camel case in dict keys
-            exclude_none=True,
-            round_trip=False,
-        )
-
-        return result
-
     model_config = ConfigDict(
         alias_generator=alias_generators.to_camel,
         populate_by_name=True,
@@ -53,94 +32,33 @@ class BaseModel(PydanticBaseModel):
         protected_namespaces=set(),
         extra="forbid",
         arbitrary_types_allowed=True,
-        json_schema_extra={
-            "examples": []  # can be overridden by child classes
-        },
-        # use_enum_values=True,  # This will serialize enums as their values
+        json_schema_extra={"examples": []},
+        # validate_assignment=True,
+        str_strip_whitespace=False,  # Don't set: Streaming responses will be terrible
+        use_enum_values=True,
     )
 
-    def to_dict(
-        self: T,
-        *,
-        mode: Literal["json", "python"] = "python",
-        use_api_names: bool = True,
-        exclude_unset: bool = True,
-        exclude_defaults: bool = False,
-        exclude_none: bool = False,
-        warnings: bool = True,
-    ) -> dict[str, Any]:
-        """Convert the model to a dictionary representation.
+    def model_dump(self, **kwargs: Any) -> dict[str, Any]:
+        dump_kwargs = {
+            "exclude_unset": False,
+            "by_alias": False,
+            "exclude_none": True,
+            "round_trip": False,
+        }
+        dump_kwargs.update(kwargs)
 
-        Args:
-            mode: Serialization mode ('json' for JSON-compatible types, 'python' for Python objects)
-            use_api_names: Use API response keys instead of property names
-            exclude_unset: Exclude unset fields
-            exclude_defaults: Exclude fields with default values
-            exclude_none: Exclude None values
-            warnings: Enable serialization warnings (Pydantic v2 feature)
+        return super().model_dump(**dump_kwargs)
 
-        Returns:
-            dict: Dictionary representation of the model
+    # def copy_with_changes(self: T, **changes) -> T:
+    #    """Create a copy with specified changes."""
+    #    data = self.model_dump()
+    #    data.update(changes)
+    #    return self.__class__.model_validate(data)
 
-        Examples:
-            ```python
-            model_dict = model.to_dict(mode="python", exclude_none=True)
-            ```
-        """
-        return self.model_dump(
-            mode=mode,
-            by_alias=use_api_names,
-            exclude_unset=exclude_unset,
-            exclude_defaults=exclude_defaults,
-            exclude=[None] if exclude_none else [],
-            warnings=warnings,
-        )
-
-    def to_json(
-        self: T,
-        *,
-        indent: int | None = 2,
-        use_api_names: bool = True,
-        exclude_unset: bool = True,
-        exclude_defaults: bool = False,
-        exclude_none: bool = False,
-        warnings: bool = True,
-    ) -> str:
-        """Convert the model to a JSON string.
-
-        Args:
-            indent: Number of spaces for indentation (None for compact output)
-            use_api_names: Use API response keys instead of property names
-            exclude_unset: Exclude unset fields
-            exclude_defaults: Exclude fields with default values
-            exclude_none: Exclude None values
-            warnings: Enable serialization warnings (Pydantic v2 feature)
-
-        Returns:
-            str: JSON string representation of the model
-
-        Examples:
-            ```python
-            json_str = model.to_json(indent=4, exclude_none=True)
-            ```
-        """
-        return self.model_dump_json(
-            indent=indent,
-            by_alias=use_api_names,
-            exclude_unset=exclude_unset,
-            exclude_defaults=exclude_defaults,
-            exclude_none=exclude_none,
-            warnings=warnings,
-        )
-
-    @classmethod
-    def schema_json(cls: type[T], by_alias: bool = True) -> str:
-        """Get JSON schema for the model.
-
-        Args:
-            by_alias: Use API field names instead of Python field names
-
-        Returns:
-            str: JSON schema representation
-        """
-        return cls.model_json_schema(by_alias=by_alias)
+    # @classmethod
+    # def safe_parse(cls: Type[T], data: dict[str, Any]) -> tuple[Optional[T], Optional[ValidationError]]:
+    #    """Safely parse data without raising exceptions."""
+    #    try:
+    #        return cls.model_validate(data), None
+    #    except ValidationError as e:
+    #        return None, e

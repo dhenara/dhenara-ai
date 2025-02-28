@@ -155,6 +155,7 @@ class DummyAIModelResponseFns:
                             finish_reason=choice.finish_reason if hasattr(choice, "finish_reason") else None,
                             content_deltas=[
                                 ChatResponseTextContentItemDelta(
+                                    index=0,
                                     role="assistant",
                                     text_delta=choice.delta.content or "xyz",
                                 )

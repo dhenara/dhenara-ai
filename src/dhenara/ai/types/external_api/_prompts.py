@@ -51,22 +51,22 @@ class OpenAIPromptMessage(BaseModel):
 
         raise ValueError("Content must be string or list of content parts")
 
-    # fmt: off
-    def model_dump(self, **kwargs):
-        # Clean None values and empty lists
-        data = super().model_dump(**kwargs)
+    ## fmt: off
+    # def model_dump(self, **kwargs):
+    #    # Clean None values and empty lists
+    #    data = super().model_dump(**kwargs)
 
-        if isinstance(data["content"], list):
-            data["content"] = [
-                part for part in data["content"]
-                if (part["type"] == "text" and part["text"]) or
-                   (part["type"] == "image_url" and part["image_url"]["url"])
-                ]
+    #    if isinstance(data["content"], list):
+    #        data["content"] = [
+    #            part for part in data["content"]
+    #            if (part["type"] == "text" and part["text"]) or
+    #               (part["type"] == "image_url" and part["image_url"]["url"])
+    #            ]
 
-        if not data["content"] and isinstance(data["content"], list):
-            data["content"] = ""  # Fallback to empty string
+    #    if not data["content"] and isinstance(data["content"], list):
+    #        data["content"] = ""  # Fallback to empty string
 
-        return data
+    #    return data
 
 
 # Anthropic Specific Models
@@ -127,12 +127,12 @@ class GoogleAIPart(BaseModel):
             return GoogleAIInlineData(**v)
         return v
 
-    def model_dump(self) -> dict[str, Any]:
-        if self.text is not None:
-            return {"text": self.text}
-        if self.inline_data is not None:
-            return {"inline_data": self.inline_data.model_dump()}
-        return {}
+    # def model_dump(self) -> dict[str, Any]:
+    #    if self.text is not None:
+    #        return {"text": self.text}
+    #    if self.inline_data is not None:
+    #        return {"inline_data": self.inline_data.model_dump()}
+    #    return {}
 
 
 class GoogleAIPromptMessage(BaseModel):
@@ -162,8 +162,8 @@ class GoogleAIPromptMessage(BaseModel):
 
         raise ValueError(f"Invalid parts type: {type(v)}")
 
-    def model_dump(self) -> dict[str, Any]:
-        return {"role": self.role.value, "parts": [part.model_dump() for part in self.parts]}
+    # def model_dump(self) -> dict[str, Any]:
+    #    return {"role": self.role.value, "parts": [part.model_dump() for part in self.parts]}
 
 
 # # Configuration Models

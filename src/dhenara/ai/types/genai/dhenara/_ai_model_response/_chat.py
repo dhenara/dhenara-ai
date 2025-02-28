@@ -105,11 +105,6 @@ class ChatResponseChunk(BaseModel):
         return self.model_dump(exclude=["choices"])
 
 
-# Streaming
-# class TODO_OLD_ChatResponseChunk(SSEDataChunk):
-#    """Specialized chunk for token streaming"""
-
-
 class StreamingChatResponse(SSEResponse[ChatResponseChunk]):
     """Specialized SSE response for chat streaming"""
 
