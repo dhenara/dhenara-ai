@@ -1,16 +1,13 @@
 import logging
 import re
-from collections.abc import AsyncGenerator
 from typing import Any
 
 from azure.ai.inference.models import ChatResponseMessage as AzureChatResponseMessage
 from azure.ai.inference.models import StreamingChatResponseMessageUpdate as AzureStreamingChatResponseMessageUpdate
-from dhenara.ai.providers.common import StreamingManager
 from dhenara.ai.providers.openai import OpenAIClientBase
 from dhenara.ai.types.external_api import (
     AIModelAPIProviderEnum,
     AIModelProviderEnum,
-    ExternalApiCallStatus,
 )
 from dhenara.ai.types.genai import (
     AIModelCallResponse,
@@ -40,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 # -----------------------------------------------------------------------------
 class OpenAIChat(OpenAIClientBase):
-    async def generate_response(
+    def get_api_call_params(
         self,
         prompt: dict,
         context: list[dict] | None = None,
@@ -51,9 +48,6 @@ class OpenAIChat(OpenAIClientBase):
 
         if self._input_validation_pending:
             raise ValueError("inputs must be validated with `self.validate_inputs()` before api calls")
-
-        parsed_response: ChatResponse | None = None
-        api_call_status: ExternalApiCallStatus | None = None
 
         messages = []
         user = self.config.get_user()
@@ -96,130 +90,99 @@ class OpenAIChat(OpenAIClientBase):
         if self.config.options:
             chat_args.update(self.config.options)
 
-        if self.config.test_mode:
-            from dhenara.ai.providers.common.dummy import DummyAIModelResponseFns
+        return {"chat_args": chat_args}
 
-            return await DummyAIModelResponseFns.get_dummy_ai_model_response(
-                ai_model_ep=self.model_endpoint,
-                streaming=self.config.streaming,
-            )
+    async def do_api_call_async(
+        self,
+        api_call_params: dict,
+    ) -> AIModelCallResponse:
+        chat_args = api_call_params["chat_args"]
+        if self.model_endpoint.api.provider != AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
+            response = await self._client.chat.completions.create(**chat_args)
+        else:
+            response = await self._client.complete(**chat_args)
+        return response
 
-        try:
-            if self.config.streaming:
-                if self.model_endpoint.api.provider != AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
-                    stream = await self._client.chat.completions.create(**chat_args)
-                else:
-                    stream = await self._client.complete(**chat_args)
+    async def do_streaming_api_call_async(
+        self,
+        api_call_params,
+    ) -> AIModelCallResponse:
+        chat_args = api_call_params["chat_args"]
+        if self.model_endpoint.api.provider != AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
+            stream = await self._client.chat.completions.create(**chat_args)
+        else:
+            stream = await self._client.complete(**chat_args)
 
-                stream_generator = self._handle_streaming_response(
-                    stream=stream,
-                )
-                return AIModelCallResponse(
-                    stream_generator=stream_generator,
-                )
-
-            if self.model_endpoint.api.provider != AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
-                response = await self._client.chat.completions.create(**chat_args)
-            else:
-                response = await self._client.complete(**chat_args)
-
-            parsed_response = self.parse_response(
-                response=response,
-            )
-            api_call_status = self._create_success_status()
-
-        except Exception as e:
-            logger.exception(f"Error in get_model_response: {e}")
-            api_call_status = self._create_error_status(str(e))
-
-        return AIModelCallResponse(
-            status=api_call_status,
-            chat_response=parsed_response,
-        )
+        return stream
 
     # -------------------------------------------------------------------------
-    async def _handle_streaming_response(
+    def parse_stream_chunk(
         self,
-        stream: AsyncGenerator[ChatCompletionChunk],
-    ) -> AsyncGenerator[tuple[StreamingChatResponse | SSEErrorResponse, AIModelCallResponse | None]]:
+        chunk: ChatCompletionChunk,
+    ) -> StreamingChatResponse | SSEErrorResponse | None:
         """Handle streaming response with progress tracking and final response"""
-        self.streaming_manager = StreamingManager(
-            model_endpoint=self.model_endpoint,
-        )
+        processed_chunks = []
 
-        provider_metadata = None
-        persistant_choice_metadata_list = []
+        self.streaming_manager.provider_metadata = None
+        self.streaming_manager.persistant_choice_metadata_list = []
 
-        try:
-            async for chunk in stream:
-                stream_response: StreamingChatResponse | None = None
-                final_response: AIModelCallResponse | None = None
+        if not self.streaming_manager.provider_metadata:  # Grab the metadata once
+            self.streaming_manager.provider_metadata = {
+                "id": chunk.id,
+                "created": str(chunk.created),  # Microsoft sdk returns datetim obj
+                "object": chunk.object if hasattr(chunk, "object") else None,
+                "system_fingerprint": chunk.system_fingerprint if hasattr(chunk, "system_fingerprint") else None,
+            }
 
-                if not provider_metadata:  # Grab the metadata once
-                    provider_metadata = {
-                        "id": chunk.id,
-                        "created": str(chunk.created),  # Microsoft sdk returns datetim obj
-                        "object": chunk.object if hasattr(chunk, "object") else None,
-                        "system_fingerprint": chunk.system_fingerprint if hasattr(chunk, "system_fingerprint") else None,
-                    }
+        # Process usage
+        if hasattr(chunk, "usage") and chunk.usage:  # Microsoft is slow in adopting openai changes 😶
+            usage = ChatResponseUsage(
+                total_tokens=chunk.usage.total_tokens,
+                prompt_tokens=chunk.usage.prompt_tokens,
+                completion_tokens=chunk.usage.completion_tokens,
+            )
+            self.streaming_manager.update_usage(usage)
 
-                # Process usage
-                if hasattr(chunk, "usage") and chunk.usage:  # Microsoft is slow in adopting openai changes 😶
-                    usage = ChatResponseUsage(
-                        total_tokens=chunk.usage.total_tokens,
-                        prompt_tokens=chunk.usage.prompt_tokens,
-                        completion_tokens=chunk.usage.completion_tokens,
-                    )
-                    self.streaming_manager.update_usage(usage)
-
-                # Process content
-                if chunk.choices:
-                    choice_deltas = []
-                    for choice in chunk.choices:
-                        # Only first chunk has few fields
-                        if len(persistant_choice_metadata_list) < choice.index + 1:
-                            persistant_choice_metadata_list.append(
-                                {
-                                    "role": choice.delta.role,
-                                    "refusal": choice.delta.refusal if hasattr(choice.delta, "refusal") else None,
-                                }
-                            )
-
-                        role = choice.delta.role or persistant_choice_metadata_list[choice.index]["role"]
-
-                        choice_deltas.append(
-                            ChatResponseChoiceDelta(
-                                index=choice.index,
-                                finish_reason=choice.finish_reason if hasattr(choice, "finish_reason") else None,
-                                stop_sequence=None,
-                                content_deltas=[
-                                    self.process_content_item_delta(
-                                        index=0,  # Only one content item. Might change with reasoing response?
-                                        role=role,
-                                        delta=choice.delta,
-                                    ),
-                                ],
-                                metadata={},
-                            )
-                        )
-
-                    response_chunk = self.streaming_manager.update(choice_deltas=choice_deltas)
-                    stream_response = StreamingChatResponse(
-                        id=chunk.id,
-                        data=response_chunk,
+        # Process content
+        if chunk.choices:
+            choice_deltas = []
+            for choice in chunk.choices:
+                # Only first chunk has few fields
+                if len(self.streaming_manager.persistant_choice_metadata_list) < choice.index + 1:
+                    self.streaming_manager.persistant_choice_metadata_list.append(
+                        {
+                            "role": choice.delta.role,
+                            "refusal": choice.delta.refusal if hasattr(choice.delta, "refusal") else None,
+                        }
                     )
 
-                    yield stream_response, final_response
+                role = choice.delta.role or self.streaming_manager.persistant_choice_metadata_list[choice.index]["role"]
 
-            # API has stopped streaming, get final response
-            logger.debug("API has stopped streaming, processsing final response")
-            final_response = self.streaming_manager.complete(provider_metadata=provider_metadata)
+                choice_deltas.append(
+                    ChatResponseChoiceDelta(
+                        index=choice.index,
+                        finish_reason=choice.finish_reason if hasattr(choice, "finish_reason") else None,
+                        stop_sequence=None,
+                        content_deltas=[
+                            self.process_content_item_delta(
+                                index=0,  # Only one content item. Might change with reasoing response?
+                                role=role,
+                                delta=choice.delta,
+                            ),
+                        ],
+                        metadata={},
+                    )
+                )
 
-            yield None, final_response
-            return  # Stop the generator
-        except Exception as e:
-            error_response = self._create_streaming_error_response(exc=e)
-            yield error_response, None
+            response_chunk = self.streaming_manager.update(choice_deltas=choice_deltas)
+            stream_response = StreamingChatResponse(
+                id=chunk.id,
+                data=response_chunk,
+            )
+
+            processed_chunks.append(stream_response)
+
+        return processed_chunks
 
     # -------------------------------------------------------------------------
     def _get_usage_from_provider_response(

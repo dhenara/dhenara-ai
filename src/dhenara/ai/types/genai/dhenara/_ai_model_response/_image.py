@@ -10,7 +10,7 @@ class ImageResponseChoice(BaseModel):
     """A single image generation choice/result"""
 
     index: int
-    content: ImageResponseContentItem
+    contents: list[ImageResponseContentItem] = []
 
     class Config:
         json_schema_extra = {

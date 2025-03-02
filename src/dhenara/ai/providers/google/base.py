@@ -22,10 +22,10 @@ class GoogleAIClientBase(AIModelProviderClientBase):
 
     prompt_message_class = GoogleAIPromptMessage
 
-    async def initialize(self) -> None:
+    def initialize(self) -> None:
         pass
 
-    async def cleanup(self) -> None:
+    def cleanup(self) -> None:
         pass
 
     def process_instructions(
@@ -51,7 +51,7 @@ class GoogleAIClientBase(AIModelProviderClientBase):
                 return instruction_as_prompt
         return instructions_str
 
-    async def _setup_client(self) -> genai.Client:
+    async def _setup_client_async(self) -> genai.Client:
         """Get the appropriate Google AI client based on the provider"""
         api = self.model_endpoint.api
 

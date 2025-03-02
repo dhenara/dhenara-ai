@@ -4,7 +4,7 @@ from collections.abc import AsyncGenerator
 from typing import Union
 
 from dhenara.ai.config import settings
-from dhenara.ai.providers.common import StreamingManager
+from dhenara.ai.providers.base import StreamingManager
 from dhenara.ai.types.external_api import (
     ExternalApiCallStatus,
     ExternalApiCallStatusEnum,
@@ -43,7 +43,7 @@ class DummyAIModelResponseFns:
             )
 
             return AIModelCallResponse(
-                stream_generator=stream_generator,
+                async_stream_generator=stream_generator,
             )
 
         text = f"This is a test mode output. {DummyAIModelResponseFns._model_specific_message(ai_model_ep)}"

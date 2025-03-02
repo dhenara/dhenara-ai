@@ -23,10 +23,10 @@ class OpenAIClientBase(AIModelProviderClientBase):
 
     prompt_message_class = OpenAIPromptMessage
 
-    async def initialize(self) -> None:
+    def initialize(self) -> None:
         pass
 
-    async def cleanup(self) -> None:
+    def cleanup(self) -> None:
         pass
 
     def process_instructions(
@@ -52,7 +52,7 @@ class OpenAIClientBase(AIModelProviderClientBase):
             return instruction_as_prompt
         return instructions_str
 
-    async def _setup_client(self) -> AsyncOpenAI | AsyncAzureOpenAI:
+    async def _setup_client_async(self) -> AsyncOpenAI | AsyncAzureOpenAI:
         """Get the appropriate async OpenAI client based on the provider"""
         api = self.model_endpoint.api
 

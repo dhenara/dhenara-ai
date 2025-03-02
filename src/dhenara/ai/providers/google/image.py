@@ -21,13 +21,12 @@ class GoogleAIImage(GoogleAIClientBase):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    async def generate_response(
+    def get_api_call_params(
         self,
         prompt: str,
         context: list[str] | None = None,
         instructions: SystemInstructions | None = None,
     ) -> AIModelCallResponse:
-        """Generate image response from the model"""
         if not self._client:
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
 
@@ -50,38 +49,22 @@ class GoogleAIImage(GoogleAIClientBase):
         # elif instructions_str and not any(model_name.startswith(model) for model in ["gemini-1.0-pro"]):
         #    generate_config.system_instruction = instructions_str
 
-        if self.config.test_mode:
-            from dhenara.ai.providers.common.dummy import DummyAIModelResponseFns
+        return {
+            "prompt": prompt_text,
+            "history": context or [],
+            "generate_config": generate_config,
+        }
 
-            return await DummyAIModelResponseFns.get_dummy_ai_model_response(
-                ai_model_ep=self.model_endpoint,
-                streaming=self.config.streaming,
-            )
-
-        try:
-            response = await self._client.models.generate_images(
-                model=self.model_name_in_api_calls,
-                config=generate_config,
-                prompt=prompt_text,
-            )
-            # response = await self._client.models.generate_images(
-            #    model="imagen-3.0-generate-002",
-            #    prompt="Fuzzy bunnies in my kitchen",
-            #    config=GenerateImagesConfig(
-            #        number_of_images=1,
-            #    ),
-            # )
-
-            parsed_response = self.parse_response(response)
-
-            return AIModelCallResponse(
-                status=self._create_success_status(),
-                image_response=parsed_response,
-            )
-
-        except Exception as e:
-            logger.exception(f"Error in generate_response: {e}")
-            return AIModelCallResponse(status=self._create_error_status(str(e)))
+    async def do_api_call_async(
+        self,
+        api_call_params: dict,
+    ) -> AIModelCallResponse:
+        response = await self._client.models.generate_images(
+            model=self.model_name_in_api_calls,
+            config=api_call_params["generate_config"],
+            prompt=api_call_params["prompt"],
+        )
+        return response
 
     def get_default_generate_config_args(self) -> dict:
         model_options = self.model_endpoint.ai_model.get_options_with_defaults(self.config.options)
@@ -96,6 +79,18 @@ class GoogleAIImage(GoogleAIClientBase):
         }
 
         return config_params
+
+    async def do_streaming_api_call_async(
+        self,
+        api_call_params,
+    ) -> AIModelCallResponse:
+        raise ValueError("do_streaming_api_call_async:  Streaming not supported for Image generation")
+
+    def parse_stream_chunk(
+        self,
+        chunk,
+    ):
+        raise ValueError("parse_stream_chunk: Streaming not supported for Image generation")
 
     def _get_usage_from_provider_response(
         self,
@@ -123,13 +118,16 @@ class GoogleAIImage(GoogleAIClientBase):
             choices.append(
                 ImageResponseChoice(
                     index=idx,
-                    content=ImageResponseContentItem(
-                        content_format=ImageContentFormat.BYTES,
-                        content_bytes=image.image.image_bytes,
-                        metadata={
-                            "rai_filtered_reason": image.rai_filtered_reason,
-                        },
-                    ),
+                    contents=[
+                        ImageResponseContentItem(
+                            index=0,
+                            content_format=ImageContentFormat.BYTES,
+                            content_bytes=image.image.image_bytes,
+                            metadata={
+                                "rai_filtered_reason": image.rai_filtered_reason,
+                            },
+                        )
+                    ],
                 )
             )
 

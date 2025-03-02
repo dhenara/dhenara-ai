@@ -3,6 +3,7 @@ from typing import Any
 
 from dhenara.ai.providers.openai import OpenAIClientBase
 from dhenara.ai.types.external_api import (
+    AIModelAPIProviderEnum,
     SystemInstructions,
 )
 from dhenara.ai.types.genai import (
@@ -12,7 +13,9 @@ from dhenara.ai.types.genai import (
     ImageResponseChoice,
     ImageResponseContentItem,
     ImageResponseUsage,
+    StreamingChatResponse,
 )
+from dhenara.ai.types.shared.api import SSEErrorResponse
 from openai.types import ImagesResponse as OpenAIImagesResponse
 
 logger = logging.getLogger(__name__)
@@ -23,14 +26,15 @@ class OpenAIImage(OpenAIClientBase):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # Additional params
+        self.response_format = None
 
-    async def generate_response(
+    def get_api_call_params(
         self,
         prompt: str,
         context: list[str] | None = None,
         instructions: SystemInstructions | None = None,
     ) -> AIModelCallResponse:
-        """Generate image response from the model"""
         if not self._client:
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
 
@@ -48,22 +52,33 @@ class OpenAIImage(OpenAIClientBase):
             **model_options,
         }
 
-        try:
+        # Store additional params
+        self.response_format = model_options["response_format"]  # Special case
+
+        return {"image_args": image_args}
+
+    async def do_api_call_async(
+        self,
+        api_call_params: dict,
+    ) -> AIModelCallResponse:
+        image_args = api_call_params["image_args"]
+        if self.model_endpoint.api.provider != AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
             response = await self._client.images.generate(**image_args)
+        else:
+            response = await self._client.complete(**image_args)  # Images on Azure NOT tested
+        return response
 
-            parsed_response = self.parse_response(
-                response=response,
-                response_format=model_options["response_format"],  # Special case
-            )
+    async def do_streaming_api_call_async(
+        self,
+        api_call_params,
+    ) -> AIModelCallResponse:
+        raise ValueError("do_streaming_api_call_async:  Streaming not supported for Image generation")
 
-            return AIModelCallResponse(
-                status=self._create_success_status(),
-                image_response=parsed_response,
-            )
-
-        except Exception as e:
-            logger.exception(f"Error in generate_response: {e}")
-            return AIModelCallResponse(status=self._create_error_status(str(e)))
+    def parse_stream_chunk(
+        self,
+        chunk,
+    ) -> StreamingChatResponse | SSEErrorResponse | None:
+        raise ValueError("parse_stream_chunk: Streaming not supported for Image generation")
 
     def _get_usage_from_provider_response(
         self,
@@ -82,42 +97,48 @@ class OpenAIImage(OpenAIClientBase):
     def parse_response(
         self,
         response: OpenAIImagesResponse,
-        response_format,  # response_format send in the request is needed for parsing
     ) -> ImageResponse:
         """Parse OpenAI image response into standard format"""
 
         usage, usage_charge = self.get_usage_and_charge(response)
+
         choices = []
         for idx, image in enumerate(response.data):
-            if response_format == "b64_json":
+            if self.response_format == "b64_json":
                 choices.append(
                     ImageResponseChoice(
                         index=idx,
-                        content=ImageResponseContentItem(
-                            content_format=ImageContentFormat.BASE64,
-                            content_b64_json=image.b64_json,
-                            metadata={
-                                "revised_prompt": image.revised_prompt,
-                            },
-                        ),
+                        contents=[
+                            ImageResponseContentItem(
+                                index=0,
+                                content_format=ImageContentFormat.BASE64,
+                                content_b64_json=image.b64_json,
+                                metadata={
+                                    "revised_prompt": image.revised_prompt,
+                                },
+                            )
+                        ],
                     )
                 )
 
-            elif response_format == "url":
+            elif self.response_format == "url":
                 choices.append(
                     ImageResponseChoice(
                         index=idx,
-                        content=ImageResponseContentItem(
-                            content_format=ImageContentFormat.URL,
-                            content_url=image.url,
-                            metadata={
-                                "revised_prompt": image.revised_prompt,
-                            },
-                        ),
+                        contents=[
+                            ImageResponseContentItem(
+                                index=0,
+                                content_format=ImageContentFormat.URL,
+                                content_url=image.url,
+                                metadata={
+                                    "revised_prompt": image.revised_prompt,
+                                },
+                            )
+                        ],
                     )
                 )
             else:
-                raise ValueError(f"Unknown response_format {response_format} in parse_response:")
+                raise ValueError(f"Unknown response_format {self.response_format} in parse_response:")
 
         return ImageResponse(
             model=self.model_endpoint.ai_model.model_name,

@@ -1,20 +1,30 @@
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import AsyncGenerator, Generator
 from typing import Any, Union
 
 from dhenara.ai.config import settings
+from dhenara.ai.providers.base import StreamingManager
 from dhenara.ai.types import (
     AIModelCallConfig,
     AIModelCallResponse,
     AIModelEndpoint,
     AIModelFunctionalTypeEnum,
+    ChatResponse,
     ChatResponseGenericContentItem,
     ChatResponseGenericContentItemDelta,
     ChatResponseUsage,
+    ImageResponse,
     ImageResponseUsage,
+    StreamingChatResponse,
     UsageCharge,
 )
-from dhenara.ai.types.external_api import ExternalApiCallStatus, ExternalApiCallStatusEnum, FormattedPrompt, SystemInstructions
+from dhenara.ai.types.external_api import (
+    ExternalApiCallStatus,
+    ExternalApiCallStatusEnum,
+    FormattedPrompt,
+    SystemInstructions,
+)
 from dhenara.ai.types.shared.api import SSEErrorCode, SSEErrorData, SSEErrorResponse
 
 logger = logging.getLogger(__name__)
@@ -25,26 +35,57 @@ class AIModelProviderClientBase(ABC):
 
     prompt_message_class = None
 
-    def __init__(self, model_endpoint: AIModelEndpoint, config: AIModelCallConfig):
+    def __init__(self, model_endpoint: AIModelEndpoint, config: AIModelCallConfig, is_async: bool = True):
         self.model_endpoint = model_endpoint
         self.model_name_in_api_calls = self.model_endpoint.ai_model.model_name_with_version_suffix
         self.config = config
+        self.is_async = is_async
         self._client = None
         self._initialized = False
         self._input_validation_pending = True
         self.streaming_manager = None
 
     async def __aenter__(self):
-        if not self._initialized:
-            self._client = await self._setup_client()
-            await self.initialize()
-            self._initialized = True
-        return self
+        if self.is_async:
+            if not self._initialized:
+                self._client = await self._setup_client_async()
+                await self._initialize_async()
+                self._initialized = True
+            return self
+        raise RuntimeError("Use 'with' for synchronous client")
+
+    def __enter__(self):
+        if not self.is_async:
+            if not self._initialized:
+                self._client = self._setup_client_sync()
+                self._initialize_sync()
+                self._initialized = True
+            return self
+        raise RuntimeError("Use 'async with' for asynchronous client")
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self.cleanup()
-        # INFO: Don't close the client here, it will be managed by the provider client
-        self._initialized = False
+        if self.is_async:
+            await self._cleanup_async()
+            # INFO: Don't close the client here, it will be managed by the provider client
+            self._initialized = False
+            self._initialized = False
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if not self.is_async:
+            self._cleanup_sync()
+            self._initialized = False
+
+    def _initialize_sync(self) -> None:
+        self.initialize()
+
+    async def _initialize_async(self) -> None:
+        self.initialize()
+
+    async def _cleanup_sync(self) -> None:
+        self.cleanup()
+
+    async def _cleanup_async(self) -> None:
+        self.cleanup()
 
     @abstractmethod
     async def initialize(self) -> None:
@@ -63,16 +104,117 @@ class AIModelProviderClientBase(ABC):
     ) -> FormattedPrompt | str | None:
         pass
 
-    @abstractmethod
+    # TODO: Sync fn
     async def generate_response(
         self,
         prompt: dict,
         context: list[dict] | None = None,
         instructions: SystemInstructions | None = None,
     ) -> AIModelCallResponse:
-        """Generate response from the model"""
-        pass
+        parsed_response: ChatResponse | None = None
+        api_call_status: ExternalApiCallStatus | None = None
 
+        api_call_params = self.get_api_call_params(
+            prompt=prompt,
+            context=context,
+            instructions=instructions,
+        )
+
+        if self.config.test_mode:
+            from dhenara.ai.providers.common.dummy import DummyAIModelResponseFns
+
+            return await DummyAIModelResponseFns.get_dummy_ai_model_response(
+                ai_model_ep=self.model_endpoint,
+                streaming=self.config.streaming,
+            )
+
+        try:
+            if self.config.streaming:
+                stream = await self.do_streaming_api_call_async(api_call_params)
+                stream_generator = self._handle_streaming_response_async(stream=stream)
+                return AIModelCallResponse(async_stream_generator=stream_generator)
+
+            response = await self.do_api_call_async(api_call_params)
+            parsed_response = self.parse_response(response)
+            api_call_status = self._create_success_status()
+            return self._get_ai_model_call_response(parsed_response, api_call_status)
+
+        except Exception as e:
+            logger.exception(f"Error in generate_response: {e}")
+            api_call_status = self._create_error_status(str(e))
+
+    def _get_ai_model_call_response(self, parsed_response, api_call_status):
+        functional_type = self.model_endpoint.ai_model.functional_type
+        if functional_type == AIModelFunctionalTypeEnum.TEXT_GENERATION:
+            return AIModelCallResponse(
+                status=api_call_status,
+                chat_response=parsed_response,
+            )
+        elif functional_type == AIModelFunctionalTypeEnum.IMAGE_GENERATION:
+            return AIModelCallResponse(
+                status=api_call_status,
+                image_response=parsed_response,
+            )
+        else:
+            raise ValueError(f"_get_ai_model_call_response: Unknown functional_type {functional_type}")
+
+    async def _handle_streaming_response_async(
+        self,
+        stream: AsyncGenerator,
+    ) -> AsyncGenerator[
+        tuple[
+            Union[StreamingChatResponse, SSEErrorResponse, None],
+            Union[AIModelCallResponse, None],
+        ]
+    ]:
+        """Shared streaming logic with async/sync handling"""
+        self.streaming_manager = StreamingManager(model_endpoint=self.model_endpoint)
+
+        try:
+            async for chunk in stream:
+                processed_chunks = self.parse_stream_chunk(chunk)
+                for pchunk in processed_chunks:
+                    yield pchunk, None
+
+            # API has stopped streaming, get final response
+            logger.debug("API has stopped streaming, processsing final response")
+            final_response = self.streaming_manager.complete()
+
+            yield None, final_response
+            return  # Stop the generator
+        except Exception as e:
+            error_response = self._create_streaming_error_response(exc=e)
+            yield error_response, None
+
+    def _handle_streaming_response_sync(
+        self,
+        stream: Generator,
+    ) -> Generator[
+        tuple[
+            Union[StreamingChatResponse, SSEErrorResponse, None],
+            Union[AIModelCallResponse, None],
+        ]
+    ]:
+        """Shared streaming logic with async/sync handling"""
+        self.streaming_manager = StreamingManager(model_endpoint=self.model_endpoint)
+
+        try:
+            for chunk in stream:
+                processed_chunks = self.parse_stream_chunk(chunk)
+                for pchunk in processed_chunks:
+                    yield pchunk, None
+
+            # API has stopped streaming, get final response
+            logger.debug("API has stopped streaming, processsing final response")
+            final_response = self.streaming_manager.complete()
+
+            yield None, final_response
+            return  # Stop the generator
+        except Exception as e:
+            error_response = self._create_streaming_error_response(exc=e)
+            yield error_response, None
+
+    # TODO: Sync fn
     async def _validate_and_generate_response(
         self,
         prompt: FormattedPrompt,
@@ -102,6 +244,37 @@ class AIModelProviderClientBase(ABC):
                 context=context,
                 instructions=instructions,
             )
+
+    @abstractmethod
+    def get_api_call_params(
+        self,
+        api_call_params: dict,
+    ) -> AIModelCallResponse:
+        pass
+
+    # TODO: Sync fn
+    @abstractmethod
+    async def do_api_call_async(
+        self,
+        api_call_params: dict,
+    ) -> AIModelCallResponse:
+        pass
+
+    # TODO: Sync fn
+    @abstractmethod
+    async def do_streaming_api_call_async(
+        self,
+        api_call_params: dict,
+    ) -> AIModelCallResponse:
+        pass
+
+    @abstractmethod
+    def parse_response(self, response) -> ChatResponse | ImageResponse | None:
+        pass
+
+    @abstractmethod
+    def parse_stream_chunk(self, chunk) -> StreamingChatResponse | SSEErrorResponse | None:
+        pass
 
     def validate_inputs(
         self,

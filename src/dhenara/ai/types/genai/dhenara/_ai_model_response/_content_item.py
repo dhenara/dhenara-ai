@@ -25,6 +25,10 @@ class BaseResponseContentItem(BaseModel):
         custom_metadata: User-defined additional metadata
     """
 
+    index: int = Field(
+        default=0,
+        description="Content item index",
+    )
     metadata: dict = Field(
         default_factory=dict,
         description="System-generated metadata from API response processing",
@@ -49,10 +53,6 @@ class ChatResponseContentItemType(BaseEnum):
 
 
 class BaseChatResponseContentItem(BaseResponseContentItem):
-    index: int = Field(
-        default=0,
-        description="Content item index",
-    )
     type: ChatResponseContentItemType = Field(
         ...,
         description="Type of the content item",
@@ -124,10 +124,6 @@ ChatResponseContentItem = Union[
 
 # Deltas for streamin
 class BaseChatResponseContentItemDelta(BaseResponseContentItem):
-    index: int = Field(
-        default=0,
-        description="Content item index",
-    )
     type: ChatResponseContentItemType = Field(
         ...,
         description="Type of the content item",

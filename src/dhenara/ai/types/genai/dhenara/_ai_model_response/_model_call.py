@@ -1,5 +1,5 @@
 import logging
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Generator
 from typing import Union
 
 from dhenara.ai.types.external_api import ExternalApiCallStatus
@@ -33,9 +33,15 @@ class AIModelCallResponse(BaseModel):
         default=None,
         description="Response for Non-streaming chat creation API calls",
     )
-    stream_generator: AsyncGenerator[tuple[StreamingChatResponse, Union["AIModelCallResponse", None]], None] | None = Field(
+    async_stream_generator: AsyncGenerator[tuple[StreamingChatResponse, Union["AIModelCallResponse", None]], None] | None = Field(
         default=None,
         description="""Response for streaming chat creation API calls.
+        This will be an async generator that generates the response stream, and on the last chunk
+        along with the full response on the last chunk""",
+    )
+    sync_stream_generator: Generator[tuple[StreamingChatResponse, Union["AIModelCallResponse", None]], None] | None = Field(
+        default=None,
+        description="""Sync response for streaming chat creation API calls.
         This will be an async generator that generates the response stream, and on the last chunk
         along with the full response on the last chunk""",
     )
@@ -53,3 +59,7 @@ class AIModelCallResponse(BaseModel):
             ChatResponse | ImageResponse | None: The complete response object
         """
         return self.chat_response if self.chat_response else self.image_response
+
+    @property
+    def stream_generator(self) -> AsyncGenerator | Generator | None:
+        return self.async_stream_generator if self.async_stream_generator else self.sync_stream_generator

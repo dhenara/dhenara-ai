@@ -22,10 +22,10 @@ class AnthropicClientBase(AIModelProviderClientBase):
 
     prompt_message_class = AnthropicPromptMessage
 
-    async def initialize(self) -> None:
+    def initialize(self) -> None:
         pass
 
-    async def cleanup(self) -> None:
+    def cleanup(self) -> None:
         pass
 
     def process_instructions(
@@ -39,7 +39,7 @@ class AnthropicClientBase(AIModelProviderClientBase):
             return str(instructions)
         return None
 
-    async def _setup_client(self) -> AsyncAnthropic | AsyncAnthropicBedrock | AsyncAnthropicVertex:
+    async def _setup_client_async(self) -> AsyncAnthropic | AsyncAnthropicBedrock | AsyncAnthropicVertex:
         """Get the appropriate Anthropic client based on the provider"""
         api = self.model_endpoint.api
 

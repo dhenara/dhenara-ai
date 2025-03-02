@@ -56,6 +56,11 @@ class StreamingManager:
         self.choices: list[ChatResponseChoice] = []
         self.response_metadata = AIModelCallResponseMetaData(streaming=True)
 
+        # TODO: cleanup naming
+        self.provider_metadata = None
+        self.message_metadata = {}  # Anthropic
+        self.persistant_choice_metadata_list = []  # OpenAI
+
         start_time = timezone.now()
         # TODO_FUTURE: Create progress per choices ?
         self.progress = INTStreamingProgress(
@@ -68,7 +73,7 @@ class StreamingManager:
         if usage:
             self.usage = usage
 
-    def complete(self, provider_metadata: dict | None = None) -> AIModelCallResponse:
+    def complete(self) -> AIModelCallResponse:
         """Mark streaming as complete and set final stats"""
         self.progress.is_complete = True
 
@@ -77,7 +82,7 @@ class StreamingManager:
         duration_seconds = duration.total_seconds()
 
         self.response_metadata.duration_seconds = duration_seconds
-        self.response_metadata.provider_metadata = provider_metadata
+        self.response_metadata.provider_metadata = self.provider_metadata
 
         return self.get_final_response()
 
