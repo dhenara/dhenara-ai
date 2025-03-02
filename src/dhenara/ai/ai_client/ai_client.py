@@ -1,5 +1,7 @@
 import asyncio
-from contextlib import AsyncExitStack
+import signal
+import time
+from contextlib import AsyncExitStack, ExitStack, contextmanager
 
 from dhenara.ai.types import AIModelCallConfig, AIModelCallResponse, AIModelEndpoint
 
@@ -19,40 +21,129 @@ class AIModelClient:
     Attributes:
         model_endpoint (AIModelEndpoint): The AI model endpoint configuration
         config (AIModelCallConfig): Configuration for API calls including timeouts and retries
+        is_async (bool): Async client or not
     """
 
     def __init__(
         self,
         model_endpoint: AIModelEndpoint,
         config: AIModelCallConfig | None = None,
+        is_async: bool = True,
     ):
-        """
-        Initialize the AI Model Client.
-
-        Args:
-            model_endpoint: Configuration for the AI model endpoint
-            config: Optional configuration for API calls. If not provided, default config is used.
-        """
         self.model_endpoint = model_endpoint
         self.config = config or AIModelCallConfig()
+        self.is_async = is_async
         self._provider_client = None
-        self._client_stack = AsyncExitStack()
+        self._client_stack = AsyncExitStack() if is_async else ExitStack()
+
+    async def _async_context(self):
+        try:
+            self._provider_client = await self._client_stack.enter_async_context(
+                AIModelClientFactory.create_provider_client(
+                    self.model_endpoint,
+                    self.config,
+                    is_async=True,
+                ),
+            )
+            yield self
+        finally:
+            await self._client_stack.aclose()
+            self._provider_client = None
+
+    @contextmanager
+    def _sync_context(self):
+        try:
+            self._provider_client = self._client_stack.enter_context(
+                AIModelClientFactory.create_provider_client(
+                    self.model_endpoint,
+                    self.config,
+                    is_async=False,
+                ),
+            )
+            yield self
+        finally:
+            self._client_stack.close()
+            self._provider_client = None
+
+    def __enter__(self):
+        if self.is_async:
+            raise RuntimeError("Use 'async with' for async client")
+        return self._sync_context().__enter__()
+
+    def __exit__(self, *exc):
+        if self.is_async:
+            raise RuntimeError("Use 'async with' for async client")
+        return self._sync_context().__exit__(*exc)
 
     async def __aenter__(self):
-        """Initialize and return the client in a context manager."""
-        self._provider_client = await self._client_stack.enter_async_context(
-            AIModelClientFactory.create_provider_client(
-                self.model_endpoint,
-                self.config,
-            ),
-        )
-        return self
+        if not self.is_async:
+            raise RuntimeError("Use 'with' for sync client")
+        self._async_ctx = self._async_context()
+        return await anext(self._async_ctx.__aiter__())
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Clean up resources when exiting the context manager."""
-        await self._client_stack.aclose()
-        self._provider_client = None
+    async def __aexit__(self, *exc):
+        if not self.is_async:
+            raise RuntimeError("Use 'with' for sync client")
+        try:
+            await self._async_ctx.aclose()
+        except:
+            pass
 
+    def _execute_with_retry_sync(self, *args, **kwargs) -> AIModelCallResponse:
+        """Synchronous retry logic"""
+        last_exception = None
+        for attempt in range(self.config.retries):
+            try:
+                return self._execute_with_timeout_sync(*args, **kwargs)
+            except TimeoutError as e:  # noqa: PERF203 # TODO
+                last_exception = e
+                if attempt == self.config.retries - 1:
+                    break
+                delay = min(
+                    self.config.retry_delay * (2**attempt),
+                    self.config.max_retry_delay,
+                )
+                time.sleep(delay)
+
+        raise last_exception or RuntimeError("All retry attempts failed")
+
+    async def _execute_with_retry_async(self, *args, **kwargs) -> AIModelCallResponse:
+        """Asynchronous retry logic"""
+        last_exception = None
+        for attempt in range(self.config.retries):
+            try:
+                return await self._execute_with_timeout_async(*args, **kwargs)
+            except asyncio.TimeoutError as e:  # noqa: PERF203 # TODO
+                last_exception = e
+                if attempt == self.config.retries - 1:
+                    break
+                delay = min(
+                    self.config.retry_delay * (2**attempt),
+                    self.config.max_retry_delay,
+                )
+                await asyncio.sleep(delay)
+
+        raise last_exception or RuntimeError("All retry attempts failed")
+
+    def _execute_with_timeout_sync(self, *args, **kwargs) -> AIModelCallResponse:
+        """Synchronous timeout handling"""
+        with ExitStack() as stack:  # noqa: F841
+            if self.config.timeout:
+                signal.alarm(self.config.timeout)
+            try:
+                return self._provider_client._validate_and_generate_response_sync(*args, **kwargs)
+            finally:
+                if self.config.timeout:
+                    signal.alarm(0)
+
+    async def _execute_with_timeout_async(self, *args, **kwargs) -> AIModelCallResponse:
+        """Asynchronous timeout handling"""
+        async with AsyncExitStack() as stack:
+            if self.config.timeout:
+                await stack.enter_async_context(asyncio.timeout(self.config.timeout))
+            return await self._provider_client._validate_and_generate_response_async(*args, **kwargs)
+
+    # Genereate Response Fns
     async def generate(
         self,
         prompt: dict,
@@ -60,25 +151,43 @@ class AIModelClient:
         instructions: list[str] | None = None,
     ) -> AIModelCallResponse:
         """
-        Generate a response from the AI model with automatic context management.
-
-        This method handles the complete lifecycle of the request including connection
-        management, retries, and timeouts.
-
-        Args:
-            prompt: The primary input prompt for the AI model
-            context: Optional list of previous conversation context
-            instructions: Optional system instructions for the AI model
-
-        Returns:
-            AIModelCallResponse: The generated response from the AI model
-
-        Raises:
-            TimeoutError: If the request exceeds the configured timeout
-            RuntimeError: If all retry attempts fail
+        Universal generate method that automatically handles both sync and async calls.
+        In async context, it calls generate_async, in sync context it calls generate_sync.
         """
+        if self.is_async:
+            return await self.generate_async(prompt, context, instructions)
+        else:
+            return self.generate_sync(prompt, context, instructions)
+
+    def generate_sync(
+        self,
+        prompt: dict,
+        context: list[dict] | None = None,
+        instructions: list[str] | None = None,
+    ) -> AIModelCallResponse:
+        """Synchronous generate method"""
+        if self.is_async:
+            raise RuntimeError("Use generate_async for async client")
+
+        with self as client:  # noqa: F841
+            return self._execute_with_retry_sync(
+                prompt=prompt,
+                context=context,
+                instructions=instructions,
+            )
+
+    async def generate_async(
+        self,
+        prompt: dict,
+        context: list[dict] | None = None,
+        instructions: list[str] | None = None,
+    ) -> AIModelCallResponse:
+        """Asynchronous generate method"""
+        if not self.is_async:
+            raise RuntimeError("Use generate_sync for sync client")
+
         async with self as client:  # noqa: F841
-            return await self._execute_with_retry(
+            return await self._execute_with_retry_async(
                 prompt=prompt,
                 context=context,
                 instructions=instructions,
@@ -109,6 +218,46 @@ class AIModelClient:
             This method doesn't automatically clean up resources. Use `cleanup()`
             when you're done making calls.
         """
+        if self.is_async:
+            return self.generate_with_existing_connection_async(prompt=prompt, context=context, instructions=instructions)
+        else:
+            return self.generate_with_existing_connection_sync(prompt=prompt, context=context, instructions=instructions)
+
+    def generate_with_existing_connection_sync(
+        self,
+        prompt: dict,
+        context: list[dict] | None = None,
+        instructions: list[str] | None = None,
+    ) -> AIModelCallResponse:
+        if not self._provider_client:
+            self._provider_client = self._client_stack.enter_async_context(
+                AIModelClientFactory.create_provider_client(
+                    self.model_endpoint,
+                    self.config,
+                ),
+            )
+        return self._execute_with_retry(
+            prompt=prompt,
+            context=context,
+            instructions=instructions,
+        )
+
+    def cleanup_sync(self) -> None:
+        """
+        Clean up resources manually.
+
+        Call this method when you're done using generate_with_existing_connection()
+        to ensure proper resource cleanup.
+        """
+        self._client_stack.close()
+        self._provider_client = None
+
+    async def generate_with_existing_connection_async(
+        self,
+        prompt: dict,
+        context: list[dict] | None = None,
+        instructions: list[str] | None = None,
+    ) -> AIModelCallResponse:
         if not self._provider_client:
             self._provider_client = await self._client_stack.enter_async_context(
                 AIModelClientFactory.create_provider_client(
@@ -122,7 +271,7 @@ class AIModelClient:
             instructions=instructions,
         )
 
-    async def cleanup(self) -> None:
+    async def cleanup_async(self) -> None:
         """
         Clean up resources manually.
 
@@ -131,46 +280,3 @@ class AIModelClient:
         """
         await self._client_stack.aclose()
         self._provider_client = None
-
-    async def _execute_with_retry(
-        self,
-        prompt: dict,
-        context: list[dict] | None,
-        instructions: list[str] | None,
-    ) -> AIModelCallResponse:
-        """Execute the request with retry logic."""
-        last_exception = None
-        for attempt in range(self.config.retries):
-            try:
-                return await self._execute_with_timeout(
-                    prompt=prompt,
-                    context=context,
-                    instructions=instructions,
-                )
-            except asyncio.TimeoutError as e:  # noqa: PERF203
-                last_exception = e
-                if attempt == self.config.retries - 1:
-                    break
-                delay = min(
-                    self.config.retry_delay * (2**attempt),
-                    self.config.max_retry_delay,
-                )
-                await asyncio.sleep(delay)
-
-        raise last_exception or RuntimeError("All retry attempts failed")
-
-    async def _execute_with_timeout(
-        self,
-        prompt: dict,
-        context: list[dict] | None,
-        instructions: list[str] | None,
-    ) -> AIModelCallResponse:
-        """Execute the request with timeout handling."""
-        async with AsyncExitStack() as stack:
-            if self.config.timeout:
-                await stack.enter_async_context(asyncio.timeout(self.config.timeout))
-            return await self._provider_client._validate_and_generate_response(
-                prompt=prompt,
-                context=context,
-                instructions=instructions,
-            )

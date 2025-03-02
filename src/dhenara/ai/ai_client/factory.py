@@ -27,6 +27,7 @@ class AIModelClientFactory:
         cls,
         model_endpoint: AIModelEndpoint,
         config: AIModelCallConfig,
+        is_async: bool,
     ) -> AIModelProviderClientBase:
         functional_type_mapping = cls._provider_clients.get(model_endpoint.ai_model.functional_type)
         if not functional_type_mapping:
@@ -35,4 +36,8 @@ class AIModelClientFactory:
         provider_class = functional_type_mapping.get(model_endpoint.ai_model.provider)
         if not provider_class:
             raise ValueError(f"Unsupported provider: {model_endpoint.ai_model.provider}")
-        return provider_class(model_endpoint, config)
+        return provider_class(
+            model_endpoint=model_endpoint,
+            config=config,
+            is_async=is_async,
+        )

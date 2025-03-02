@@ -24,8 +24,12 @@ class ValidOptionValue(BaseModel):
         description="Will this option affect api-cost or not",
     )
     description: str | None = Field(
-        None,
+        default=None,
         description="Optional description of what this option controls",
+    )
+    display_only: bool = Field(
+        default=False,
+        description="Whether this option is only for display purpose. When set, this won't be send in API calls. Useful for deriving additional options",
     )
 
     @model_validator(mode="after")
@@ -411,8 +415,25 @@ class BaseAIModel(BaseModel):
     def get_settings(self):
         return self._get_attribute("settings")
 
-    def get_valid_options(self):
+    def _get_valid_options(self):
         return self._get_attribute("valid_options")
+
+    def get_valid_options(self, include_display_only: bool = False) -> dict[str, ValidOptionValue]:
+        """
+        Get valid options excluding display-only options.
+
+        Returns:
+            dict: Dictionary of valid options without display-only options
+        """
+        options = self._get_valid_options()
+        if include_display_only:
+            return options
+
+        if options:
+            for key in list(options.keys()):
+                if options[key].display_only:
+                    del options[key]
+        return options
 
     def get_cost_data(self):
         return self._get_attribute("cost_data")

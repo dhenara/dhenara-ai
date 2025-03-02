@@ -1,7 +1,6 @@
 import asyncio
 import logging
 from collections.abc import AsyncGenerator
-from typing import Union
 
 from dhenara.ai.config import settings
 from dhenara.ai.providers.base import StreamingManager
@@ -94,7 +93,10 @@ class DummyAIModelResponseFns:
     @staticmethod
     def get_dummy_usage_and_charge(
         ai_model_ep: AIModelEndpoint,
-    ) -> tuple[Union[ChatResponseUsage, ImageResponseUsage, None], Union[UsageCharge | None]]:
+    ) -> tuple[
+        ChatResponseUsage | ImageResponseUsage | None,
+        UsageCharge | None,
+    ]:
         """Parse the OpenAI response into our standard format"""
         usage = None
         usage_charge = None

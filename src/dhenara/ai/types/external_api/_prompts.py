@@ -30,12 +30,15 @@ class OpenAIImageContent(BaseModel):
 
 
 # Discriminated union for content parts
-ContentPart = Annotated[Union[OpenAITextContent, OpenAIImageContent], Field(discriminator="type")]
+ContentPart = Annotated[
+    OpenAITextContent | OpenAIImageContent,
+    Field(discriminator="type"),
+]
 
 
 class OpenAIPromptMessage(BaseModel):
     role: OpenAiMessageRoleEnum
-    content: Union[str, list[ContentPart]]
+    content: str | list[ContentPart]
     function_call: dict[str, Any] | None = None
 
     @field_validator("content", mode="before")
@@ -84,7 +87,7 @@ class AnthropicMessageImageContent(BaseModel):
 
 class AnthropicPromptMessage(BaseModel):
     role: AnthropicMessageRoleEnum
-    content: Union[str, list[Union[AnthropicMessageTextContent, AnthropicMessageImageContent]]]
+    content: str | list[AnthropicMessageTextContent | AnthropicMessageImageContent]
 
     @field_validator("content")
     @classmethod
@@ -181,5 +184,5 @@ class GoogleAIPromptMessage(BaseModel):
 #     previous_response: Union[ChatResponse, ImageResponse] | None = None
 
 
-FormattedPrompt = Union[OpenAIPromptMessage, GoogleAIPromptMessage, AnthropicPromptMessage]
+FormattedPrompt = Union[OpenAIPromptMessage, GoogleAIPromptMessage, AnthropicPromptMessage]  # noqa: UP007
 SystemInstructions = list[str]

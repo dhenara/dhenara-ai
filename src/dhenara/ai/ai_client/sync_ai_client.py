@@ -1,7 +1,6 @@
 import concurrent.futures
 import functools
 import logging
-from typing import Optional
 
 from dhenara.ai.types import AIModelCallConfig, AIModelCallResponse, AIModelEndpoint
 
@@ -20,7 +19,7 @@ class AIModelClientSync:
     def __init__(
         self,
         model_endpoint: AIModelEndpoint,
-        config: Optional[AIModelCallConfig] = None,
+        config: AIModelCallConfig | None = None,
     ):
         self.async_client = AIModelClient(model_endpoint, config)
         self._config = config
@@ -50,8 +49,8 @@ class AIModelClientSync:
     def generate(
         self,
         prompt: dict,
-        context: Optional[list[dict]] = None,
-        instructions: Optional[list[str]] = None,
+        context: list[dict] | None = None,
+        instructions: list[str] | None = None,
     ) -> AIModelCallResponse:
         """
         Synchronous version of generate that handles context automatically
@@ -72,8 +71,8 @@ class AIModelClientSync:
     async def generate_with_existing_connection(
         self,
         prompt: dict,
-        context: Optional[list[dict]] = None,
-        instructions: Optional[list[str]] = None,
+        context: list[dict] | None = None,
+        instructions: list[str] | None = None,
     ) -> AIModelCallResponse:
         """
         Synchronous version of generate_with_existing_connection

@@ -3,8 +3,9 @@ import concurrent.futures
 import functools
 import logging
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Optional, ParamSpec, TypeVar
+from typing import ParamSpec, TypeVar
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +16,7 @@ T = TypeVar("T")
 @dataclass
 class SyncWrapperConfig:
     max_workers: int = 10
-    default_timeout: Optional[float] = None
+    default_timeout: float | None = None
     thread_name_prefix: str = "async_wrapper_"
     shutdown_timeout: float = 60.0
 
@@ -26,9 +27,9 @@ class AsyncToSyncWrapper:
     thread and event loop management.
     """
 
-    def __init__(self, config: Optional[SyncWrapperConfig] = None):
+    def __init__(self, config: SyncWrapperConfig | None = None):
         self._config = config or SyncWrapperConfig()
-        self._executor: Optional[concurrent.futures.ThreadPoolExecutor] = None
+        self._executor: concurrent.futures.ThreadPoolExecutor | None = None
         self._lock = threading.Lock()
 
     def __call__(self, async_func: Callable[P, T]) -> Callable[P, T]:
@@ -58,7 +59,7 @@ class AsyncToSyncWrapper:
         self,
         async_func,
         *args,
-        timeout: Optional[float] = None,
+        timeout: float | None = None,
         **kwargs,
     ):
         future = concurrent.futures.Future()

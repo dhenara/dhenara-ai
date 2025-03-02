@@ -114,7 +114,7 @@ class ChatResponseGenericContentItem(BaseChatResponseContentItem):
         return str(self.metadata)
 
 
-ChatResponseContentItem = Union[
+ChatResponseContentItem = Union[  # noqa: UP007
     ChatResponseTextContentItem,
     ChatResponseReasoningContentItem,
     ChatResponseToolCallContentItem,
@@ -174,7 +174,7 @@ class ChatResponseGenericContentItemDelta(BaseChatResponseContentItemDelta):
         return str(self.metadata)
 
 
-ChatResponseContentItemDelta = Union[
+ChatResponseContentItemDelta = Union[  # noqa: UP007
     ChatResponseTextContentItemDelta,
     ChatResponseReasoningContentItemDelta,
     ChatResponseToolCallContentItemDelta,

@@ -1,4 +1,4 @@
-from typing import Any, Generic, Optional, TypeVar
+from typing import Any, Generic, TypeVar
 
 from dhenara.ai.types.shared.base import BaseEnum, BaseModel
 from dhenara.ai.types.shared.platform import DhenaraAPIError
@@ -69,7 +69,7 @@ class ApiResponse(BaseModel, Generic[T]):
         return self.status == ApiResponseStatus.PENDING
 
     @property
-    def first_message(self) -> Optional[ApiResponseMessage]:
+    def first_message(self) -> ApiResponseMessage | None:
         return self.messages[0] if self.messages else None
 
     def check_for_status_errors(self) -> None:

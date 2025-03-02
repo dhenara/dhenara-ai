@@ -1,7 +1,7 @@
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator, Generator
-from typing import Any, Union
+from typing import Any
 
 from dhenara.ai.config import settings
 from dhenara.ai.providers.base import StreamingManager
@@ -87,25 +87,8 @@ class AIModelProviderClientBase(ABC):
     async def _cleanup_async(self) -> None:
         self.cleanup()
 
-    @abstractmethod
-    async def initialize(self) -> None:
-        """Initialize the provider"""
-        pass
-
-    @abstractmethod
-    async def cleanup(self) -> None:
-        """Cleanup resources"""
-        pass
-
-    @abstractmethod
-    def process_instructions(
-        self,
-        instructions: SystemInstructions,
-    ) -> FormattedPrompt | str | None:
-        pass
-
     # TODO: Sync fn
-    async def generate_response(
+    async def generate_response_async(
         self,
         prompt: dict,
         context: list[dict] | None = None,
@@ -140,7 +123,7 @@ class AIModelProviderClientBase(ABC):
             return self._get_ai_model_call_response(parsed_response, api_call_status)
 
         except Exception as e:
-            logger.exception(f"Error in generate_response: {e}")
+            logger.exception(f"Error in generate_response_async: {e}")
             api_call_status = self._create_error_status(str(e))
 
     def _get_ai_model_call_response(self, parsed_response, api_call_status):
@@ -163,8 +146,8 @@ class AIModelProviderClientBase(ABC):
         stream: AsyncGenerator,
     ) -> AsyncGenerator[
         tuple[
-            Union[StreamingChatResponse, SSEErrorResponse, None],
-            Union[AIModelCallResponse, None],
+            StreamingChatResponse | SSEErrorResponse | None,
+            AIModelCallResponse | None,
         ]
     ]:
         """Shared streaming logic with async/sync handling"""
@@ -191,8 +174,8 @@ class AIModelProviderClientBase(ABC):
         stream: Generator,
     ) -> Generator[
         tuple[
-            Union[StreamingChatResponse, SSEErrorResponse, None],
-            Union[AIModelCallResponse, None],
+            StreamingChatResponse | SSEErrorResponse | None,
+            AIModelCallResponse | None,
         ]
     ]:
         """Shared streaming logic with async/sync handling"""
@@ -215,7 +198,7 @@ class AIModelProviderClientBase(ABC):
             yield error_response, None
 
     # TODO: Sync fn
-    async def _validate_and_generate_response(
+    async def _validate_and_generate_response_async(
         self,
         prompt: FormattedPrompt,
         context: list[FormattedPrompt] | None = None,
@@ -232,18 +215,35 @@ class AIModelProviderClientBase(ABC):
                         status=ExternalApiCallStatusEnum.REQUEST_NOT_SEND,
                     )
                 )
-            return await self.generate_response(
+            return await self.generate_response_async(
                 prompt=validated_inputs[0],
                 context=validated_inputs[1],
                 instructions=instructions,
             )
         else:
             self._input_validation_pending = False
-            return await self.generate_response(
+            return await self.generate_response_async(
                 prompt=prompt,
                 context=context,
                 instructions=instructions,
             )
+
+    @abstractmethod
+    async def initialize(self) -> None:
+        """Initialize the provider"""
+        pass
+
+    @abstractmethod
+    async def cleanup(self) -> None:
+        """Cleanup resources"""
+        pass
+
+    @abstractmethod
+    def process_instructions(
+        self,
+        instructions: SystemInstructions,
+    ) -> FormattedPrompt | str | None:
+        pass
 
     @abstractmethod
     def get_api_call_params(
@@ -326,7 +326,10 @@ class AIModelProviderClientBase(ABC):
         self,
         response,
         usage=None,
-    ) -> tuple[Union[ChatResponseUsage, ImageResponseUsage, None], Union[UsageCharge | None]]:
+    ) -> tuple[
+        ChatResponseUsage | ImageResponseUsage | None,
+        UsageCharge | None,
+    ]:
         """Parse the OpenAI response into our standard format"""
         usage = None
         usage_charge = None

@@ -1,6 +1,5 @@
 import logging
 from datetime import datetime as datetime_type
-from typing import Union
 
 from dhenara.ai.config import settings
 from dhenara.ai.types.external_api import ExternalApiCallStatus, ExternalApiCallStatusEnum
@@ -133,7 +132,10 @@ class StreamingManager:
 
     def get_streaming_usage_and_charge(
         self,
-    ) -> tuple[Union[ChatResponseUsage, ImageResponseUsage, None], Union[UsageCharge | None]]:
+    ) -> tuple[
+        ChatResponseUsage | ImageResponseUsage | None,
+        UsageCharge | None,
+    ]:
         """Parse the OpenAI response into our standard format"""
         usage_charge = None
 
