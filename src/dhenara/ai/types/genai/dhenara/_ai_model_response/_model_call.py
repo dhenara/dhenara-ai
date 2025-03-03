@@ -25,21 +25,37 @@ class AIModelCallResponse(BaseModel):
         image_response: Response for image generation API calls
     """
 
-    status: ExternalApiCallStatus = Field(
+    status: ExternalApiCallStatus | None = Field(
         default=None,
-        description="API Call status",
+        description="API Call status. Will be None with stream generators",
     )
     chat_response: ChatResponse | None = Field(
         default=None,
         description="Response for Non-streaming chat creation API calls",
     )
-    async_stream_generator: AsyncGenerator[tuple[StreamingChatResponse, Union["AIModelCallResponse", None]], None] | None = Field(
+    async_stream_generator: (
+        AsyncGenerator[
+            tuple[
+                StreamingChatResponse | None,
+                Union["AIModelCallResponse", None],
+            ]
+        ]
+        | None
+    ) = Field(
         default=None,
         description="""Response for streaming chat creation API calls.
         This will be an async generator that generates the response stream, and on the last chunk
         along with the full response on the last chunk""",
     )
-    sync_stream_generator: Generator[tuple[StreamingChatResponse, Union["AIModelCallResponse", None]], None] | None = Field(
+    sync_stream_generator: (
+        Generator[
+            tuple[
+                StreamingChatResponse | None,
+                Union["AIModelCallResponse", None],
+            ]
+        ]
+        | None
+    ) = Field(
         default=None,
         description="""Sync response for streaming chat creation API calls.
         This will be an async generator that generates the response stream, and on the last chunk

@@ -182,19 +182,31 @@ class ChatModelSettings(BaseModel):
 
     @model_validator(mode="after")
     def _set_token_limits(self) -> "ChatModelSettings":
-        if not self.max_output_tokens:
+        # Store original values
+        input_tokens = self.max_input_tokens
+        context_tokens = self.max_context_window_tokens
+        output_tokens = self.max_output_tokens
+
+        if not output_tokens:
             raise ValueError("set_token_limits: max_output_tokens must be specified")
-        if not (self.max_input_tokens or self.max_context_window_tokens):
+
+        if not (input_tokens or context_tokens):
             raise ValueError("set_token_limits: max_input_tokens or max_context_window_tokens must be specified")
 
-        if self.max_input_tokens:
-            self.max_context_window_tokens = self.max_input_tokens + self.max_output_tokens
-        else:
-            self.max_input_tokens = self.max_context_window_tokens - self.max_output_tokens
+        # Calculate values without direct assignment
+        values_to_update = {}
+        if input_tokens is not None:
+            values_to_update["max_context_window_tokens"] = input_tokens + output_tokens
+        elif context_tokens is not None:
+            values_to_update["max_input_tokens"] = context_tokens - output_tokens
 
         if self.supports_reasoning:
-            if self.max_reasoning_tokens and self.max_reasoning_tokens > self.max_output_tokens_reasoning_mode:
+            if self.max_reasoning_tokens and self.max_output_tokens_reasoning_mode and self.max_reasoning_tokens > self.max_output_tokens_reasoning_mode:
                 raise ValueError("set_token_limits: max_reasoning_tokens must be less than max_output_tokens_reasoning_mode")
+
+        # Update the model's dict directly
+        for key, value in values_to_update.items():
+            self.__dict__[key] = value
 
         return self
 

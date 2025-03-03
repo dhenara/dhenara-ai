@@ -56,7 +56,7 @@ class StreamingManager:
         self.response_metadata = AIModelCallResponseMetaData(streaming=True)
 
         # TODO: cleanup naming
-        self.provider_metadata = None
+        self.provider_metadata = {}
         self.message_metadata = {}  # Anthropic
         self.persistant_choice_metadata_list = []  # OpenAI
 

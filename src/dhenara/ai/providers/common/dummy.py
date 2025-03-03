@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Generator
 
 from dhenara.ai.config import settings
 from dhenara.ai.providers.base import StreamingManager
@@ -30,31 +30,22 @@ logger = logging.getLogger(__name__)
 
 # -----------------------------------------------------------------------------
 class DummyAIModelResponseFns:
-    @staticmethod
-    async def get_dummy_ai_model_response(
-        ai_model_ep: AIModelEndpoint,
-        streaming: bool = False,
-    ) -> AIModelCallResponse:
-        if streaming:
-            stream_generator = DummyAIModelResponseFns._handle_streaming_response(
-                stream=DummyAIModelResponseFns.gen_dummy_stream(ai_model_ep),
-                model_endpoint=ai_model_ep,
-            )
+    def __init__(self, stream_manager: StreamingManager):
+        self.stream_manager = stream_manager
 
-            return AIModelCallResponse(
-                async_stream_generator=stream_generator,
-            )
-
-        text = f"This is a test mode output. {DummyAIModelResponseFns._model_specific_message(ai_model_ep)}"
+    def _create_base_response(self, ai_model_ep: AIModelEndpoint, text: str) -> AIModelCallResponse:
+        """Create a base response with common elements"""
         api_call_status = ExternalApiCallStatus(
             status=ExternalApiCallStatusEnum.RESPONSE_RECEIVED_SUCCESS,
-            api_provider="dummu_ai_provider",
+            api_provider="dummy_ai_provider",
             model="dummy_model",
             message="Output generated",
             code="success",
             http_status_code=200,
         )
-        usage, usage_charge = DummyAIModelResponseFns.get_dummy_usage_and_charge(ai_model_ep=ai_model_ep)
+
+        usage, usage_charge = self.get_dummy_usage_and_charge(ai_model_ep)
+
         parsed_response = ChatResponse(
             model="dummy_model",
             provider=ai_model_ep.ai_model.provider,
@@ -74,7 +65,7 @@ class DummyAIModelResponseFns:
             ],
             metadata=AIModelCallResponseMetaData(
                 streaming=False,
-                duration_seconds=0,  # TODO
+                duration_seconds=0,
                 provider_metadata={
                     "id": "test_msg_id",
                     "object": "test_object",
@@ -89,15 +80,43 @@ class DummyAIModelResponseFns:
             chat_response=parsed_response,
         )
 
-    # For Usage and cost
-    @staticmethod
-    def get_dummy_usage_and_charge(
+    def get_dummy_ai_model_response_sync(
+        self,
         ai_model_ep: AIModelEndpoint,
-    ) -> tuple[
-        ChatResponseUsage | ImageResponseUsage | None,
-        UsageCharge | None,
-    ]:
-        """Parse the OpenAI response into our standard format"""
+        streaming: bool = False,
+    ) -> AIModelCallResponse:
+        if streaming:
+            _stream_generator = self.handle_streaming_response_sync(
+                self.sync_stream_generator(ai_model_ep),
+                model_endpoint=ai_model_ep,
+            )
+            return AIModelCallResponse(sync_stream_generator=_stream_generator)
+        return self._create_base_response(
+            ai_model_ep,
+            f"This is a test mode output. {self._model_specific_message(ai_model_ep)}",
+        )
+
+    async def get_dummy_ai_model_response_async(
+        self,
+        ai_model_ep: AIModelEndpoint,
+        streaming: bool = False,
+    ) -> AIModelCallResponse:
+        if streaming:
+            _stream_generator = self.handle_streaming_response_async(
+                self.async_stream_generator(ai_model_ep),
+                model_endpoint=ai_model_ep,
+            )
+            return AIModelCallResponse(async_stream_generator=_stream_generator)
+        return self._create_base_response(
+            ai_model_ep,
+            f"This is a test mode output. {self._model_specific_message(ai_model_ep)}",
+        )
+
+    def get_dummy_usage_and_charge(
+        self,
+        ai_model_ep: AIModelEndpoint,
+    ) -> tuple[ChatResponseUsage | ImageResponseUsage | None, UsageCharge | None]:
+        """Get dummy usage and charge data"""
         usage = None
         usage_charge = None
 
@@ -113,122 +132,178 @@ class DummyAIModelResponseFns:
         return (usage, usage_charge)
 
     # -------------------------------------------------------------------------
-    @staticmethod
+
     def _model_specific_message(
+        self,
         ai_model_ep: AIModelEndpoint,
     ):
         return f"This test message is from Model {ai_model_ep.ai_model.model_name}:{ai_model_ep.ai_model.provider} with API Provider {ai_model_ep.api.provider}"
 
-    # -------------------------------------------------------------------------
-    @staticmethod
-    async def _handle_streaming_response(
-        stream: AsyncGenerator,
-        model_endpoint: AIModelEndpoint,
-    ) -> AsyncGenerator[tuple[StreamingChatResponse | SSEErrorResponse, AIModelCallResponse | None]]:
-        """Handle streaming response with progress tracking and final response"""
-        stream_manager = StreamingManager(
-            model_endpoint=model_endpoint,
+    def _create_dummy_chunk(self, content: str, index: int = 0, finish: bool = False):
+        """Create a dummy chunk for both sync and async streaming"""
+        return type(
+            "DummyChunk",
+            (),
+            {
+                "id": "dummy-stream-id",
+                "object": "chat.completion.chunk",
+                "created": 1738776944,
+                "system_fingerprint": "fp_dummy",
+                "choices": [type("Choice", (), {"index": index, "delta": type("Delta", (), {"content": content}), "finish_reason": "stop" if finish else None})()],
+                "usage": None if not finish else {"total_tokens": 1000, "prompt_tokens": 333, "completion_tokens": 777},
+            },
         )
-        _second_last_chunk = None
-        _last_chunk = None
 
-        try:
-            async for chunk in stream:
-                stream_response: StreamingChatResponse | None = None
-                final_response: AIModelCallResponse | None = None
+    def _get_stream_text(self, ai_model_ep: AIModelEndpoint) -> str:
+        """Get the text to be streamed"""
+        base_text = self._model_specific_message(ai_model_ep)
 
-                # Process usage
-                if chunk.usage:
-                    usage = ChatResponseUsage(
-                        total_tokens=chunk.usage["total_tokens"],
-                        prompt_tokens=chunk.usage["prompt_tokens"],
-                        completion_tokens=chunk.usage["completion_tokens"],
-                    )
-                    stream_manager.update_usage(usage)
+        small_text = f"{base_text}\nOne\n Two\n Three\n Four\n Five\n Six Seven Eight Nine Ten"
+        large_text = f"""{base_text}
 
-                if _second_last_chunk:
-                    _last_chunk = chunk
+Here is a detailed analysis of the topic:
 
-                # Process content
-                if chunk.choices:
-                    choice_deltas = [
-                        ChatResponseChoiceDelta(
-                            index=choice.index,
-                            finish_reason=choice.finish_reason if hasattr(choice, "finish_reason") else None,
-                            content_deltas=[
-                                ChatResponseTextContentItemDelta(
-                                    index=0,
-                                    role="assistant",
-                                    text_delta=choice.delta.content or "xyz",
-                                )
-                            ],
-                            metadata={},
-                        )
-                        for choice in chunk.choices
-                    ]
+1. First Important Point
+   - Key insight A
+   - Supporting detail B
+   - Related concept C
 
-                    response_chunk = stream_manager.update(choice_deltas=choice_deltas)
-                    stream_response = StreamingChatResponse(
-                        id=None,
-                        data=response_chunk,
-                    )
+2. Second Important Point
+   - Technical aspect X
+   - Implementation Y
+   - Best practice Z
 
-                    yield stream_response, final_response
+3. Final Considerations
+   - Future implications
+   - Recommendations
+   - Next steps
 
-            # API has stopped streaming, get final response
-            logger.debug("API has stopped streaming, processsing final response")
-            final_response = stream_manager.get_final_response()
-            yield None, final_response
-            return  # Stop the generator
-        except Exception as e:
-            logger.exception(f"Error during streaming: {e}")
-            error_response = SSEErrorResponse(
-                data=SSEErrorData(
-                    error_code=SSEErrorCode.external_api_error,
-                    message="External API Server Error",
-                    details={"error_type": type(e).__name__},
-                )
+Let me know if you need any clarification!"""  # noqa: F841
+        return small_text
+
+    def _create_streaming_response(self, chunk_deltas: list[ChatResponseChoiceDelta]) -> tuple[StreamingChatResponse | None, AIModelCallResponse | None]:
+        """Process streaming chunks and create appropriate response"""
+        stream_response = None
+
+        if chunk_deltas:
+            response_chunk = self.stream_manager.update(choice_deltas=chunk_deltas)
+            stream_response = StreamingChatResponse(
+                id=None,
+                data=response_chunk,
             )
-            yield error_response, None
 
-    # -------------------------------------------------------------------------
-    @staticmethod
-    async def gen_dummy_stream(
-        ai_model_ep: AIModelEndpoint,
-    ):
-        """Test implementation of AI model streaming response"""
-        small_text = f"One\n Two\n Three\n Four\n Five\n Six Seven Eight Nine Ten"  # noqa: F541, F841
-        large_text = """Here is a detailed analysis of the topic:
+        return stream_response
 
-    1. First Important Point
-       - Key insight A
-       - Supporting detail B
-       - Related concept C
+    def _process_chunk(self, chunk) -> StreamingChatResponse | None:
+        """Process a single chunk for both sync and async streaming"""
+        if chunk.usage:
+            usage = ChatResponseUsage(
+                total_tokens=chunk.usage["total_tokens"],
+                prompt_tokens=chunk.usage["prompt_tokens"],
+                completion_tokens=chunk.usage["completion_tokens"],
+            )
+            self.stream_manager.update_usage(usage)
 
-    2. Second Important Point
-       - Technical aspect X
-       - Implementation Y
-       - Best practice Z
+        if chunk.choices:
+            choice_deltas = [
+                ChatResponseChoiceDelta(
+                    index=choice.index,
+                    finish_reason=choice.finish_reason if hasattr(choice, "finish_reason") else None,
+                    content_deltas=[
+                        ChatResponseTextContentItemDelta(
+                            index=0,
+                            role="assistant",
+                            text_delta=choice.delta.content or "",
+                        )
+                    ],
+                    metadata={},
+                )
+                for choice in chunk.choices
+            ]
+            return self._create_streaming_response(choice_deltas)
+        return None, None
 
-    3. Final Considerations
-       - Future implications
-       - Recommendations
-       - Next steps
+    def sync_stream_generator(self, ai_model_ep: AIModelEndpoint):
+        """Synchronous streaming generator"""
+        import time
 
-    Let me know if you need any clarification!"""  # noqa: F841, RUF100
-
-        class DummyChunk:
-            def __init__(self, content, index=0, finish=False):
-                self.id = "dummy-stream-id"
-                self.object = "chat.completion.chunk"
-                self.created = 1738776944
-                self.system_fingerprint = "fp_dummy"
-                self.choices = [type("Choice", (), {"index": index, "delta": type("Delta", (), {"content": content}), "finish_reason": "stop" if finish else None})()]
-                self.usage = None if not finish else {"total_tokens": 1000, "prompt_tokens": 333, "completion_tokens": 777}
-
-        text = f"{DummyAIModelResponseFns._model_specific_message(ai_model_ep)}\n{large_text}"
+        text = self._get_stream_text(ai_model_ep)
         words = text.split(" ")
+
+        for i, word in enumerate(words):
+            time.sleep(0.04)  # Simulate network delay
+            is_last = i == len(words) - 1
+            yield self._create_dummy_chunk(word + " ", index=0, finish=is_last)
+
+    async def async_stream_generator(self, ai_model_ep: AIModelEndpoint):
+        """Asynchronous streaming generator"""
+        text = self._get_stream_text(ai_model_ep)
+        words = text.split(" ")
+
         for i, word in enumerate(words):
             await asyncio.sleep(0.04)  # Simulate network delay
             is_last = i == len(words) - 1
-            yield DummyChunk(word + " ", index=0, finish=is_last)
+            yield self._create_dummy_chunk(word + " ", index=0, finish=is_last)
+
+    def handle_streaming_response_sync(
+        self,
+        stream_generator,
+        model_endpoint: AIModelEndpoint,
+    ) -> Generator[tuple[StreamingChatResponse | SSEErrorResponse, AIModelCallResponse | None], None, None]:
+        """Handle synchronous streaming response"""
+
+        try:
+            for chunk in stream_generator:
+                stream_response = self._process_chunk(chunk)
+                if stream_response:
+                    yield stream_response, None
+
+            print("AJJ: handle_streaming_response_sync:: GETTIGN final resp")
+            # Final response after stream ends
+            final_response = self.stream_manager.get_final_response()
+            print(f"AJJ: handle_streaming_response_sync:: final_response={final_response}")
+            yield None, final_response
+            return
+
+        except Exception as e:
+            logger.exception(f"Error during streaming: {e}")
+            yield (
+                SSEErrorResponse(
+                    data=SSEErrorData(
+                        error_code=SSEErrorCode.external_api_error,
+                        message="External API Server Error",
+                        details={"error_type": type(e).__name__},
+                    )
+                ),
+                None,
+            )
+
+    async def handle_streaming_response_async(
+        self,
+        stream_generator,
+        model_endpoint: AIModelEndpoint,
+    ) -> AsyncGenerator[tuple[StreamingChatResponse | SSEErrorResponse, AIModelCallResponse | None], None]:
+        """Handle asynchronous streaming response"""
+
+        try:
+            async for chunk in stream_generator:
+                stream_response = self._process_chunk(chunk)
+                if stream_response:
+                    yield stream_response, None
+
+            # Final response after stream ends
+            final_response = self.stream_manager.get_final_response()
+            yield None, final_response
+
+        except Exception as e:
+            logger.exception(f"Error during streaming: {e}")
+            yield (
+                SSEErrorResponse(
+                    data=SSEErrorData(
+                        error_code=SSEErrorCode.external_api_error,
+                        message="External API Server Error",
+                        details={"error_type": type(e).__name__},
+                    )
+                ),
+                None,
+            )

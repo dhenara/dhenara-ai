@@ -44,7 +44,7 @@ class ChatResponseChoiceDelta(BaseModel):
     finish_reason: Any | None = None
     stop_sequence: Any | None = None
     content_deltas: list[ChatResponseContentItemDelta] | None = None
-    metadata: dict | None = None
+    metadata: dict = {}
 
 
 class ChatResponseUsage(BaseModel):

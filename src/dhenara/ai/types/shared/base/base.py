@@ -30,10 +30,12 @@ class BaseModel(PydanticBaseModel):
         populate_by_name=True,
         from_attributes=True,
         protected_namespaces=set(),
+        # Enable detailed validation errors:
+        validate_assignment=True,
         extra="forbid",
         arbitrary_types_allowed=True,
+        # schema etra
         json_schema_extra={"examples": []},
-        # validate_assignment=True,
         str_strip_whitespace=False,  # Don't set: Streaming responses will be terrible
         use_enum_values=True,
     )

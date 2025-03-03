@@ -12,7 +12,7 @@ from dhenara.ai.types.external_api import (
 )
 from dhenara.ai.types.genai import AIModel
 from dhenara.ai.types.shared.file import FileFormatEnum, GenericFile
-from openai import AsyncAzureOpenAI, AsyncOpenAI
+from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, OpenAI
 
 logger = logging.getLogger(__name__)
 
@@ -52,37 +52,59 @@ class OpenAIClientBase(AIModelProviderClientBase):
             return instruction_as_prompt
         return instructions_str
 
-    async def _setup_client_async(self) -> AsyncOpenAI | AsyncAzureOpenAI:
-        """Get the appropriate async OpenAI client based on the provider"""
-        api = self.model_endpoint.api
+    def _get_client_params(self, api) -> tuple[str, dict]:
+        """Common logic for both sync and async clients"""
+        if api.provider == AIModelAPIProviderEnum.OPEN_AI:
+            return "openai", {"api_key": api.api_key}
 
-        if self.model_endpoint.api.provider == AIModelAPIProviderEnum.OPEN_AI:
-            return AsyncOpenAI(api_key=api.api_key)
         elif api.provider == AIModelAPIProviderEnum.MICROSOFT_OPENAI:
             client_params = api.get_provider_credentials()
-
-            return AsyncAzureOpenAI(
-                api_key=client_params["api_key"],
-                azure_endpoint=client_params["azure_endpoint"],
-                api_version=client_params["api_version"],
-            )
+            return "azure_openai", {
+                "api_key": client_params["api_key"],
+                "azure_endpoint": client_params["azure_endpoint"],
+                "api_version": client_params["api_version"],
+            }
 
         elif api.provider == AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
+            client_params = api.get_provider_credentials()
+            return "azure_ai", {
+                "endpoint": client_params["azure_endpoint"],
+                "credential": client_params["api_key"],
+            }
+
+        error_msg = f"Unsupported API provider {api.provider} for OpenAI functions"
+        logger.error(error_msg)
+        raise ValueError(error_msg)
+
+    async def _setup_client_async(self) -> AsyncOpenAI | AsyncAzureOpenAI:
+        """Get the appropriate async OpenAI client"""
+        api = self.model_endpoint.api
+        client_type, params = self._get_client_params(api)
+
+        if client_type == "openai":
+            return AsyncOpenAI(**params)
+        elif client_type == "azure_openai":
+            return AsyncAzureOpenAI(**params)
+        else:  # azure_ai
             from azure.ai.inference.aio import ChatCompletionsClient
             from azure.core.credentials import AzureKeyCredential
 
-            client_params = api.get_provider_credentials()
+            return ChatCompletionsClient(endpoint=params["endpoint"], credential=AzureKeyCredential(key=params["credential"]))
 
-            return ChatCompletionsClient(
-                endpoint=client_params["azure_endpoint"],
-                credential=AzureKeyCredential(
-                    key=client_params["api_key"],
-                ),
-            )
-        else:
-            error_msg = f"Unsupported API provider {api.provider} for OpenAI functions"
-            logger.error(error_msg)
-            raise ValueError(error_msg)
+    def _setup_client_sync(self) -> OpenAI | AzureOpenAI:
+        """Get the appropriate sync OpenAI client"""
+        api = self.model_endpoint.api
+        client_type, params = self._get_client_params(api)
+
+        if client_type == "openai":
+            return OpenAI(**params)
+        elif client_type == "azure_openai":
+            return AzureOpenAI(**params)
+        else:  # azure_ai
+            from azure.ai.inference import ChatCompletionsClient
+            from azure.core.credentials import AzureKeyCredential
+
+            return ChatCompletionsClient(endpoint=params["endpoint"], credential=AzureKeyCredential(key=params["credential"]))
 
     # -------------------------------------------------------------------------
     # Static methods

@@ -68,12 +68,15 @@ class AIModelClient:
     def __enter__(self):
         if self.is_async:
             raise RuntimeError("Use 'async with' for async client")
-        return self._sync_context().__enter__()
+        # Store the context manager instance
+        self._sync_ctx = self._sync_context()
+        return self._sync_ctx.__enter__()
 
     def __exit__(self, *exc):
         if self.is_async:
             raise RuntimeError("Use 'async with' for async client")
-        return self._sync_context().__exit__(*exc)
+        # Use the stored context manager instance
+        return self._sync_ctx.__exit__(*exc)
 
     async def __aenter__(self):
         if not self.is_async:
