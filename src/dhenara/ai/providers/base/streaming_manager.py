@@ -11,6 +11,7 @@ from dhenara.ai.types.genai import (
     ChatResponse,
     ChatResponseChoice,
     ChatResponseChoiceDelta,
+    ChatResponseChunk,
     ChatResponseContentItemType,
     ChatResponseGenericContentItem,
     ChatResponseReasoningContentItem,
@@ -18,9 +19,9 @@ from dhenara.ai.types.genai import (
     ChatResponseToolCallContentItem,
     ChatResponseUsage,
     ImageResponseUsage,
+    StreamingChatResponse,
     UsageCharge,
 )
-from dhenara.ai.types.genai.dhenara import ChatResponseChunk
 from dhenara.ai.types.shared.base import BaseModel
 from django.utils import timezone
 
@@ -128,6 +129,17 @@ class StreamingManager:
             status=api_call_status,
             chat_response=chat_response,
             image_response=None,
+        )
+
+    def get_streaming_done_chunk(self):
+        return StreamingChatResponse(
+            id=None,
+            data=ChatResponseChunk(
+                model=self.model_endpoint.ai_model.model_name,
+                provider=self.model_endpoint.ai_model.provider,
+                api_provider=self.model_endpoint.api.provider,
+                done=True,
+            ),
         )
 
     def get_streaming_usage_and_charge(

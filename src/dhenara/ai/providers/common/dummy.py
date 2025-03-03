@@ -30,8 +30,8 @@ logger = logging.getLogger(__name__)
 
 # -----------------------------------------------------------------------------
 class DummyAIModelResponseFns:
-    def __init__(self, stream_manager: StreamingManager):
-        self.stream_manager = stream_manager
+    def __init__(self, streaming_manager: StreamingManager):
+        self.streaming_manager = streaming_manager
 
     def _create_base_response(self, ai_model_ep: AIModelEndpoint, text: str) -> AIModelCallResponse:
         """Create a base response with common elements"""
@@ -158,8 +158,8 @@ class DummyAIModelResponseFns:
         """Get the text to be streamed"""
         base_text = self._model_specific_message(ai_model_ep)
 
-        small_text = f"{base_text}\nOne\n Two\n Three\n Four\n Five\n Six Seven Eight Nine Ten"
-        large_text = f"""{base_text}
+        small_text = f"One\n Two\n Three\n Four\n Five\n Six Seven Eight Nine Ten"  # noqa: F541, F841
+        large_text = """
 
 Here is a detailed analysis of the topic:
 
@@ -178,15 +178,71 @@ Here is a detailed analysis of the topic:
    - Recommendations
    - Next steps
 
-Let me know if you need any clarification!"""  # noqa: F841
-        return small_text
+Let me know if you need any clarification!"""
+
+        markdown_text = """"
+The issue with newlines being stripped in your code appears to be in how you're handling the incoming text deltas.
+Looking at your logs, the newline characters (\n) are actually present in the `text_delta` values, but they might not be being preserved when you process them.
+
+Here are a few potential solutions:
+
+1. First, ensure your `onTextToken` callback preserves the newlines when displaying or processing the text. For example:
+
+```javascript
+onTextToken: (choice_index, content_index, text) => {
+  // Preserve newlines by using pre-formatted elements if displaying in HTML
+  const formattedText = text.replace(/\n/g, '<br>');
+  // Or if appending to a textarea/console
+  console.log(text); // Don't modify the text at all
+},
+```
+
+2. If you're concatenating the tokens, make sure you're not accidentally stripping newlines:
+
+```javascript
+let fullText = '';
+const processor = new StreamProcessor({
+  onTextToken: (choice_index, content_index, text) => {
+    fullText += text; // Don't modify the text, append as-is
+    // If displaying in HTML
+    element.innerHTML = fullText.replace(/\n/g, '<br>');
+  }
+});
+```
+
+3. You might also want to modify your `parseSSEEvent` method to explicitly preserve newlines:
+
+```javascript
+parseSSEEvent(eventString) {
+  const lines = eventString.split(/\r?\n/);
+  // ... rest of your parsing code ...
+
+  if (data.length) {
+    try {
+      const dataString = data.join('\n'); // Preserve newlines when joining
+      event.data = JSON.parse(dataString);
+    } catch (e) {
+      console.error('Error parsing JSON:', e);
+      return null;
+    }
+  }
+
+  return event;
+}
+```
+
+
+Looking at your log output, there are tokens containing newlines, so the issue is likely in how you're handling these tokens after receiving them rather than in the streaming process itself.
+
+        """  # noqa: F841
+        return f"{base_text}\n\n\n{large_text}"
 
     def _create_streaming_response(self, chunk_deltas: list[ChatResponseChoiceDelta]) -> tuple[StreamingChatResponse | None, AIModelCallResponse | None]:
         """Process streaming chunks and create appropriate response"""
         stream_response = None
 
         if chunk_deltas:
-            response_chunk = self.stream_manager.update(choice_deltas=chunk_deltas)
+            response_chunk = self.streaming_manager.update(choice_deltas=chunk_deltas)
             stream_response = StreamingChatResponse(
                 id=None,
                 data=response_chunk,
@@ -202,7 +258,7 @@ Let me know if you need any clarification!"""  # noqa: F841
                 prompt_tokens=chunk.usage["prompt_tokens"],
                 completion_tokens=chunk.usage["completion_tokens"],
             )
-            self.stream_manager.update_usage(usage)
+            self.streaming_manager.update_usage(usage)
 
         if chunk.choices:
             choice_deltas = [
@@ -258,10 +314,12 @@ Let me know if you need any clarification!"""  # noqa: F841
                 if stream_response:
                     yield stream_response, None
 
-            print("AJJ: handle_streaming_response_sync:: GETTIGN final resp")
+            # API has stopped streaming, send done-chunk and get final response
+            done_chunk = self.streaming_manager.get_streaming_done_chunk()
+            yield done_chunk, None
+
             # Final response after stream ends
-            final_response = self.stream_manager.get_final_response()
-            print(f"AJJ: handle_streaming_response_sync:: final_response={final_response}")
+            final_response = self.streaming_manager.get_final_response()
             yield None, final_response
             return
 
@@ -291,8 +349,12 @@ Let me know if you need any clarification!"""  # noqa: F841
                 if stream_response:
                     yield stream_response, None
 
+            # API has stopped streaming, send done-chunk and get final response
+            done_chunk = self.streaming_manager.get_streaming_done_chunk()
+            yield done_chunk, None
+
             # Final response after stream ends
-            final_response = self.stream_manager.get_final_response()
+            final_response = self.streaming_manager.get_final_response()
             yield None, final_response
 
         except Exception as e:

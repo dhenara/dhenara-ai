@@ -73,9 +73,9 @@ class ChatResponse(BaseModel):
     model: str
     provider: AIModelProviderEnum
     api_provider: AIModelAPIProviderEnum | None = None
-    usage: ChatResponseUsage | None
-    usage_charge: UsageCharge | None
-    choices: list[ChatResponseChoice]
+    usage: ChatResponseUsage | None = None
+    usage_charge: UsageCharge | None = None
+    choices: list[ChatResponseChoice] = []
     metadata: AIModelCallResponseMetaData | dict = {}
 
     def get_visible_fields(self) -> dict:
@@ -91,9 +91,9 @@ class ChatResponseChunk(BaseModel):
     model: str
     provider: AIModelProviderEnum
     api_provider: AIModelAPIProviderEnum | None = None
-    usage: ChatResponseUsage | None
-    usage_charge: UsageCharge | None
-    choice_deltas: list[ChatResponseChoiceDelta]
+    usage: ChatResponseUsage | None = None
+    usage_charge: UsageCharge | None = None
+    choice_deltas: list[ChatResponseChoiceDelta] = []
     metadata: AIModelCallResponseMetaData | dict = {}
 
     done: bool = Field(

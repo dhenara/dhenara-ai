@@ -114,7 +114,7 @@ class AIModelProviderClientBase(ABC):
             from dhenara.ai.providers.common.dummy import DummyAIModelResponseFns
 
             self.streaming_manager = StreamingManager(model_endpoint=self.model_endpoint)
-            dummy_resp = DummyAIModelResponseFns(stream_manager=self.streaming_manager)
+            dummy_resp = DummyAIModelResponseFns(streaming_manager=self.streaming_manager)
 
             return dummy_resp.get_dummy_ai_model_response_sync(
                 ai_model_ep=self.model_endpoint,
@@ -155,7 +155,7 @@ class AIModelProviderClientBase(ABC):
             from dhenara.ai.providers.common.dummy import DummyAIModelResponseFns
 
             self.streaming_manager = StreamingManager(model_endpoint=self.model_endpoint)
-            dummy_resp = DummyAIModelResponseFns(stream_manager=self.streaming_manager)
+            dummy_resp = DummyAIModelResponseFns(streaming_manager=self.streaming_manager)
 
             return await dummy_resp.get_dummy_ai_model_response_async(
                 ai_model_ep=self.model_endpoint,
@@ -270,8 +270,10 @@ class AIModelProviderClientBase(ABC):
                 for pchunk in processed_chunks:
                     yield pchunk, None
 
-            # API has stopped streaming, get final response
-            logger.debug("API has stopped streaming, processsing final response")
+            # API has stopped streaming, send done-chunk and get final response
+            done_chunk = self.streaming_manager.get_streaming_done_chunk()
+            yield done_chunk, None
+
             final_response = self.streaming_manager.complete()
             logger.debug(f"API has stopped streaming, final_response={final_response}")
 
@@ -300,7 +302,10 @@ class AIModelProviderClientBase(ABC):
                 for pchunk in processed_chunks:
                     yield pchunk, None
 
-            # API has stopped streaming, get final response
+            # API has stopped streaming, send done-chunk and get final response
+            done_chunk = self.streaming_manager.get_streaming_done_chunk()
+            yield done_chunk, None
+
             logger.debug("API has stopped streaming, processsing final response")
             final_response = self.streaming_manager.complete()
 
