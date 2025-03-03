@@ -76,21 +76,6 @@ class OpenAIClientBase(AIModelProviderClientBase):
         logger.error(error_msg)
         raise ValueError(error_msg)
 
-    async def _setup_client_async(self) -> AsyncOpenAI | AsyncAzureOpenAI:
-        """Get the appropriate async OpenAI client"""
-        api = self.model_endpoint.api
-        client_type, params = self._get_client_params(api)
-
-        if client_type == "openai":
-            return AsyncOpenAI(**params)
-        elif client_type == "azure_openai":
-            return AsyncAzureOpenAI(**params)
-        else:  # azure_ai
-            from azure.ai.inference.aio import ChatCompletionsClient
-            from azure.core.credentials import AzureKeyCredential
-
-            return ChatCompletionsClient(endpoint=params["endpoint"], credential=AzureKeyCredential(key=params["credential"]))
-
     def _setup_client_sync(self) -> OpenAI | AzureOpenAI:
         """Get the appropriate sync OpenAI client"""
         api = self.model_endpoint.api
@@ -102,6 +87,21 @@ class OpenAIClientBase(AIModelProviderClientBase):
             return AzureOpenAI(**params)
         else:  # azure_ai
             from azure.ai.inference import ChatCompletionsClient
+            from azure.core.credentials import AzureKeyCredential
+
+            return ChatCompletionsClient(endpoint=params["endpoint"], credential=AzureKeyCredential(key=params["credential"]))
+
+    async def _setup_client_async(self) -> AsyncOpenAI | AsyncAzureOpenAI:
+        """Get the appropriate async OpenAI client"""
+        api = self.model_endpoint.api
+        client_type, params = self._get_client_params(api)
+
+        if client_type == "openai":
+            return AsyncOpenAI(**params)
+        elif client_type == "azure_openai":
+            return AsyncAzureOpenAI(**params)
+        else:  # azure_ai
+            from azure.ai.inference.aio import ChatCompletionsClient
             from azure.core.credentials import AzureKeyCredential
 
             return ChatCompletionsClient(endpoint=params["endpoint"], credential=AzureKeyCredential(key=params["credential"]))

@@ -55,6 +55,17 @@ class GoogleAIImage(GoogleAIClientBase):
             "generate_config": generate_config,
         }
 
+    def do_api_call_sync(
+        self,
+        api_call_params: dict,
+    ) -> AIModelCallResponse:
+        response = self._client.models.generate_images(
+            model=self.model_name_in_api_calls,
+            config=api_call_params["generate_config"],
+            prompt=api_call_params["prompt"],
+        )
+        return response
+
     async def do_api_call_async(
         self,
         api_call_params: dict,
@@ -65,6 +76,18 @@ class GoogleAIImage(GoogleAIClientBase):
             prompt=api_call_params["prompt"],
         )
         return response
+
+    def do_streaming_api_call_sync(
+        self,
+        api_call_params,
+    ) -> AIModelCallResponse:
+        raise ValueError("do_streaming_api_call_sync:  Streaming not supported for Image generation")
+
+    async def do_streaming_api_call_async(
+        self,
+        api_call_params,
+    ) -> AIModelCallResponse:
+        raise ValueError("do_streaming_api_call_async:  Streaming not supported for Image generation")
 
     def get_default_generate_config_args(self) -> dict:
         model_options = self.model_endpoint.ai_model.get_options_with_defaults(self.config.options)
@@ -79,12 +102,6 @@ class GoogleAIImage(GoogleAIClientBase):
         }
 
         return config_params
-
-    async def do_streaming_api_call_async(
-        self,
-        api_call_params,
-    ) -> AIModelCallResponse:
-        raise ValueError("do_streaming_api_call_async:  Streaming not supported for Image generation")
 
     def parse_stream_chunk(
         self,

@@ -51,24 +51,34 @@ class GoogleAIClientBase(AIModelProviderClientBase):
                 return instruction_as_prompt
         return instructions_str
 
-    async def _setup_client_async(self) -> genai.Client:
-        """Get the appropriate Google AI client based on the provider"""
-        api = self.model_endpoint.api
-
+    def _get_client_params(self, api) -> tuple[str, dict]:
+        """Common logic for both sync and async clients"""
         if api.provider == AIModelAPIProviderEnum.GOOGLE_AI:
-            return genai.Client(api_key=api.api_key).aio
+            return "google_ai", {"api_key": api.api_key}
         elif api.provider == AIModelAPIProviderEnum.GOOGLE_VERTEX_AI:
             client_params = APIProviderSharedFns.get_vertex_ai_credentials(api)
-            return genai.Client(
-                vertexai=True,
-                credentials=client_params["credentials"],
-                project=client_params["project_id"],
-                location=client_params["location"],
-            ).aio
+            return "vertex_ai", {
+                "vertexai": True,
+                "credentials": client_params["credentials"],
+                "project": client_params["project_id"],
+                "location": client_params["location"],
+            }
         else:
             error_msg = f"Unsupported API provider {api.provider} for Google AI"
             logger.error(error_msg)
             raise ValueError(error_msg)
+
+    def _setup_client_sync(self) -> genai.Client:
+        """Get the appropriate sync Google AI client"""
+        api = self.model_endpoint.api
+        client_type, params = self._get_client_params(api)
+        return genai.Client(**params)
+
+    async def _setup_client_async(self) -> genai.Client:
+        """Get the appropriate async Google AI client"""
+        api = self.model_endpoint.api
+        client_type, params = self._get_client_params(api)
+        return genai.Client(**params).aio
 
     @staticmethod
     def get_prompt(
@@ -108,7 +118,6 @@ class GoogleAIClientBase(AIModelProviderClientBase):
                     }
                 )
             elif file_format in [FileFormatEnum.IMAGE]:
-                # img_as_text = f"\nImage : {file.get_source_file_name()}  Content: {file.get_processed_file_data_content_only()}"
                 mime_type = file.get_mime_type()
                 contents.append(
                     {

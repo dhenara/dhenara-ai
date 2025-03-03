@@ -57,6 +57,17 @@ class OpenAIImage(OpenAIClientBase):
 
         return {"image_args": image_args}
 
+    def do_api_call_sync(
+        self,
+        api_call_params: dict,
+    ) -> AIModelCallResponse:
+        image_args = api_call_params["image_args"]
+        if self.model_endpoint.api.provider != AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
+            response = self._client.images.generate(**image_args)
+        else:
+            response = self._client.complete(**image_args)  # Images on Azure NOT tested
+        return response
+
     async def do_api_call_async(
         self,
         api_call_params: dict,
@@ -67,6 +78,12 @@ class OpenAIImage(OpenAIClientBase):
         else:
             response = await self._client.complete(**image_args)  # Images on Azure NOT tested
         return response
+
+    def do_streaming_api_call_sync(
+        self,
+        api_call_params,
+    ) -> AIModelCallResponse:
+        raise ValueError("do_streaming_api_call_sync:  Streaming not supported for Image generation")
 
     async def do_streaming_api_call_async(
         self,

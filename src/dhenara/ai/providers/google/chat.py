@@ -61,6 +61,18 @@ class GoogleAIChat(GoogleAIClientBase):
             "generate_config": generate_config,
         }
 
+    def do_api_call_sync(
+        self,
+        api_call_params: dict,
+    ) -> AIModelCallResponse:
+        chat = self._client.chats.create(
+            model=self.model_name_in_api_calls,
+            config=api_call_params["generate_config"],
+            history=api_call_params["history"],
+        )
+        response = chat.send_message(message=api_call_params["prompt"])
+        return response
+
     async def do_api_call_async(
         self,
         api_call_params: dict,
@@ -72,6 +84,18 @@ class GoogleAIChat(GoogleAIClientBase):
         )
         response = await chat.send_message(message=api_call_params["prompt"])
         return response
+
+    def do_streaming_api_call_sync(
+        self,
+        api_call_params,
+    ) -> AIModelCallResponse:
+        chat = self._client.chats.create(
+            model=self.model_name_in_api_calls,
+            config=api_call_params["generate_config"],
+            history=api_call_params["history"],
+        )
+        stream = chat.send_message_stream(message=api_call_params["prompt"])
+        return stream
 
     async def do_streaming_api_call_async(
         self,

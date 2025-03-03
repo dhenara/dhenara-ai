@@ -93,6 +93,14 @@ class AnthropicChat(AnthropicClientBase):
 
         return {"chat_args": chat_args}
 
+    def do_api_call_sync(
+        self,
+        api_call_params: dict,
+    ) -> AIModelCallResponse:
+        chat_args = api_call_params["chat_args"]
+        response = self._client.messages.create(**chat_args)
+        return response
+
     async def do_api_call_async(
         self,
         api_call_params: dict,
@@ -100,6 +108,14 @@ class AnthropicChat(AnthropicClientBase):
         chat_args = api_call_params["chat_args"]
         response = await self._client.messages.create(**chat_args)
         return response
+
+    def do_streaming_api_call_sync(
+        self,
+        api_call_params,
+    ) -> AIModelCallResponse:
+        chat_args = api_call_params["chat_args"]
+        stream = self._client.messages.create(**chat_args)
+        return stream
 
     async def do_streaming_api_call_async(
         self,
@@ -159,7 +175,7 @@ class AnthropicChat(AnthropicClientBase):
                     ChatResponseChoiceDelta(
                         index=self.streaming_manager.message_metadata["index"],
                         content_deltas=content_deltas,
-                        metadata=None,
+                        metadata={},
                     )
                 ]
 
@@ -188,7 +204,7 @@ class AnthropicChat(AnthropicClientBase):
                 ChatResponseChoiceDelta(
                     index=self.streaming_manager.message_metadata["index"],
                     content_deltas=content_deltas,
-                    metadata=None,
+                    metadata={},
                 )
             ]
             response_chunk = self.streaming_manager.update(choice_deltas=choice_deltas)
