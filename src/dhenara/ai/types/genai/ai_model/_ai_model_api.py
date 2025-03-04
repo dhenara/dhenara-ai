@@ -1,3 +1,4 @@
+import json
 from typing import Any
 
 from dhenara.ai.types.external_api import AIModelAPIProviderEnum
@@ -57,8 +58,19 @@ class AIModelAPI(BaseModel):
                 value = self.credentials.get(field_config.field_name)
                 if not value:
                     raise ValueError(f"Missing required credential: {field_config.field_name}")
-                if field_config.is_json_field and not isinstance(value, dict):
-                    raise ValueError(field_config.error_msg)
+
+                if field_config.is_json_field:
+                    try:
+                        if isinstance(value, dict):
+                            parsed_value = value
+                        else:
+                            parsed_value = json.loads(value.strip())
+
+                        if not isinstance(parsed_value, dict):
+                            raise ValueError(f"JSON field {field_config.field_name} must be a dictionary")
+
+                    except json.JSONDecodeError as e:
+                        raise ValueError(f"Invalid JSON in {field_config.field_name}: {e}")
 
         # Validate required config fields
         for field_config in provider_config.config_required_fields:
@@ -74,6 +86,26 @@ class AIModelAPI(BaseModel):
         if v is not None and len(v) < 8:
             raise ValueError("API key must be at least 8 characters long")
         return v
+
+    @field_validator("credentials")
+    @classmethod
+    def validate_credentials(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
+        if v is None:
+            return v
+
+        # Create a copy of the dictionary
+        validated = v.copy()
+
+        # Handle JSON fields if needed
+        for key, value in v.items():
+            if isinstance(value, str) and key.endswith("_json"):  # TODO: Use get_credentials_fields_config_with_json from provider config
+                try:
+                    # Remove leading/trailing whitespace and newlines
+                    validated[key] = json.loads(value.strip())
+                except json.JSONDecodeError as e:
+                    raise ValueError(f"Invalid JSON in {key}: {e}")
+
+        return validated
 
     def get_provider_credentials(self) -> dict[str, Any]:
         """Get provider-specific credentials based on output mappings"""

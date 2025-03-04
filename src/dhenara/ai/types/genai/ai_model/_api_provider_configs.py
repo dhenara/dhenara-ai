@@ -59,6 +59,9 @@ class ProviderCredentialsConfig(BaseModel):
         description="Mapping configuration for credential output",
     )
 
+    def get_credentials_fields_config_with_json(self) -> list[CredentialFieldConfig]:
+        return [field_config for field_config in (self.credentials_required_fields + self.credentials_optional_fields) if field_config.is_json_field]
+
 
 PROVIDER_CONFIGS: dict[AIModelAPIProviderEnum, ProviderCredentialsConfig] = {
     AIModelAPIProviderEnum.OPEN_AI: ProviderCredentialsConfig(
