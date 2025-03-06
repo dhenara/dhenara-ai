@@ -356,6 +356,7 @@ Looking at your log output, there are tokens containing newlines, so the issue i
             # Final response after stream ends
             final_response = self.streaming_manager.get_final_response()
             yield None, final_response
+            return
 
         except Exception as e:
             logger.exception(f"Error during streaming: {e}")

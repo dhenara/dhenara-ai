@@ -74,13 +74,15 @@ class AIModelClient:
 
     def __exit__(self, *exc):
         if self.is_async:
-            raise RuntimeError("Use 'async with' for async client")
+            raise RuntimeError(
+                f"This client is created with is_async={self.is_async}. Use 'async with' for async client"
+            )
         # Use the stored context manager instance
         return self._sync_ctx.__exit__(*exc)
 
     async def __aenter__(self):
         if not self.is_async:
-            raise RuntimeError("Use 'with' for sync client")
+            raise RuntimeError(f"This client is created with is_async={self.is_async}. Use 'with' for sync client")
         self._async_ctx = self._async_context()
         return await anext(self._async_ctx.__aiter__())
 
@@ -89,7 +91,7 @@ class AIModelClient:
             raise RuntimeError("Use 'with' for sync client")
         try:
             await self._async_ctx.aclose()
-        except:
+        except:  # noqa: E722
             pass
 
     def _execute_with_retry_sync(self, *args, **kwargs) -> AIModelCallResponse:
@@ -147,22 +149,7 @@ class AIModelClient:
             return await self._provider_client._validate_and_generate_response_async(*args, **kwargs)
 
     # Genereate Response Fns
-    async def generate(
-        self,
-        prompt: dict,
-        context: list[dict] | None = None,
-        instructions: list[str] | None = None,
-    ) -> AIModelCallResponse:
-        """
-        Universal generate method that automatically handles both sync and async calls.
-        In async context, it calls generate_async, in sync context it calls generate_sync.
-        """
-        if self.is_async:
-            return await self.generate_async(prompt, context, instructions)
-        else:
-            return self.generate_sync(prompt, context, instructions)
-
-    def generate_sync(
+    def generate(
         self,
         prompt: dict,
         context: list[dict] | None = None,
@@ -170,7 +157,9 @@ class AIModelClient:
     ) -> AIModelCallResponse:
         """Synchronous generate method"""
         if self.is_async:
-            raise RuntimeError("Use generate_async for async client")
+            raise RuntimeError(
+                f"This client is created with is_async={self.is_async}. Use generate_async for async client"
+            )
 
         with self as client:  # noqa: F841
             return self._execute_with_retry_sync(
@@ -187,7 +176,7 @@ class AIModelClient:
     ) -> AIModelCallResponse:
         """Asynchronous generate method"""
         if not self.is_async:
-            raise RuntimeError("Use generate_sync for sync client")
+            raise RuntimeError(f"This client is created with is_async={self.is_async}. Use generate for sync client")
 
         async with self as client:  # noqa: F841
             return await self._execute_with_retry_async(
@@ -222,9 +211,13 @@ class AIModelClient:
             when you're done making calls.
         """
         if self.is_async:
-            return self.generate_with_existing_connection_async(prompt=prompt, context=context, instructions=instructions)
+            return self.generate_with_existing_connection_async(
+                prompt=prompt, context=context, instructions=instructions
+            )
         else:
-            return self.generate_with_existing_connection_sync(prompt=prompt, context=context, instructions=instructions)
+            return self.generate_with_existing_connection_sync(
+                prompt=prompt, context=context, instructions=instructions
+            )
 
     def generate_with_existing_connection_sync(
         self,

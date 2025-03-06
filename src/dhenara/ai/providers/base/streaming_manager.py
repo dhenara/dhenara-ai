@@ -23,7 +23,6 @@ from dhenara.ai.types.genai import (
     UsageCharge,
 )
 from dhenara.ai.types.shared.base import BaseModel
-from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +60,7 @@ class StreamingManager:
         self.message_metadata = {}  # Anthropic
         self.persistant_choice_metadata_list = []  # OpenAI
 
-        start_time = timezone.now()
+        start_time = datetime_type.now()
         # TODO_FUTURE: Create progress per choices ?
         self.progress = INTStreamingProgress(
             start_time=start_time,
@@ -172,7 +171,7 @@ class StreamingManager:
             self.response_metadata.update(response_metadata)
 
         # Update last token time
-        self.progress.last_token_time = timezone.now()
+        self.progress.last_token_time = datetime_type.now()
 
         if settings.ENABLE_STREAMING_CONSOLIDATION and choice_deltas:
             # Initialize choices list if empty

@@ -13,8 +13,8 @@ class AIModelCallConfig(BaseModel):
     max_output_tokens: int | None = None
     reasoning: bool = False
     max_reasoning_tokens: int | None = None
-    options: dict = None
-    metadata: dict = None
+    options: dict = {}
+    metadata: dict = {}
     timeout: float | None = None
     retries: int = 3
     retry_delay: float = 1.0

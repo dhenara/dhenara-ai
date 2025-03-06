@@ -407,7 +407,10 @@ class AIModelProviderClientBase(ABC):
             validated = prompt
         elif isinstance(prompt, dict):
             validated = self.prompt_message_class(**prompt)
-        elif isinstance(prompt, str) and self.model_endpoint.ai_model.functional_type == AIModelFunctionalTypeEnum.IMAGE_GENERATION:
+        elif (
+            isinstance(prompt, str)
+            and self.model_endpoint.ai_model.functional_type == AIModelFunctionalTypeEnum.IMAGE_GENERATION
+        ):
             validated = prompt
             return prompt
         else:
@@ -417,8 +420,7 @@ class AIModelProviderClientBase(ABC):
 
     def validate_options(self) -> bool:
         """Validate configuration options"""
-        model_options = self.config.options
-        return self.model_endpoint.ai_model.validate_options(model_options)
+        return self.model_endpoint.ai_model.validate_options(self.config.options)
 
     # -------------------------------------------------------------------------
     # For Usage and cost
@@ -500,7 +502,7 @@ class AIModelProviderClientBase(ABC):
         logger.debug(f"process_content_item_delta: Unknown content item type {type(unknown_item)}")
         try:
             data = unknown_item.model_dump()
-        except:
+        except:  # noqa: E722
             data = None
 
         item_dict = {
@@ -510,4 +512,8 @@ class AIModelProviderClientBase(ABC):
                 "data": data,
             },
         }
-        return ChatResponseGenericContentItemDelta(**item_dict) if streaming else ChatResponseGenericContentItem(**item_dict)
+        return (
+            ChatResponseGenericContentItemDelta(**item_dict)
+            if streaming
+            else ChatResponseGenericContentItem(**item_dict)
+        )

@@ -6,21 +6,23 @@ long_description = (this_directory / "README.md").read_text()
 
 setup(
     name="dhenara",
-    version="1.0.0",
+    version="1.0.0.dev2",
     package_dir={"": "src"},
     packages=find_namespace_packages(where="src", include=["dhenara.*"]),
     install_requires=[
-        "httpx>=0.24.0",
-        "requests>=2.25.1",
-        "asgiref",
-        "cryptography",
-        "aiohttp",  # For async HTTP requests
-        "pydantic>=2.0.0",
-        # AI Models
-        "openai",
-        "google-genai",
-        "anthropic",
-        # Cloud dependecies are extra
+        "httpx>=0.28.0",
+        "requests>=2.32.1",
+        "asgiref>=3.8.0",
+        "cryptography>=44.0.0",
+        "aiohttp>=3.11.0",
+        "pydantic>=2.10.0",
+        "openai>=1.65.0",
+        "google-genai>=1.4.0",
+        "anthropic>=0.49.0",
+        # Cloud dependecies in extra
+        "azure-ai-inference>=1.0.0b9",
+        "boto3>=1.37.7",  # AWS
+        "botocore>=1.37.7",  # AWS
     ],
     extras_require={
         "dev": [
@@ -31,13 +33,14 @@ setup(
             "ruff",
             "add-trailing-comma",
         ],
-        "azure": [
-            "azure-ai-inference",
-        ],
-        "aws": [
-            "boto3",
-            "botocore",
-        ],
+        # TODO_FUTURE
+        # "azure": [
+        #    "azure-ai-inference>=1.0.0",
+        # ],
+        # "aws": [
+        #    "boto3>=1.37.7",
+        #    "botocore>=1.37.7",
+        # ],
     },
     python_requires=">=3.10",
     description="Dhenara Package for Multi Provider AI-Model API calls",
@@ -55,7 +58,7 @@ setup(
         "Source Code": "https://github.com/dhenara/dhenara",
     },
     classifiers=[
-        "Development Status :: 5 - Production/Stable",
+        "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.10",
