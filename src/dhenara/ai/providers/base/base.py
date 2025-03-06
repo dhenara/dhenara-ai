@@ -390,7 +390,7 @@ class AIModelProviderClientBase(ABC):
             validated_context = [self._validate_prompt(pmt) for pmt in context]
 
             if not self.validate_options():
-                logger.debug("validate_inputs: ERROR: validate_options failed")
+                logger.error("validate_inputs: ERROR: validate_options failed")
                 return None
 
             self._input_validation_pending = False
@@ -414,7 +414,7 @@ class AIModelProviderClientBase(ABC):
             validated = prompt
             return prompt
         else:
-            raise ValueError(f"Prompt type {type(prompt)} not valid")
+            raise ValueError(f"Prompt type {type(prompt)} not valid. prompt={prompt} ")
 
         return validated.model_dump()
 

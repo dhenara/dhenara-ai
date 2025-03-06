@@ -94,7 +94,11 @@ class StreamProcesor:
                 continue
 
             for content_delta in choice_delta.content_deltas:
-                same_content = self.previous_content_delta and self.previous_content_delta.index == content_delta.index and self.previous_content_delta.type == content_delta.type
+                same_content = (
+                    self.previous_content_delta
+                    and self.previous_content_delta.index == content_delta.index
+                    and self.previous_content_delta.type == content_delta.type
+                )
                 if not same_content:
                     self.previous_content_delta = content_delta
                     print()

@@ -39,18 +39,22 @@ class OpenAIImage(OpenAIClientBase):
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
 
         if self._input_validation_pending:
-            raise ValueError("Inputs must be validated before API calls")
+            raise ValueError("inputs must be validated with `self.validate_inputs()` before api calls")
 
         instructions_str = " ".join(instructions)
         prompt_text = f"{instructions_str} {context} {prompt}"
         model_options = self.model_endpoint.ai_model.get_options_with_defaults(self.config.options)
+        user = self.config.get_user()
 
         image_args: dict[str, Any] = {
             "model": self.model_name_in_api_calls,
             "prompt": prompt_text,
-            "user": self.config.get_user(),
             **model_options,
         }
+
+        if user:
+            if self.model_endpoint.api.provider != AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
+                image_args["user"] = user
 
         # Store additional params
         self.response_format = model_options["response_format"]  # Special case
@@ -66,6 +70,7 @@ class OpenAIImage(OpenAIClientBase):
             response = self._client.images.generate(**image_args)
         else:
             response = self._client.complete(**image_args)  # Images on Azure NOT tested
+
         return response
 
     async def do_api_call_async(

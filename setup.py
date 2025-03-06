@@ -6,7 +6,7 @@ long_description = (this_directory / "README.md").read_text()
 
 setup(
     name="dhenara",
-    version="1.0.0.dev2",
+    version="1.0.0",
     package_dir={"": "src"},
     packages=find_namespace_packages(where="src", include=["dhenara.*"]),
     install_requires=[

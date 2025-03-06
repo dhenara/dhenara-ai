@@ -84,7 +84,12 @@ class PromptFormatter:
         config = PromptFormatter.PROVIDER_CONFIG[model.provider]
         formatter = config["formatter"]
 
-        if (attached_files and not isinstance(attached_files, list)) or not all(isinstance(f, GenericFile) for f in attached_files):
+        if attached_files is None:
+            attached_files = []
+
+        if (attached_files and not isinstance(attached_files, list)) or not all(
+            isinstance(f, GenericFile) for f in attached_files
+        ):
             raise ValueError(f"Invalid type {type(attached_files)} for attached files. Should be list of GenericFile")
 
         if previous_response:
@@ -96,7 +101,9 @@ class PromptFormatter:
                 elif isinstance(previous_response, (ChatResponse, ImageResponse)):
                     choices = previous_response.choices
                 else:
-                    raise ValueError(f"format_as_prompts: previous_response type {type(previous_response)} not supported")
+                    raise ValueError(
+                        f"format_as_prompts: previous_response type {type(previous_response)} not supported"
+                    )
 
                 _previous_content_items = [content_item for choice in choices for content_item in choice.contents]
 
@@ -105,10 +112,17 @@ class PromptFormatter:
                 # TODO: Add docs
                 if concat_previous_response_content_items:
                     response_text = None
-                    _previous_response_text = " ".join([f"type:{content_item.type}, content: {content_item.get_text()}" for content_item in _previous_content_items])
+                    _previous_response_text = " ".join(
+                        [
+                            f"type:{content_item.type}, content: {content_item.get_text()}"
+                            for content_item in _previous_content_items
+                        ]
+                    )
 
                     if _previous_response_text:
-                        response_text = PromptFormatter._truncate_text_by_words(_previous_response_text, max_words_response)
+                        response_text = PromptFormatter._truncate_text_by_words(
+                            _previous_response_text, max_words_response
+                        )
                     # Format previous response if present
                     if response_text:
                         response_message = formatter.get_prompt(

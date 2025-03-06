@@ -1,9 +1,12 @@
+import logging
 from typing import Any
 
 from dhenara.ai.types.external_api._providers import AIModelFunctionalTypeEnum, AIModelProviderEnum
 from dhenara.ai.types.genai.dhenara import ChatResponseUsage, ImageResponseUsage, UsageCharge
 from dhenara.ai.types.shared.base import BaseModel
 from pydantic import Field, model_validator
+
+logger = logging.getLogger(__name__)
 
 
 class ValidOptionValue(BaseModel):
@@ -54,7 +57,10 @@ class BaseCostData(BaseModel):
 
     def get_charge(self, cost: float):
         if self.cost_multiplier_percentage:
-            charge = round(cost * (1 + (self.cost_multiplier_percentage / 100)), 6)
+            charge = round(
+                cost * (1 + (self.cost_multiplier_percentage / 100)),
+                6,
+            )
         else:
             charge = None
         return UsageCharge(cost=cost, charge=charge)
@@ -78,7 +84,10 @@ class ChatModelCostData(BaseCostData):
             input_per_token_cost = self.input_token_cost_per_million / 1000000
             output_per_token_cost = self.output_token_cost_per_million / 1000000
 
-            cost = round(usage.prompt_tokens * input_per_token_cost + usage.completion_tokens * output_per_token_cost, 6)
+            cost = round(
+                usage.prompt_tokens * input_per_token_cost + usage.completion_tokens * output_per_token_cost,
+                6,
+            )
 
             return self.get_charge(cost)
         except Exception as e:
@@ -150,7 +159,9 @@ class ImageModelCostData(BaseCostData):
             if matches:
                 return cost_data["cost_per_image"]
 
-        raise ValueError(f"get_image_cost_with_options: Failed to get price. used_options={used_options}, image_options_cost_data={self.image_options_cost_data})")
+        raise ValueError(
+            f"get_image_cost_with_options: Failed to get price. used_options={used_options}, image_options_cost_data={self.image_options_cost_data})"
+        )
 
 
 class ChatModelSettings(BaseModel):
@@ -201,8 +212,14 @@ class ChatModelSettings(BaseModel):
             values_to_update["max_input_tokens"] = context_tokens - output_tokens
 
         if self.supports_reasoning:
-            if self.max_reasoning_tokens and self.max_output_tokens_reasoning_mode and self.max_reasoning_tokens > self.max_output_tokens_reasoning_mode:
-                raise ValueError("set_token_limits: max_reasoning_tokens must be less than max_output_tokens_reasoning_mode")
+            if (
+                self.max_reasoning_tokens
+                and self.max_output_tokens_reasoning_mode
+                and self.max_reasoning_tokens > self.max_output_tokens_reasoning_mode
+            ):
+                raise ValueError(
+                    "set_token_limits: max_reasoning_tokens must be less than max_output_tokens_reasoning_mode"
+                )
 
         # Update the model's dict directly
         for key, value in values_to_update.items():
@@ -359,7 +376,8 @@ class BaseAIModel(BaseModel):
         try:
             self._validate_options_strict(options)
             return True
-        except ValueError:
+        except ValueError as e:
+            logger.error(f"validate_options Fails: {e}")
             return False
 
     def _validate_options_strict(self, options: dict[str, Any]) -> None:

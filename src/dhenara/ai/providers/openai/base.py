@@ -42,7 +42,9 @@ class OpenAIClientBase(AIModelProviderClientBase):
                 instructions_str = str(instructions)
 
             # Beta models won't support system role
-            system_role = OpenAiMessageRoleEnum.USER if self.model_endpoint.ai_model.beta else OpenAiMessageRoleEnum.SYSTEM
+            system_role = (
+                OpenAiMessageRoleEnum.USER if self.model_endpoint.ai_model.beta else OpenAiMessageRoleEnum.SYSTEM
+            )
             instruction_as_prompt = self.get_prompt(
                 model=self.model_endpoint.ai_model,
                 role=system_role,
@@ -89,7 +91,10 @@ class OpenAIClientBase(AIModelProviderClientBase):
             from azure.ai.inference import ChatCompletionsClient
             from azure.core.credentials import AzureKeyCredential
 
-            return ChatCompletionsClient(endpoint=params["endpoint"], credential=AzureKeyCredential(key=params["credential"]))
+            return ChatCompletionsClient(
+                endpoint=params["endpoint"],
+                credential=AzureKeyCredential(key=params["credential"]),
+            )
 
     async def _setup_client_async(self) -> AsyncOpenAI | AsyncAzureOpenAI:
         """Get the appropriate async OpenAI client"""
@@ -104,7 +109,10 @@ class OpenAIClientBase(AIModelProviderClientBase):
             from azure.ai.inference.aio import ChatCompletionsClient
             from azure.core.credentials import AzureKeyCredential
 
-            return ChatCompletionsClient(endpoint=params["endpoint"], credential=AzureKeyCredential(key=params["credential"]))
+            return ChatCompletionsClient(
+                endpoint=params["endpoint"],
+                credential=AzureKeyCredential(key=params["credential"]),
+            )
 
     # -------------------------------------------------------------------------
     # Static methods
