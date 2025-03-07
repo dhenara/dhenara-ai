@@ -1,12 +1,25 @@
 from setuptools import find_namespace_packages, setup
 from pathlib import Path
 
+import os
+import re
+
+version = None
+# Read version without importing the package
+with open(os.path.join("src/dhenara/ai", "__init__.py"), "r") as f:
+    version_match = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]", f.read(), re.M)
+    if version_match:
+        version = version_match.group(1)
+    else:
+        raise RuntimeError("Unable to find version string")
+
+
 this_directory = Path(__file__).parent
 long_description = (this_directory / "README.md").read_text()
 
 setup(
     name="dhenara",
-    version="1.0.0",
+    version=version,
     package_dir={"": "src"},
     packages=find_namespace_packages(where="src", include=["dhenara.*"]),
     install_requires=[
