@@ -48,7 +48,8 @@ class AIModelCallConfig(BaseModel):
             _reasoning_capable = True
 
         if not _settings_max_output_tokens:
-            raise ValueError(f"Invalid call-config. {'max_output_tokens_reasoning_mode' if _reasoning_capable else 'max_output_tokens'} is not set in model {model.model_name}.")
+            token_type = "max_output_tokens_reasoning_mode" if _reasoning_capable else "max_output_tokens"
+            raise ValueError(f"Invalid call-config. {token_type} is not set in model {model.model_name}.")
 
         # Set max output tokens
         max_output_tokens = min(

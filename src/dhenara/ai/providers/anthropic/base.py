@@ -127,7 +127,10 @@ class AnthropicClientBase(AIModelProviderClientBase):
             file_format = file.get_file_format()
             try:
                 if file_format in [FileFormatEnum.COMPRESSED, FileFormatEnum.TEXT]:
-                    text = f"\nFile: {file.get_source_file_name()}  Content: {file.get_processed_file_data(max_words=max_words)}"
+                    text = (
+                        f"\nFile: {file.get_source_file_name()}  "
+                        f"Content: {file.get_processed_file_data(max_words=max_words)}"
+                    )
                     contents.append(
                         {
                             "type": "text",

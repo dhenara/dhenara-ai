@@ -36,11 +36,17 @@ class BaseResponseContentItem(BaseModel):
     )
     storage_metadata: dict = Field(
         default_factory=dict,
-        description="User-defined storage-related metadata such as cloud storage details, paths, or references. Will be empty on output from `dhenara-ai` package.",
+        description=(
+            "User-defined storage-related metadata such as cloud storage details, paths, or references. "
+            "Will be empty on output from `dhenara-ai` package."
+        ),
     )
     custom_metadata: dict = Field(
         default_factory=dict,
-        description="User-defined additional metadata for custom processing or tracking. Will be empty on output from `dhenara-ai` package",
+        description=(
+            "User-defined additional metadata for custom processing or tracking."
+            "Will be empty on output from `dhenara-ai` package"
+        ),
     )
 
 
@@ -235,7 +241,10 @@ class ImageResponseContentItem(BaseResponseContentItem):
         elif self.content_format == ImageContentFormat.BASE64:
             byte_content = base64.b64decode(self.content_b64_json)
         else:
-            raise ValueError(f"get_content_as_bytes: Content format {self.content_format} not supported. Only byte and b64_json is supported now")
+            raise ValueError(
+                f"get_content_as_bytes: Content format {self.content_format} not supported."
+                "Only byte and b64_json is supported now"
+            )
 
         return byte_content
 
@@ -247,5 +256,6 @@ class UsageCharge(BaseModel):
     )
     charge: float | None = Field(
         ...,
-        description="Charge after considering internal expences and margins. Will be  None if  `cost_multiplier_percentage` is not set in cost data.",
+        description="Charge after considering internal expences and margins."
+        " Will be  None if  `cost_multiplier_percentage` is not set in cost data.",
     )

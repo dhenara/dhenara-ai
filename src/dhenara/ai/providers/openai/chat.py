@@ -259,7 +259,10 @@ class OpenAIChat(OpenAIClientBase):
                     "id": response.id,
                     "created": str(response.created),  # Microsoft sdk returns datetim obj
                     "object": response.object if hasattr(response, "object") else None,
-                    "system_fingerprint": response.system_fingerprint if hasattr(response, "system_fingerprint") else None,  # TODO: Move to choice
+                    # TODO: Move to choice
+                    "system_fingerprint": response.system_fingerprint
+                    if hasattr(response, "system_fingerprint")
+                    else None,
                 },
             ),
         )
@@ -399,7 +402,9 @@ class OpenAIChat(OpenAIClientBase):
                 # Therefore, dont't send a `ChatResponseGenericContentItemDelta`  here,
                 # asit will messup streaming manager content updation
 
-                part = delta.model_dump() if hasattr(delta, "model_dump") else str(delta)  # Microsoft API model won't work with model_dump
+                # Microsoft API model won't work with model_dump
+                part = delta.model_dump() if hasattr(delta, "model_dump") else str(delta)
+
                 return ChatResponseGenericContentItemDelta(
                     index=index,
                     role=role,

@@ -219,7 +219,9 @@ class AnthropicChat(AnthropicClientBase):
         elif isinstance(chunk, RawMessageDeltaEvent):
             # Update output tokens
             self.streaming_manager.usage.completion_tokens += chunk.usage.output_tokens
-            self.streaming_manager.usage.total_tokens = self.streaming_manager.usage.prompt_tokens + self.streaming_manager.usage.completion_tokens
+            self.streaming_manager.usage.total_tokens = (
+                self.streaming_manager.usage.prompt_tokens + self.streaming_manager.usage.completion_tokens
+            )
 
             # Update choice metatdata
             choice_deltas = [
@@ -273,7 +275,7 @@ class AnthropicChat(AnthropicClientBase):
                     stop_sequence=response.stop_sequence,
                     contents=[
                         self.process_content_item(
-                            index=content_index,  # For non-streaming response, Anthropic APIs doesn't provide index, so enumerate
+                            index=content_index,  # enumerate as Anthropic APIs doesn't provide index for non-streaming
                             role=response.role,
                             content_item=content_item,
                         )

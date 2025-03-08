@@ -33,7 +33,10 @@ class ValidOptionValue(BaseModel):
     )
     display_only: bool = Field(
         default=False,
-        description="Whether this option is only for display purpose. When set, this won't be send in API calls. Useful for deriving additional options",
+        description=(
+            "Whether this option is only for display purpose."
+            "When set, this won't be send in API calls. Useful for deriving additional options"
+        ),
     )
 
     @model_validator(mode="after")
@@ -51,7 +54,10 @@ class BaseCostData(BaseModel):
     # without proper overrides of standard foundation models in the package
     cost_multiplier_percentage: float | None = Field(
         default=None,
-        description="Cost multiplication percentage f any. Use this field to offset orgianl cost you paid to API provider with your additional expences/margin",
+        description=(
+            "Cost multiplication percentage f any."
+            "Use this field to offset orgianl cost you paid to API provider with your additional expences/margin"
+        ),
     )
 
     def calculate_usage_charge(self, usage) -> UsageCharge:
@@ -161,7 +167,10 @@ class ImageModelCostData(BaseCostData):
             if matches:
                 return cost_data["cost_per_image"]
 
-        raise ValueError(f"get_image_cost_with_options: Failed to get price. used_options={used_options}, image_options_cost_data={self.image_options_cost_data})")
+        raise ValueError(
+            f"get_image_cost_with_options: Failed to get price. "
+            f"used_options={used_options}, image_options_cost_data={self.image_options_cost_data})"
+        )
 
 
 class ChatModelSettings(BaseModel):

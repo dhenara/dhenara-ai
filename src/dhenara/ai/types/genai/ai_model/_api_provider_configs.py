@@ -61,7 +61,8 @@ class ProviderCredentialsConfig(BaseModel):
     )
 
     def get_credentials_fields_config_with_json(self) -> list[CredentialFieldConfig]:
-        return [field_config for field_config in (self.credentials_required_fields + self.credentials_optional_fields) if field_config.is_json_field]
+        all_credentials = self.credentials_required_fields + self.credentials_optional_fields
+        return [field_config for field_config in all_credentials if field_config.is_json_field]
 
 
 PROVIDER_CONFIGS: dict[AIModelAPIProviderEnum, ProviderCredentialsConfig] = {

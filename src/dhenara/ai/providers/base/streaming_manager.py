@@ -109,7 +109,10 @@ class StreamingManager:
                     status=ExternalApiCallStatusEnum.INTERNAL_PROCESSING_ERROR,
                     model=self.model_endpoint.ai_model.model_name,
                     api_provider=self.model_endpoint.api.provider,
-                    message=f"Model {self.model_endpoint.ai_model.model_name} not supported for streaming. Only Chat models are supported.",
+                    message=(
+                        f"Model {self.model_endpoint.ai_model.model_name} not supported for streaming. "
+                        "Only Chat models are supported."
+                    ),
                     code="error",
                     http_status_code=400,
                 ),
@@ -282,7 +285,10 @@ class StreamingManager:
                             if delta_text:
                                 matching_content.thinking_text = (matching_content.thinking_text or "") + delta_text
 
-                        elif content_delta.type in (ChatResponseContentItemType.TOOL_CALL, ChatResponseContentItemType.GENERIC):
+                        elif content_delta.type in (
+                            ChatResponseContentItemType.TOOL_CALL,
+                            ChatResponseContentItemType.GENERIC,
+                        ):
                             # Update metadata for tool calls and generic content
                             matching_content.metadata.update(content_delta.metadata)
 

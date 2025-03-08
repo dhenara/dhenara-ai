@@ -137,7 +137,10 @@ class DummyAIModelResponseFns:
         self,
         ai_model_ep: AIModelEndpoint,
     ):
-        return f"This test message is from Model {ai_model_ep.ai_model.model_name}:{ai_model_ep.ai_model.provider} with API Provider {ai_model_ep.api.provider}"
+        return (
+            f"This test message is from Model {ai_model_ep.ai_model.model_name}:"
+            f"{ai_model_ep.ai_model.provider} with API Provider {ai_model_ep.api.provider}"
+        )
 
     def _create_dummy_chunk(self, content: str, index: int = 0, finish: bool = False):
         """Create a dummy chunk for both sync and async streaming"""
@@ -192,7 +195,7 @@ Let me know if you need any clarification!"""
 
         markdown_text = """"
 The issue with newlines being stripped in your code appears to be in how you're handling the incoming text deltas.
-Looking at your logs, the newline characters (\n) are actually present in the `text_delta` values, but they might not be being preserved when you process them.
+Looking at your logs, the newline characters (\n) are actually present in the `text_delta` values.
 
 Here are a few potential solutions:
 
@@ -242,12 +245,15 @@ parseSSEEvent(eventString) {
 ```
 
 
-Looking at your log output, there are tokens containing newlines, so the issue is likely in how you're handling these tokens after receiving them rather than in the streaming process itself.
+Looking at your log output, there are tokens containing newlines,
+so the issue is likely in how you're handling these tokens after receiving them rather than in the streaming process.
 
         """  # noqa: F841
         return f"{base_text}\n\n\n{large_text}"
 
-    def _create_streaming_response(self, chunk_deltas: list[ChatResponseChoiceDelta]) -> tuple[StreamingChatResponse | None, AIModelCallResponse | None]:
+    def _create_streaming_response(
+        self, chunk_deltas: list[ChatResponseChoiceDelta]
+    ) -> tuple[StreamingChatResponse | None, AIModelCallResponse | None]:
         """Process streaming chunks and create appropriate response"""
         stream_response = None
 

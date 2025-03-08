@@ -38,5 +38,8 @@ class APIProviderSharedFns:
             }
             return final_client_params
         else:
-            logger.error(f"get_vertex_ai_client_params should only be called for api with provider vertext ai.  provider={api.provider}")
+            logger.error(
+                f"get_vertex_ai_client_params should only be called for api with provider vertext ai. "
+                f"provider={api.provider}"
+            )
             return {}

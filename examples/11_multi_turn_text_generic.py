@@ -62,8 +62,6 @@ def handle_conversation_turn(
 ) -> ConversationNode:
     """Process a single conversation turn with the specified model and query."""
 
-    print(f"🔄 Turn with {endpoint.ai_model.model_name} from {endpoint.api.provider}\n")
-
     client = AIModelClient(
         model_endpoint=endpoint,
         config=AIModelCallConfig(
@@ -125,6 +123,8 @@ def run_multi_turn_conversation():
         model_endpoint = random.choice(all_model_endpoints)
         # OR choose if fixed order as
         # model_endpoint = all_model_endpoints[i]
+
+        print(f"🔄 Turn {i + 1} with {model_endpoint.ai_model.model_name} from {model_endpoint.api.provider}\n")
 
         node = handle_conversation_turn(
             user_query=query,

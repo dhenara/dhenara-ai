@@ -99,7 +99,7 @@ class AIModelAPI(BaseModel):
 
         # Handle JSON fields if needed
         for key, value in v.items():
-            if isinstance(value, str) and key.endswith("_json"):  # TODO: Use get_credentials_fields_config_with_json from provider config
+            if isinstance(value, str) and key.endswith("_json"):  # TODO: Use get_credentials_fields_config_with_json()
                 try:
                     # Remove leading/trailing whitespace and newlines
                     validated[key] = json.loads(value.strip())
@@ -208,7 +208,9 @@ class AIModelAPI(BaseModel):
         if self.api_key:
             masked["api_key"] = f"{self.api_key[:4]}...{self.api_key[-4:]}"
         if self.credentials:
-            masked["credentials"] = {k: f"{str(v)[:4]}...{str(v)[-4:]}" if v else None for k, v in self.credentials.items()}
+            masked["credentials"] = {
+                k: f"{str(v)[:4]}...{str(v)[-4:]}" if v else None for k, v in self.credentials.items()
+            }
         if self.config:
             masked["config"] = self.config
         return masked

@@ -79,7 +79,7 @@ Gemini15Flash = FoundationModel(
     ),
     valid_options={},
     metadata={
-        "details": "GoogleAI gemini-1.5-flash model, Optimized for Fast and versatile performance across a diverse variety of tasks",
+        "details": "GoogleAI gemini-1.5-flash model",
         "display_order": 92,
     },
     order=20,
