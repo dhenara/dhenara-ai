@@ -18,7 +18,7 @@ from dhenara.ai.types.genai import (
     StreamingChatResponse,
 )
 from dhenara.ai.types.shared.api import SSEErrorResponse
-from google.genai.types import GenerateContentConfig, GenerateContentResponse, Part, SafetySetting
+from google.genai.types import Content, GenerateContentConfig, GenerateContentResponse, Part, SafetySetting
 
 logger = logging.getLogger(__name__)
 
@@ -52,12 +52,23 @@ class GoogleAIChat(GoogleAIClientBase):
                 context.insert(0, instructions_str)
             else:
                 context = [instructions_str]
-        elif instructions_str and not any(self.model_endpoint.ai_model.model_name.startswith(model) for model in ["gemini-1.0-pro"]):
+        elif instructions_str and not any(
+            self.model_endpoint.ai_model.model_name.startswith(model) for model in ["gemini-1.0-pro"]
+        ):
             generate_config.system_instruction = instructions_str
+
+        history = []
+        if context:
+            for item in context:
+                if isinstance(item, dict):
+                    parts = [{"text": p["text"]} for p in item["parts"]] if "parts" in item else []
+                    history.append(Content(role=item["role"], parts=parts))
+                else:
+                    history.append(item)
 
         return {
             "prompt": prompt,
-            "history": context or [],
+            "history": history,
             "generate_config": generate_config,
         }
 

@@ -2,7 +2,6 @@ import base64
 import io
 from PIL import Image  # NOTE: You need to install 'Pillow' # pip install Pillow
 from dhenara.ai import AIModelClient
-from dhenara.ai.providers.common.prompt_formatter import PromptFormatter
 from dhenara.ai.types import AIModelCallConfig, AIModelEndpoint
 from dhenara.ai.types.external_api import AIModelAPIProviderEnum
 from dhenara.ai.types.genai import AIModelAPI, ImageContentFormat
@@ -37,15 +36,6 @@ client = AIModelClient(
 
 
 user_query = "Elephant amigurumi walking in savanna, a professional photograph, blurry background"
-
-# prompt_as_list = PromptFormatter.format_conversion_node_as_prompts(
-#    model=model_endpoint.ai_model,
-#    user_query=user_query,
-#    attached_files=None,
-#    previous_response=None,
-# )
-# prompt = prompt_as_list[0]
-
 
 response = client.generate(
     prompt=user_query,

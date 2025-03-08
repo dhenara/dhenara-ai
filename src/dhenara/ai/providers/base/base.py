@@ -104,11 +104,15 @@ class AIModelProviderClientBase(ABC):
         parsed_response: ChatResponse | None = None
         api_call_status: ExternalApiCallStatus | None = None
 
+        logger.debug(f"generate_response: prompt={prompt}, context={context}")
+
         api_call_params = self.get_api_call_params(
             prompt=prompt,
             context=context,
             instructions=instructions,
         )
+
+        logger.debug(f"generate_response: api_call_params: {api_call_params}")
 
         if self.config.test_mode:
             from dhenara.ai.providers.common.dummy import DummyAIModelResponseFns
@@ -145,11 +149,15 @@ class AIModelProviderClientBase(ABC):
         parsed_response: ChatResponse | None = None
         api_call_status: ExternalApiCallStatus | None = None
 
+        logger.debug(f"generate_response: prompt={prompt}, context={context}")
+
         api_call_params = self.get_api_call_params(
             prompt=prompt,
             context=context,
             instructions=instructions,
         )
+
+        logger.debug(f"generate_response: api_call_params: {api_call_params}")
 
         if self.config.test_mode:
             from dhenara.ai.providers.common.dummy import DummyAIModelResponseFns
