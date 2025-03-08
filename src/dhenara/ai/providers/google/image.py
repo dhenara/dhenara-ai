@@ -1,5 +1,7 @@
 import logging
 
+from google.genai.types import GenerateImagesConfig, GenerateImagesResponse
+
 from dhenara.ai.providers.google import GoogleAIClientBase
 from dhenara.ai.types.external_api import SystemInstructions
 from dhenara.ai.types.genai import (
@@ -10,7 +12,6 @@ from dhenara.ai.types.genai import (
     ImageResponseContentItem,
     ImageResponseUsage,
 )
-from google.genai.types import GenerateImagesConfig, GenerateImagesResponse
 
 logger = logging.getLogger(__name__)
 

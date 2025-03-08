@@ -1,5 +1,7 @@
 import logging
 
+from google.genai.types import Content, GenerateContentConfig, GenerateContentResponse, Part, SafetySetting
+
 # Copyright 2024-2025 Dhenara Inc. All rights reserved.
 from dhenara.ai.providers.google import GoogleAIClientBase
 from dhenara.ai.types.genai import (
@@ -18,7 +20,6 @@ from dhenara.ai.types.genai import (
     StreamingChatResponse,
 )
 from dhenara.ai.types.shared.api import SSEErrorResponse
-from google.genai.types import Content, GenerateContentConfig, GenerateContentResponse, Part, SafetySetting
 
 logger = logging.getLogger(__name__)
 

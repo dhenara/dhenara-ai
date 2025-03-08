@@ -1,6 +1,8 @@
 import logging
 from typing import Any
 
+from openai.types import ImagesResponse as OpenAIImagesResponse
+
 from dhenara.ai.providers.openai import OpenAIClientBase
 from dhenara.ai.types.external_api import (
     AIModelAPIProviderEnum,
@@ -16,7 +18,6 @@ from dhenara.ai.types.genai import (
     StreamingChatResponse,
 )
 from dhenara.ai.types.shared.api import SSEErrorResponse
-from openai.types import ImagesResponse as OpenAIImagesResponse
 
 logger = logging.getLogger(__name__)
 

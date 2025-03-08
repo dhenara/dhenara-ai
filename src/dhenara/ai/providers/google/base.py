@@ -1,6 +1,8 @@
 import logging
 from typing import Any
 
+from google import genai
+
 from dhenara.ai.providers.base import AIModelProviderClientBase
 from dhenara.ai.providers.shared import APIProviderSharedFns
 from dhenara.ai.types.external_api import (
@@ -12,7 +14,6 @@ from dhenara.ai.types.external_api import (
 )
 from dhenara.ai.types.genai import AIModel
 from dhenara.ai.types.shared.file import FileFormatEnum, GenericFile
-from google import genai
 
 logger = logging.getLogger(__name__)
 

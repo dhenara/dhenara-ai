@@ -1,8 +1,9 @@
 import base64
 from typing import Union
 
-from dhenara.ai.types.shared.base import BaseEnum, BaseModel
 from pydantic import Field
+
+from dhenara.ai.types.shared.base import BaseEnum, BaseModel
 
 
 class ImageContentFormat(BaseEnum):

@@ -1,10 +1,11 @@
 import logging
 from typing import Any
 
+from pydantic import Field, model_validator
+
 from dhenara.ai.types.external_api._providers import AIModelFunctionalTypeEnum, AIModelProviderEnum
 from dhenara.ai.types.genai.dhenara import ChatResponseUsage, ImageResponseUsage, UsageCharge
 from dhenara.ai.types.shared.base import BaseModel
-from pydantic import Field, model_validator
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +47,8 @@ class ValidOptionValue(BaseModel):
 
 
 class BaseCostData(BaseModel):
-    # NOTE: Default should be None to avoid wrong cost calculation without proper overrides of standard foundation models in the package
+    # NOTE: Default should be None to avoid wrong cost calculation
+    # without proper overrides of standard foundation models in the package
     cost_multiplier_percentage: float | None = Field(
         default=None,
         description="Cost multiplication percentage f any. Use this field to offset orgianl cost you paid to API provider with your additional expences/margin",
@@ -159,9 +161,7 @@ class ImageModelCostData(BaseCostData):
             if matches:
                 return cost_data["cost_per_image"]
 
-        raise ValueError(
-            f"get_image_cost_with_options: Failed to get price. used_options={used_options}, image_options_cost_data={self.image_options_cost_data})"
-        )
+        raise ValueError(f"get_image_cost_with_options: Failed to get price. used_options={used_options}, image_options_cost_data={self.image_options_cost_data})")
 
 
 class ChatModelSettings(BaseModel):
@@ -211,6 +211,7 @@ class ChatModelSettings(BaseModel):
         elif context_tokens is not None:
             values_to_update["max_input_tokens"] = context_tokens - output_tokens
 
+        # fmt: off
         if self.supports_reasoning:
             if (
                 self.max_reasoning_tokens
@@ -220,6 +221,7 @@ class ChatModelSettings(BaseModel):
                 raise ValueError(
                     "set_token_limits: max_reasoning_tokens must be less than max_output_tokens_reasoning_mode"
                 )
+        # fmt: on
 
         # Update the model's dict directly
         for key, value in values_to_update.items():

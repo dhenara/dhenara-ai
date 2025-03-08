@@ -4,6 +4,9 @@ from typing import Any
 
 from azure.ai.inference.models import ChatResponseMessage as AzureChatResponseMessage
 from azure.ai.inference.models import StreamingChatResponseMessageUpdate as AzureStreamingChatResponseMessageUpdate
+from openai.types.chat import ChatCompletion, ChatCompletionMessage
+from openai.types.chat.chat_completion_chunk import ChatCompletionChunk, ChoiceDelta
+
 from dhenara.ai.providers.openai import OpenAIClientBase
 from dhenara.ai.types.external_api import (
     AIModelAPIProviderEnum,
@@ -29,8 +32,6 @@ from dhenara.ai.types.genai import (
     StreamingChatResponse,
 )
 from dhenara.ai.types.shared.api import SSEErrorResponse
-from openai.types.chat import ChatCompletion, ChatCompletionMessage
-from openai.types.chat.chat_completion_chunk import ChatCompletionChunk, ChoiceDelta
 
 logger = logging.getLogger(__name__)
 

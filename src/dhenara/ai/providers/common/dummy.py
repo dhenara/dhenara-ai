@@ -149,7 +149,17 @@ class DummyAIModelResponseFns:
                 "object": "chat.completion.chunk",
                 "created": 1738776944,
                 "system_fingerprint": "fp_dummy",
-                "choices": [type("Choice", (), {"index": index, "delta": type("Delta", (), {"content": content}), "finish_reason": "stop" if finish else None})()],
+                "choices": [
+                    type(
+                        "Choice",
+                        (),
+                        {
+                            "index": index,
+                            "delta": type("Delta", (), {"content": content}),
+                            "finish_reason": "stop" if finish else None,
+                        },
+                    )()
+                ],
                 "usage": None if not finish else {"total_tokens": 1000, "prompt_tokens": 333, "completion_tokens": 777},
             },
         )

@@ -91,7 +91,7 @@ class AIModelClient:
             raise RuntimeError("Use 'with' for sync client")
         try:
             await self._async_ctx.aclose()
-        except:  # noqa: E722
+        except:
             pass
 
     def _execute_with_retry_sync(self, *args, **kwargs) -> AIModelCallResponse:

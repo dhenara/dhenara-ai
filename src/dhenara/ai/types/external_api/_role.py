@@ -16,5 +16,6 @@ class GoogleAiMessageRoleEnum(BaseEnum):
 class AnthropicMessageRoleEnum(BaseEnum):
     USER = "user"
     ASSISTANT = "assistant"
-    # NOTE:  To include a system prompt, you can use the top-level system parameter — there is no "system" role for input messages in the Messages API.
+    # NOTE: There is no "system" role for input messages in the Messages API.
+    #  To include a system prompt, you can use the top-level system parameter
     # SYSTEM = "system"

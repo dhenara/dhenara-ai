@@ -510,7 +510,7 @@ class AIModelProviderClientBase(ABC):
         logger.debug(f"process_content_item_delta: Unknown content item type {type(unknown_item)}")
         try:
             data = unknown_item.model_dump()
-        except:  # noqa: E722
+        except:
             data = None
 
         item_dict = {

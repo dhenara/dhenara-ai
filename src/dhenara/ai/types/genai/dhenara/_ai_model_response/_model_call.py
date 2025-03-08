@@ -2,6 +2,8 @@ import logging
 from collections.abc import AsyncGenerator, Generator
 from typing import Union
 
+from pydantic import Field
+
 from dhenara.ai.types.external_api import ExternalApiCallStatus
 from dhenara.ai.types.genai.dhenara import (
     ChatResponse,
@@ -9,7 +11,6 @@ from dhenara.ai.types.genai.dhenara import (
     StreamingChatResponse,
 )
 from dhenara.ai.types.shared.base import BaseModel
-from pydantic import Field
 
 logger = logging.getLogger(__name__)
 

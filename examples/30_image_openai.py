@@ -1,6 +1,8 @@
 import base64
 import io
+
 from PIL import Image  # NOTE: You need to install 'Pillow' # pip install Pillow
+
 from dhenara.ai import AIModelClient
 from dhenara.ai.types import AIModelCallConfig, AIModelEndpoint
 from dhenara.ai.types.external_api import AIModelAPIProviderEnum

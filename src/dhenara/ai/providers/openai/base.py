@@ -1,6 +1,8 @@
 import logging
 from typing import Any
 
+from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, OpenAI
+
 from dhenara.ai.providers.base import AIModelProviderClientBase
 from dhenara.ai.types.external_api import (
     AIModelAPIProviderEnum,
@@ -12,7 +14,6 @@ from dhenara.ai.types.external_api import (
 )
 from dhenara.ai.types.genai import AIModel
 from dhenara.ai.types.shared.file import FileFormatEnum, GenericFile
-from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, OpenAI
 
 logger = logging.getLogger(__name__)
 

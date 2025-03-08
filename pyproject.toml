@@ -1,3 +1,59 @@
 [tool.ruff]
 target-version = "py310"
-line-length = 120
+line-length = 200 # TODO
+src = ["src"]
+force-exclude = true
+exclude = []
+
+[tool.ruff.lint]
+select = [
+    "I",  # automatically sort imports
+    "E",  # find errors
+    "B",  # Bugbear
+    "F",  # linting
+    "W",  # find warnings
+    "N",  # naming errors
+    "UP",  # PyUpgrade; update for newer syntax of the language.  Eg: Use list in favor of List from 3.10
+    "YTT",  # checks for misuse of sys.version or sys.version_info
+    "ASYNC",  # checks for bad async / asyncio practices
+    "FLY",  # Avoid unneccessary join: Use f"{a}_{b}_{c}" instead of "_".join([a, b, c])
+    "RUF",  # ruff-specific rules
+    "PERF",  # A Linter for performance anti-patterns
+    "S101",  # checks for use of asserts instead of if cond: raise AssertionError
+    "FBT",  # Disallow boolean traps
+    "A",  # check if shadow built-ins
+    "COM",  # Check if commas are missing
+    "CPY",  # Check if copyright header is missing
+    "C4",  # Comprehension linter
+]
+ignore = [
+    "RUF012",  # mutable-class-default: Will fail with all Modelclass Meta def
+    "E722",    # TODO_FUTURE: Ignoring the exception rule for the time being
+    "B904",    # Chained exceptions
+    "COM812",  # This rules may cause conflicts when used with the formatter.
+    "FBT001",  # Prevents boolean-default-value-positional-argument
+    "FBT002",  # Prevents boolean-default-value-positional-argument
+    "A005",    # Module name shadows a Python standard-library module
+    "UP038",   # Use `X | Y` in isinstance
+]
+
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = [
+    "I",     # Innore sorting order in init files else will compail fail
+    "F403",  # Enable "import *" in init files
+]
+"tests/test_*.py" = ["S101"]
+"*/tests/test_*.py" = ["S101"]
+
+
+[tool.ruff.lint.pycodestyle]
+max-doc-length = 120
+
+[tool.ruff.lint.isort]
+split-on-trailing-comma = true
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true

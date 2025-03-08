@@ -1,12 +1,12 @@
-from setuptools import find_namespace_packages, setup
-from pathlib import Path
-
 import os
 import re
+from pathlib import Path
+
+from setuptools import find_namespace_packages, setup
 
 version = None
 # Read version without importing the package
-with open(os.path.join("src/dhenara/ai", "__init__.py"), "r") as f:
+with open(os.path.join("src/dhenara/ai", "__init__.py")) as f:
     version_match = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]", f.read(), re.M)
     if version_match:
         version = version_match.group(1)

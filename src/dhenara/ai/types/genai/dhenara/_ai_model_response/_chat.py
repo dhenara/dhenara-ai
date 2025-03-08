@@ -1,9 +1,10 @@
 from typing import Any
 
+from pydantic import Field
+
 from dhenara.ai.types.external_api._providers import AIModelAPIProviderEnum, AIModelProviderEnum
 from dhenara.ai.types.shared.api import SSEEventType, SSEResponse
 from dhenara.ai.types.shared.base import BaseModel
-from pydantic import Field
 
 from ._content_item import ChatResponseContentItem, ChatResponseContentItemDelta, UsageCharge
 

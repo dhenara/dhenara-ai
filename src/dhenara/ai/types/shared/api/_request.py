@@ -1,9 +1,9 @@
 from typing import Generic, TypeVar
 
-from dhenara.ai.types.shared.base import BaseEnum, BaseModel
-
 # -----------------------------------------------------------------------------
 from pydantic import Field
+
+from dhenara.ai.types.shared.base import BaseEnum, BaseModel
 
 
 # -----------------------------------------------------------------------------

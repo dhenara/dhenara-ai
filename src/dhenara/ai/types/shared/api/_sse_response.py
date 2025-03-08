@@ -2,8 +2,9 @@ import json
 from typing import Any, Generic, TypeVar
 from uuid import uuid4
 
-from dhenara.ai.types.shared.base import BaseEnum, BaseModel
 from pydantic import Field
+
+from dhenara.ai.types.shared.base import BaseEnum, BaseModel
 
 # Type variable for generic data types
 T = TypeVar("T", bound=BaseModel)

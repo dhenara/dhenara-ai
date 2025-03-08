@@ -1,8 +1,9 @@
 from typing import Any, Generic, TypeVar
 
+from pydantic import Field
+
 from dhenara.ai.types.shared.base import BaseEnum, BaseModel
 from dhenara.ai.types.shared.platform import DhenaraAPIError
-from pydantic import Field
 
 
 # -----------------------------------------------------------------------------

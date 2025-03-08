@@ -1,6 +1,7 @@
+from pydantic import Field
+
 from dhenara.ai.types.external_api import AIModelAPIProviderEnum
 from dhenara.ai.types.shared.base import BaseEnum, BaseModel
-from pydantic import Field
 
 
 class ExternalApiCallStatusEnum(BaseEnum):
