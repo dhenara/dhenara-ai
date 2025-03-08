@@ -255,7 +255,12 @@ class GoogleAIChat(GoogleAIClientBase):
                     metadata={"part": content_item.model_dump()},
                 )
         else:
-            return self.get_unknown_content_type_item(role=role, unknown_item=content_item, streaming=False)
+            return self.get_unknown_content_type_item(
+                index=index,
+                role=role,
+                unknown_item=content_item,
+                streaming=False,
+            )
 
     # Streaming
     def process_content_item_delta(
@@ -279,4 +284,9 @@ class GoogleAIChat(GoogleAIClientBase):
                 )
 
         else:
-            return self.get_unknown_content_type_item(role=role, unknown_item=delta, streaming=True)
+            return self.get_unknown_content_type_item(
+                index=index,
+                role=role,
+                unknown_item=delta,
+                streaming=True,
+            )

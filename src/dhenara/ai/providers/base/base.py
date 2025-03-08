@@ -506,18 +506,21 @@ class AIModelProviderClientBase(ABC):
             )
         )
 
-    def get_unknown_content_type_item(self, role: str, unknown_item: Any, streaming: bool):
+    def get_unknown_content_type_item(
+        self,
+        index: int,
+        role: str,
+        unknown_item: Any,
+        streaming: bool,
+    ):
         logger.debug(f"process_content_item_delta: Unknown content item type {type(unknown_item)}")
-        try:
-            data = unknown_item.model_dump()
-        except:
-            data = None
 
         item_dict = {
+            "index": index,
             "role": role,
             "metadata": {
-                "unknonwn": f"Unknown content item of type {type(unknown_item)}",
-                "data": data,
+                "data": unknown_item.model_dump() if hasattr(unknown_item, "model_dump") else str(unknown_item),
+                "type": type(unknown_item),
             },
         }
         return (

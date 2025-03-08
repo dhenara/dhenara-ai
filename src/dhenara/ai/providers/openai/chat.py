@@ -274,54 +274,54 @@ class OpenAIChat(OpenAIClientBase):
         content_item: ChatCompletionMessage,
     ) -> ChatResponseContentItem | list[ChatResponseContentItem]:
         # INFO: response type will vary with API/Model providers.
-        if isinstance(content_item, (ChatCompletionMessage, AzureChatResponseMessage)):
-            if content_item.content:
-                all_items = []
-                _content = content_item.content
-                _index = index
+        # if isinstance(content_item, (ChatCompletionMessage, AzureChatResponseMessage)):
 
-                if self.model_endpoint.ai_model.provider == AIModelProviderEnum.DEEPSEEK:
-                    answer_content = None
-                    reasoning_content = None
-                    # Extract reasoning and answer content
-                    think_match = re.search(r"<think>(.*?)</think>", _content, re.DOTALL)
-                    if think_match:
-                        reasoning_content = think_match.group(1).strip()
-                        answer_content = re.sub(r"<think>.*?</think>", "", _content, flags=re.DOTALL).strip()
+        if hasattr(content_item, "content"):
+            all_items = []
+            _content = content_item.content
+            _index = index
 
-                    if reasoning_content:
-                        _index = index + 1
-                        _content = answer_content
-                        all_items.append(
-                            ChatResponseReasoningContentItem(
-                                index=index,
-                                role=role,
-                                thinking_text=reasoning_content,
-                            )
+            if self.model_endpoint.ai_model.provider == AIModelProviderEnum.DEEPSEEK:
+                answer_content = None
+                reasoning_content = None
+                # Extract reasoning and answer content
+                think_match = re.search(r"<think>(.*?)</think>", _content, re.DOTALL)
+                if think_match:
+                    reasoning_content = think_match.group(1).strip()
+                    answer_content = re.sub(r"<think>.*?</think>", "", _content, flags=re.DOTALL).strip()
+
+                if reasoning_content:
+                    _index = index + 1
+                    _content = answer_content
+                    all_items.append(
+                        ChatResponseReasoningContentItem(
+                            index=index,
+                            role=role,
+                            thinking_text=reasoning_content,
                         )
-
-                all_items.append(
-                    ChatResponseTextContentItem(
-                        index=_index,
-                        role=role,
-                        text=_content,
                     )
-                )
-                return all_items
-            elif content_item.tool_calls:
-                return ChatResponseToolCallContentItem(
-                    index=index,
+
+            all_items.append(
+                ChatResponseTextContentItem(
+                    index=_index,
                     role=role,
-                    metadata={"tool_calls": [tool_call.model_dump() for tool_call in content_item.tool_calls]},
+                    text=_content,
                 )
-            else:
-                return ChatResponseGenericContentItem(
-                    index=index,
-                    role=role,
-                    metadata={"part": content_item.model_dump()},
-                )
+            )
+            return all_items
+        elif hasattr(content_item, "tool_calls"):
+            return ChatResponseToolCallContentItem(
+                index=index,
+                role=role,
+                metadata={"tool_calls": [tool_call.model_dump() for tool_call in content_item.tool_calls]},
+            )
         else:
-            return self.get_unknown_content_type_item(role=role, unknown_item=content_item, streaming=False)
+            return self.get_unknown_content_type_item(
+                index=index,
+                role=role,
+                unknown_item=content_item,
+                streaming=False,
+            )
 
     # Streaming
     def process_content_item_delta(
@@ -330,85 +330,81 @@ class OpenAIChat(OpenAIClientBase):
         role: str,
         delta: ChoiceDelta,
     ) -> ChatResponseContentItemDelta:
-        if isinstance(delta, (ChoiceDelta, AzureStreamingChatResponseMessageUpdate)):
-            if delta.content:
-                if self.model_endpoint.ai_model.provider == AIModelProviderEnum.DEEPSEEK:
-                    content = delta.content
+        # if isinstance(delta, (ChoiceDelta, AzureStreamingChatResponseMessageUpdate)):
+        if hasattr(delta, "content"):
+            if self.model_endpoint.ai_model.provider == AIModelProviderEnum.DEEPSEEK:
+                content = delta.content
 
-                    # Check for think tag markers
-                    think_start = "<think>" in content
-                    think_end = "</think>" in content
+                # Check for think tag markers
+                think_start = "<think>" in content
+                think_end = "</think>" in content
 
-                    # If we see a start tag, everything after it goes to reasoning
-                    if think_start:
-                        self.streaming_manager.progress.in_thinking_block = True
-                        # Split content at the tag
-                        _, reasoning_part = content.split("<think>", 1)
-                        return ChatResponseReasoningContentItemDelta(
+                # If we see a start tag, everything after it goes to reasoning
+                if think_start:
+                    self.streaming_manager.progress.in_thinking_block = True
+                    # Split content at the tag
+                    _, reasoning_part = content.split("<think>", 1)
+                    return ChatResponseReasoningContentItemDelta(
+                        index=index,
+                        role=role,
+                        thinking_text_delta=reasoning_part,
+                    )
+
+                # If we see an end tag, everything before it goes to reasoning
+                elif think_end:
+                    self.streaming_manager.progress.in_thinking_block = False
+                    reasoning_part, answer_part = content.split("</think>", 1)
+                    return (
+                        ChatResponseReasoningContentItemDelta(
                             index=index,
                             role=role,
                             thinking_text_delta=reasoning_part,
                         )
-
-                    # If we see an end tag, everything before it goes to reasoning
-                    elif think_end:
-                        self.streaming_manager.progress.in_thinking_block = False
-                        reasoning_part, answer_part = content.split("</think>", 1)
-                        return (
-                            ChatResponseReasoningContentItemDelta(
-                                index=index,
-                                role=role,
-                                thinking_text_delta=reasoning_part,
-                            )
-                            if reasoning_part
-                            else ChatResponseTextContentItemDelta(
-                                index=index + 1,
-                                role=role,
-                                text_delta=answer_part,
-                            )
-                        )
-
-                    # If we're inside a thinking block, content goes to reasoning
-                    elif self.streaming_manager.progress.in_thinking_block:
-                        return ChatResponseReasoningContentItemDelta(
-                            index=index,
-                            role=role,
-                            thinking_text_delta=content,
-                        )
-
-                    # Otherwise it's regular text content
-                    else:
-                        return ChatResponseTextContentItemDelta(
+                        if reasoning_part
+                        else ChatResponseTextContentItemDelta(
                             index=index + 1,
                             role=role,
-                            text_delta=content,
+                            text_delta=answer_part,
                         )
-                else:
-                    return ChatResponseTextContentItemDelta(
+                    )
+
+                # If we're inside a thinking block, content goes to reasoning
+                elif self.streaming_manager.progress.in_thinking_block:
+                    return ChatResponseReasoningContentItemDelta(
                         index=index,
                         role=role,
-                        text_delta=delta.content,
+                        thinking_text_delta=content,
                     )
-            elif delta.tool_calls:
-                return ChatResponseToolCallContentItemDelta(
-                    index=index,
-                    role=role,
-                    metadata={"tool_calls": [tool_call.model_dump() for tool_call in delta.tool_calls]},
-                )
+
+                # Otherwise it's regular text content
+                else:
+                    return ChatResponseTextContentItemDelta(
+                        index=index + 1,
+                        role=role,
+                        text_delta=content,
+                    )
             else:
-                # NOTE: There is no way to identify content type for OpenAI streaming response.
-                # Also they sends few extra chuckw with no content.
-                # Eg: The very first chunk will only have the `role` set (and role in other chunks will be None)
-                # Therefore, dont't send a `ChatResponseGenericContentItemDelta`  here,
-                # asit will messup streaming manager content updation
-
-                # Microsoft API model won't work with model_dump
-                part = delta.model_dump() if hasattr(delta, "model_dump") else str(delta)
-
-                return ChatResponseGenericContentItemDelta(
+                return ChatResponseTextContentItemDelta(
                     index=index,
                     role=role,
-                    metadata={"part": part},
+                    text_delta=delta.content,
                 )
+        elif hasattr(delta, "tool_calls"):
+            return ChatResponseToolCallContentItemDelta(
+                index=index,
+                role=role,
+                metadata={"tool_calls": [tool_call.model_dump() for tool_call in delta.tool_calls]},
+            )
         else:
-            return self.get_unknown_content_type_item(role=role, unknown_item=delta, streaming=True)
+            # NOTE: There is no way to identify content type for OpenAI streaming response.
+            # Also they sends few extra chuckw with no content.
+            # Eg: The very first chunk will only have the `role` set (and role in other chunks will be None)
+            # Therefore, dont't send a `ChatResponseGenericContentItemDelta`  here,
+            # asit will messup streaming manager content updation
+
+            return self.get_unknown_content_type_item(
+                index=index,
+                role=role,
+                unknown_item=delta,
+                streaming=True,
+            )
