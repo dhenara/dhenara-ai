@@ -495,7 +495,73 @@ class BaseAIModel(BaseModel):
 
 
 class FoundationModel(BaseAIModel):
-    pass
+    """Foundation model implementation with ability to create derived models."""
+
+    def create_instance(
+        self,
+        model_name: str | None = None,
+        display_name: str | None = None,
+        order: int | None = None,
+        enabled: bool = True,
+        beta: bool = False,
+        valid_options: dict[str, ValidOptionValue] | None = None,
+        metadata: dict[str, Any] | None = None,
+        reference_number: str | None = None,
+        **kwargs,
+    ) -> "AIModel":
+        """
+        Creates an AIModel instance based on this foundation model.
+
+        Args:
+            model_name: Optional model name (defaults to foundation model's name)
+            display_name: Optional display name (defaults to model_name)
+            order: Optional display order (defaults to foundation model's order)
+            enabled: Whether the model is enabled (defaults to True)
+            beta: Whether the model is in beta (defaults to False)
+            valid_options: Optional valid options (defaults to foundation model's options)
+            metadata: Optional metadata (will be merged with foundation model's metadata)
+            reference_number: Optional reference number
+            **kwargs: Additional model parameters
+
+        Returns:
+            AIModel: A new AI model instance based on this foundation model
+        """
+
+        # Use foundation model values as defaults
+        model_name = model_name or self.model_name
+        display_name = display_name or model_name
+        order = order if order is not None else self.order
+        valid_options = valid_options or self.valid_options
+        merged_metadata = {**self.metadata, **(metadata or {})}
+
+        # Create the model with foundation model as reference
+        return AIModel(
+            provider=self.provider,
+            functional_type=self.functional_type,
+            model_name=model_name,
+            display_name=display_name,
+            order=order,
+            enabled=enabled,
+            beta=beta,
+            valid_options=valid_options,
+            metadata=merged_metadata,
+            foundation_model=self,
+            reference_number=reference_number,
+            **kwargs,
+        )
+
+    def clone(self, model_name: str) -> "AIModel":
+        """Creates an exact clone of this foundation model as an AIModel instance."""
+        return self.create_instance(
+            model_name=model_name,
+            display_name=self.display_name,
+            order=self.order,
+            enabled=self.enabled,
+            beta=self.beta,
+            valid_options=self.valid_options,
+            metadata=self.metadata.copy(),
+            reference_number=None,
+        )
 
 
 class AIModel(BaseAIModel):
