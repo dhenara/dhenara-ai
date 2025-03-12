@@ -1,5 +1,6 @@
 from pydantic import Field, model_validator
 
+from dhenara.ai.types.external_api import AIModelAPIProviderEnum, AIModelProviderEnum
 from dhenara.ai.types.genai.ai_model import (
     AIModelAPI,
     BaseAIModel,
@@ -62,3 +63,25 @@ class AIModelEndpoint(BaseModel):
     ):
         cost_data = self.get_cost_data()
         return cost_data.calculate_usage_charge(usage)
+
+
+# Default mapping of model providers to API providers
+MODEL_TO_API_MAPPING = {
+    # Anthropic models
+    AIModelProviderEnum.ANTHROPIC: [
+        AIModelAPIProviderEnum.ANTHROPIC,
+        AIModelAPIProviderEnum.AMAZON_BEDROCK,
+        AIModelAPIProviderEnum.GOOGLE_VERTEX_AI,
+    ],
+    AIModelProviderEnum.OPEN_AI: [
+        AIModelAPIProviderEnum.OPEN_AI,
+        AIModelAPIProviderEnum.MICROSOFT_OPENAI,
+    ],
+    AIModelProviderEnum.GOOGLE_AI: [
+        AIModelAPIProviderEnum.GOOGLE_AI,
+        AIModelAPIProviderEnum.GOOGLE_VERTEX_AI,
+    ],
+    AIModelProviderEnum.DEEPSEEK: [
+        AIModelAPIProviderEnum.MICROSOFT_AZURE_AI,
+    ],
+}
