@@ -2,8 +2,6 @@ import logging
 import re
 from typing import Any
 
-from azure.ai.inference.models import ChatResponseMessage as AzureChatResponseMessage
-from azure.ai.inference.models import StreamingChatResponseMessageUpdate as AzureStreamingChatResponseMessageUpdate
 from openai.types.chat import ChatCompletion, ChatCompletionMessage
 from openai.types.chat.chat_completion_chunk import ChatCompletionChunk, ChoiceDelta
 
@@ -20,8 +18,6 @@ from dhenara.ai.types.genai import (
     ChatResponseChoiceDelta,
     ChatResponseContentItem,
     ChatResponseContentItemDelta,
-    ChatResponseGenericContentItem,
-    ChatResponseGenericContentItemDelta,
     ChatResponseReasoningContentItem,
     ChatResponseReasoningContentItemDelta,
     ChatResponseTextContentItem,
