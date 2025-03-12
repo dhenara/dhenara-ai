@@ -1,9 +1,8 @@
 from pydantic import Field
 
 from dhenara.ai.types.genai.ai_model import AIModelEndpoint
+from dhenara.ai.types.resource._resource_config_item import ResourceConfigItem, ResourceConfigItemTypeEnum
 from dhenara.ai.types.shared.base import BaseModel
-
-from ._resource import ResourceConfigItem, ResourceConfigItemTypeEnum
 
 
 class ResourceConfig(BaseModel):
