@@ -1,16 +1,18 @@
 import json
+import logging
 import os
 from pathlib import Path
 
 import yaml
 from pydantic import Field
 
-from dhenara.ai.types.external_api import AIModelAPIProviderEnum, AIModelProviderEnum
 from dhenara.ai.types.genai import MODEL_TO_API_MAPPING, PROVIDER_CONFIGS
 from dhenara.ai.types.genai.ai_model import AIModel, AIModelAPI, AIModelEndpoint, FoundationModel
 from dhenara.ai.types.genai.foundation_models import ALL_FOUNDATION_MODELS
 from dhenara.ai.types.resource._resource_config_item import ResourceConfigItem, ResourceConfigItemTypeEnum
 from dhenara.ai.types.shared.base import BaseModel
+
+logger = logging.getLogger(__name__)
 
 
 class ResourceConfig(BaseModel):
@@ -31,6 +33,31 @@ class ResourceConfig(BaseModel):
         default_factory=list,
         description="AIModel Endpoints",
     )
+
+    def get_api(self, api_provider: str | None = None) -> AIModelEndpoint:
+        return next((api for api in self.model_apis if api.provider == api_provider), None)
+
+    def get_model_endpoint(self, model_name: str, api_provider: str | None = None) -> AIModelEndpoint:
+        """
+        Retrieves an endpoint by model name.
+
+        Args:
+            model_name: Model name
+
+        Returns:
+            AIModelEndpoint instance
+        """
+
+        query = {"model_name": model_name}
+        if api_provider:
+            query["api_provider"] = api_provider
+
+        return self.get_resource(
+            ResourceConfigItem(
+                item_type=ResourceConfigItemTypeEnum.ai_model_endpoint,
+                query=query,
+            )
+        )
 
     def get_resource(self, resource_item: ResourceConfigItem) -> AIModelEndpoint:  # |RagEndpoint
         """
@@ -73,19 +100,22 @@ class ResourceConfig(BaseModel):
 
                 # Create query description for error message
                 query_desc = ", ".join(f"{k}={v}" for k, v in resource_item.query.items())
-                raise ValueError(f"No endpoint found matching query: {query_desc}")
+                logger.error(f"No endpoint found matching query: {query_desc}")
+                return None
 
             else:
-                raise ValueError(f"Unsupported resource type: {resource_item.item_type}")
+                logger.error(f"Unsupported resource type: {resource_item.item_type}")
+                return None
 
         except Exception as e:
-            raise ValueError(f"Error fetching resource: {e}")
+            logger.error(f"Error fetching resource: {e}")
+            return None
 
     def load_from_file(
         self,
         credentials_file: str,
         models: list[AIModel] | None = None,
-        mapping_override: dict[AIModelProviderEnum, list[AIModelAPIProviderEnum]] | None = None,
+        init_endpoints: bool = False,
     ):
         """
         Initialize the ResourceConfig with credentials from a file and optional overrides.
@@ -95,13 +125,6 @@ class ResourceConfig(BaseModel):
             models: Optional list of models to override default ALL_FOUNDATION_MODELS
             mapping_override: Optional dictionary to override default model-to-API mappings
         """
-        # Set models
-        self.models = [*models] if models else [*ALL_FOUNDATION_MODELS]
-
-        # Update mapping if provided
-        mapping = MODEL_TO_API_MAPPING
-        if mapping_override:
-            mapping.update(mapping_override)
 
         # Load credentials
         credentials = self._load_credentials_from_file(credentials_file)
@@ -109,8 +132,15 @@ class ResourceConfig(BaseModel):
         # Initialize APIs with loaded credentials
         self._initialize_apis(credentials)
 
-        # Create endpoints from models and APIs
-        self._initialize_endpoints()
+        if models:
+            self.models = models
+
+        if init_endpoints:
+            if not self.models:
+                self.models = [*ALL_FOUNDATION_MODELS]
+
+            # Create endpoints from models and APIs
+            self._initialize_endpoints()
 
     def _load_credentials_from_file(self, credentials_file: str) -> dict:
         """
