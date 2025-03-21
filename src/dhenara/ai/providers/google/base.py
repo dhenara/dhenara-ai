@@ -55,7 +55,10 @@ class GoogleAIClientBase(AIModelProviderClientBase):
     def _get_client_params(self, api) -> tuple[str, dict]:
         """Common logic for both sync and async clients"""
         if api.provider == AIModelAPIProviderEnum.GOOGLE_AI:
-            return "google_ai", {"api_key": api.api_key}
+            return "google_ai", {
+                "api_key": api.api_key,
+                # "http_options": {"api_version": "v1beta"},
+            }
         elif api.provider == AIModelAPIProviderEnum.GOOGLE_VERTEX_AI:
             client_params = APIProviderSharedFns.get_vertex_ai_credentials(api)
             return "vertex_ai", {
@@ -63,6 +66,7 @@ class GoogleAIClientBase(AIModelProviderClientBase):
                 "credentials": client_params["credentials"],
                 "project": client_params["project_id"],
                 "location": client_params["location"],
+                # "http_options": {"api_version": "v1beta"},
             }
         else:
             error_msg = f"Unsupported API provider {api.provider} for Google AI"

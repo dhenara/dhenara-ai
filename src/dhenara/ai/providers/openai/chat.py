@@ -22,8 +22,8 @@ from dhenara.ai.types.genai import (
     ChatResponseReasoningContentItemDelta,
     ChatResponseTextContentItem,
     ChatResponseTextContentItemDelta,
+    ChatResponseToolCall,
     ChatResponseToolCallContentItem,
-    ChatResponseToolCallContentItemDelta,
     ChatResponseUsage,
     StreamingChatResponse,
 )
@@ -86,6 +86,17 @@ class OpenAIChat(OpenAIClientBase):
 
         if self.config.options:
             chat_args.update(self.config.options)
+
+        # ---  Tools ---
+        if self.config.tools:
+            chat_args["tools"] = [tool.to_openai_format() for tool in self.config.tools]
+
+        if self.config.tool_choice:
+            chat_args["tool_choice"] = self.config.tool_choice.to_openai_format()
+
+        # --- Structured Output ---
+        if self.config.response_format:
+            chat_args["response_format"] = self.config.response_format.to_openai_format()
 
         return {"chat_args": chat_args}
 
@@ -272,7 +283,7 @@ class OpenAIChat(OpenAIClientBase):
         # INFO: response type will vary with API/Model providers.
         # if isinstance(content_item, (ChatCompletionMessage, AzureChatResponseMessage)):
 
-        if hasattr(content_item, "content"):
+        if hasattr(content_item, "content") and content_item.content:
             all_items = []
             _content = content_item.content
             _index = index
@@ -305,12 +316,24 @@ class OpenAIChat(OpenAIClientBase):
                 )
             )
             return all_items
-        elif hasattr(content_item, "tool_calls"):
-            return ChatResponseToolCallContentItem(
-                index=index,
-                role=role,
-                metadata={"tool_calls": [tool_call.model_dump() for tool_call in content_item.tool_calls]},
-            )
+
+        elif hasattr(content_item, "tool_calls") and content_item.tool_calls:
+            tool_call_items = []
+            for tool_call in content_item.tool_calls:
+                if isinstance(tool_call, dict):
+                    content_item_dict = tool_call
+                else:
+                    content_item_dict = tool_call.model_dump()
+
+                tool_call_items.append(
+                    ChatResponseToolCallContentItem(
+                        index=index,
+                        role=role,
+                        tool_call=ChatResponseToolCall.from_openai_format(content_item_dict),
+                        metadata={},
+                    )
+                )
+            return tool_call_items
         else:
             return self.get_unknown_content_type_item(
                 index=index,
@@ -385,12 +408,34 @@ class OpenAIChat(OpenAIClientBase):
                     role=role,
                     text_delta=delta.content,
                 )
-        elif hasattr(delta, "tool_calls"):
-            return ChatResponseToolCallContentItemDelta(
-                index=index,
-                role=role,
-                metadata={"tool_calls": [tool_call.model_dump() for tool_call in delta.tool_calls]},
-            )
+        # TODO: Tools Not supported in streaming yet
+        # elif hasattr(delta, "tool_calls") and delta.tool_calls:
+        #    tool_call_deltas = []
+
+        #    for tool_call in delta.tool_calls:
+        #        tool_call_delta = {
+        #            "id": tool_call.id if hasattr(tool_call, "id") else None,
+        #            "type": "function",  # OpenAI currently only supports function type
+        #            "function": {},
+        #        }
+
+        #        # Handle function name
+        #        if hasattr(tool_call, "function") and hasattr(tool_call.function, "name"):
+        #            tool_call_delta["function"]["name"] = tool_call.function.name
+
+        #        # Handle function arguments (can be streamed)
+        #        if hasattr(tool_call, "function") and hasattr(tool_call.function, "arguments"):
+        #            tool_call_delta["function"]["arguments"] = tool_call.function.arguments
+
+        #        tool_call_deltas.append(tool_call_delta)
+
+        #    return ChatResponseToolCallContentItemDelta(
+        #        index=index,
+        #        role=role,
+        #        tool_call_deltas=tool_call_deltas,
+        #        metadata={},
+        #    )
+
         else:
             # NOTE: There is no way to identify content type for OpenAI streaming response.
             # Also they sends few extra chuckw with no content.

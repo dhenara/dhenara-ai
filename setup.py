@@ -29,6 +29,7 @@ setup(
         "cryptography>=44.0.0",
         "aiohttp>=3.11.0",
         "pydantic>=2.10.0",
+        "pyyaml>=6.0",
         "openai>=1.65.0",
         "google-genai>=1.4.0",
         "anthropic>=0.49.0",

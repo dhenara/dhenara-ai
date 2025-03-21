@@ -513,7 +513,7 @@ class AIModelProviderClientBase(ABC):
         unknown_item: Any,
         streaming: bool,
     ):
-        logger.debug(f"process_content_item_delta: Unknown content item type {type(unknown_item)}")
+        logger.debug(f"Unknown content item type {type(unknown_item)}")
 
         item_dict = {
             "index": index,

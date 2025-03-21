@@ -195,7 +195,7 @@ class ResourceConfig(BaseModel):
                 self.model_apis.append(new_api)
 
             except Exception as e:  # noqa: PERF203
-                print(f"Error initializing API for provider '{provider_str}': {e}")
+                logger.exception(f"Error initializing API for provider '{provider_str}': {e}")
 
     def _initialize_endpoints(self) -> None:
         """
@@ -323,5 +323,5 @@ class ResourceConfig(BaseModel):
             with open(output_file, "w") as f:
                 f.write(yaml_content)
 
-        print(f"Created credentials template at {output_file}")
-        print("Edit this file with your API credentials before loading")
+        logger.info(f"Created credentials template at {output_file}")
+        logger.info("Edit this file with your API credentials before loading")

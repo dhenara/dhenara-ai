@@ -1,6 +1,14 @@
 import logging
 
-from google.genai.types import Content, GenerateContentConfig, GenerateContentResponse, Part, SafetySetting
+from google.genai.types import (
+    Content,
+    GenerateContentConfig,
+    GenerateContentResponse,
+    Part,
+    SafetySetting,
+    Tool,
+    ToolConfig,
+)
 
 # Copyright 2024-2025 Dhenara Inc. All rights reserved.
 from dhenara.ai.providers.google import GoogleAIClientBase
@@ -16,6 +24,8 @@ from dhenara.ai.types.genai import (
     ChatResponseGenericContentItemDelta,
     ChatResponseTextContentItem,
     ChatResponseTextContentItemDelta,
+    ChatResponseToolCall,
+    ChatResponseToolCallContentItem,
     ChatResponseUsage,
     StreamingChatResponse,
 )
@@ -58,6 +68,31 @@ class GoogleAIChat(GoogleAIClientBase):
         ):
             generate_config.system_instruction = instructions_str
 
+        # ---  Tools ---
+        if self.config.tools:
+            # NOTE: Google supports extra tools other than fns, so gather all fns together into function_declarations
+            # --  _tools = [tool.to_google_format() for tool in self.config.tools]
+            _tools = [
+                Tool(
+                    **{
+                        "function_declarations": [tool.function.to_google_format() for tool in self.config.tools],
+                    }
+                )
+            ]
+            generate_config.tools = _tools
+
+        if self.config.tool_choice:
+            _tool_config = self.config.tool_choice.to_google_format()
+            generate_config.tool_config = ToolConfig(**_tool_config)
+
+        # TODO_FUTURE: Google API need special formating after version updates
+        # Make this generic by considering this while creating/converting prompts
+
+        if isinstance(prompt, dict) and "parts" in prompt and prompt["parts"] and "text" in prompt["parts"][0]:
+            message = prompt["parts"][0]["text"]
+        else:
+            message = str(prompt)
+
         history = []
         if context:
             for item in context:
@@ -67,8 +102,13 @@ class GoogleAIChat(GoogleAIClientBase):
                 else:
                     history.append(item)
 
+        # --- Structured Output ---
+        if self.config.response_format:
+            generate_config.response_mime_type = "application/json"
+            generate_config.response_schema = self.config.response_format.to_google_format()
+
         return {
-            "prompt": prompt,
+            "prompt": message,
             "history": history,
             "generate_config": generate_config,
         }
@@ -242,12 +282,23 @@ class GoogleAIChat(GoogleAIClientBase):
         content_item: Part,
     ) -> ChatResponseContentItem:
         if isinstance(content_item, Part):
-            if content_item.text:
+            if hasattr(content_item, "text") and content_item.text is not None:
                 return ChatResponseTextContentItem(
                     index=index,
                     role=role,
                     text=content_item.text,
                 )
+
+            elif hasattr(content_item, "function_call") and content_item.function_call is not None:
+                content_item_dict = content_item.function_call.model_dump()
+
+                return ChatResponseToolCallContentItem(
+                    index=index,
+                    role=role,
+                    tool_call=ChatResponseToolCall.from_google_format(content_item_dict),
+                    metadata={},
+                )
+
             else:
                 return ChatResponseGenericContentItem(
                     index=index,
@@ -270,12 +321,14 @@ class GoogleAIChat(GoogleAIClientBase):
         delta,
     ) -> ChatResponseContentItemDelta:
         if isinstance(delta, Part):
-            if delta.text:
+            if hasattr(delta, "text"):
                 return ChatResponseTextContentItemDelta(
                     index=index,
                     role=role,
                     text_delta=delta.text,
                 )
+
+            # TODO: Tools Not supported in streaming yet
             else:
                 return ChatResponseGenericContentItemDelta(
                     index=index,

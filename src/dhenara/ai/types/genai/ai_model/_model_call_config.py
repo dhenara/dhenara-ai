@@ -1,5 +1,6 @@
 import logging
 
+from dhenara.ai.types.external_api import StructuredOutputConfig, ToolChoice, ToolDefinition
 from dhenara.ai.types.genai.ai_model import AIModel
 from dhenara.ai.types.shared.base import BaseModel
 
@@ -14,6 +15,12 @@ class AIModelCallConfig(BaseModel):
     reasoning: bool = False
     max_reasoning_tokens: int | None = None
     options: dict = {}
+
+    tools: list[ToolDefinition] | None = None
+    tool_choice: ToolChoice | None = None
+
+    response_format: StructuredOutputConfig | None = None
+
     metadata: dict = {}
     timeout: float | None = None
     retries: int = 3

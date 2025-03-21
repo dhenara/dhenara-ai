@@ -5,6 +5,8 @@ from pydantic import Field
 
 from dhenara.ai.types.shared.base import BaseEnum, BaseModel
 
+from ._tool_call import ChatResponseToolCall
+
 
 class ImageContentFormat(BaseEnum):
     """Enum representing different formats of image content"""
@@ -106,10 +108,11 @@ class ChatResponseReasoningContentItem(BaseChatResponseContentItem):
 
 class ChatResponseToolCallContentItem(BaseChatResponseContentItem):
     type: ChatResponseContentItemType = ChatResponseContentItemType.TOOL_CALL
-    # Use metadata to store the content
-    # TODO
+    tool_call: ChatResponseToolCall = Field(...)
 
     def get_text(self) -> str:
+        if self.tool_call:
+            return f"Tool call: {self.tool_call.model_dump()}"
         return str(self.metadata)
 
 
@@ -164,13 +167,14 @@ class ChatResponseReasoningContentItemDelta(BaseChatResponseContentItemDelta):
         return self.thinking_text_delta
 
 
+# TODO: Tool call in streaming is not supported now
 class ChatResponseToolCallContentItemDelta(BaseChatResponseContentItemDelta):
     type: ChatResponseContentItemType = ChatResponseContentItemType.TOOL_CALL
-    # Use metadata to store the content
-    # TODO
+    tool_calls_delta: str
+    tool_call_deltas: list[dict] = Field(default_factory=list)
 
     def get_text_delta(self) -> str:
-        return str(self.metadata)
+        return self.tool_calls_delta
 
 
 class ChatResponseGenericContentItemDelta(BaseChatResponseContentItemDelta):

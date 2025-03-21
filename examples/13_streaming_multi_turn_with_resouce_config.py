@@ -1,0 +1,219 @@
+# streaming_multi_turn_eg.py
+import datetime
+import random
+from typing import Any
+
+from dhenara.ai import AIModelClient
+from dhenara.ai.providers.common.prompt_formatter import PromptFormatter
+from dhenara.ai.types import AIModelCallConfig, AIModelEndpoint, ResourceConfig
+from dhenara.ai.types.conversation._node import ConversationNode
+from dhenara.ai.types.external_api import AIModelAPIProviderEnum
+from dhenara.ai.types.genai import ChatResponseChunk
+from dhenara.ai.types.genai.foundation_models.anthropic.chat import Claude35Haiku, Claude37Sonnet
+from dhenara.ai.types.genai.foundation_models.google.chat import Gemini20Flash, Gemini20FlashLite
+from dhenara.ai.types.genai.foundation_models.openai.chat import GPT4oMini, O3Mini
+from dhenara.ai.types.shared import SSEErrorResponse, SSEEventType, SSEResponse
+
+# Initialize all model endpoints and collect it into a ResourceConfig.
+# Ideally, you will do once in your application when it boots, and make it global
+resource_config = ResourceConfig()
+resource_config.load_from_file(
+    credentials_file="~/.env_keys/.dhenara_credentials.yaml",  # Path to your file
+)
+
+anthropic_api = resource_config.get_api(AIModelAPIProviderEnum.ANTHROPIC)
+openai_api = resource_config.get_api(AIModelAPIProviderEnum.OPEN_AI)
+google_api = resource_config.get_api(AIModelAPIProviderEnum.GOOGLE_AI)
+
+# Create various model endpoints, and add them to resource config
+resource_config.model_endpoints = [
+    AIModelEndpoint(api=anthropic_api, ai_model=Claude37Sonnet),
+    AIModelEndpoint(api=anthropic_api, ai_model=Claude35Haiku),
+    AIModelEndpoint(api=openai_api, ai_model=O3Mini),
+    AIModelEndpoint(api=openai_api, ai_model=GPT4oMini),
+    AIModelEndpoint(api=google_api, ai_model=Gemini20Flash),
+    AIModelEndpoint(api=google_api, ai_model=Gemini20FlashLite),
+]
+
+
+class StreamProcessor:
+    def __init__(self):
+        self.previous_content_delta = None
+        self.full_response_text = ""
+
+    def process_stream_response(self, response):
+        print("\nModel Response: ", end="", flush=True)
+        self.full_response_text = ""
+
+        try:
+            for chunk, final_response in response.stream_generator:
+                if chunk:
+                    if isinstance(chunk, SSEErrorResponse):
+                        self.print_error(f"{chunk.data.error_code}: {chunk.data.message}")
+                        break
+
+                    if not isinstance(chunk, SSEResponse):
+                        self.print_error(f"Unknown type {type(chunk)}")
+                        continue
+
+                    if chunk.event == SSEEventType.ERROR:
+                        self.print_error(f"Stream Error: {chunk}")
+                        break
+
+                    if chunk.event == SSEEventType.TOKEN_STREAM:
+                        text = self.process_stream_chunk(chunk.data)
+                        if text:
+                            self.full_response_text += text
+                        if chunk.data.done:
+                            # Don't `break` as final response will be sent after this
+                            pass
+
+                if final_response:
+                    return final_response
+        except KeyboardInterrupt:
+            self.print_warning("Stream interrupted by user")
+        except Exception as e:
+            self.print_error(f"Error processing stream: {e!s}")
+        finally:
+            print("\n")
+        return None
+
+    def process_stream_chunk(self, chunk: ChatResponseChunk):
+        """Process the content from a stream chunk and return extracted text"""
+        text_delta = ""
+        for choice_delta in chunk.choice_deltas:
+            if not choice_delta.content_deltas:
+                continue
+
+            for content_delta in choice_delta.content_deltas:
+                # Actual content
+                text = content_delta.get_text_delta()
+                if text:
+                    print(f"{text}", end="", flush=True)
+                    text_delta += text
+        return text_delta
+
+    def print_error(self, message: str):
+        print(f"\nError: {message}")
+
+    def print_warning(self, message: str):
+        print(f"\nWarning: {message}")
+
+
+def get_context(previous_nodes: list[ConversationNode], destination_model: Any) -> list[Any]:
+    """Process previous conversation nodes into context for the next turn."""
+    context = []
+
+    for node in previous_nodes:
+        prompts = PromptFormatter.format_conversion_node_as_prompts(
+            model=destination_model,
+            user_query=node.user_query,
+            attached_files=node.attached_files,
+            previous_response=node.response,
+        )
+        context.extend(prompts)
+
+    return context
+
+
+def handle_streaming_conversation_turn(
+    user_query: str,
+    instructions: list[str],
+    endpoint: AIModelEndpoint,
+    conversation_nodes: list[ConversationNode],
+    stream_processor: StreamProcessor,
+) -> ConversationNode:
+    """Process a single conversation turn with the specified model and query, using streaming."""
+
+    client = AIModelClient(
+        model_endpoint=endpoint,
+        config=AIModelCallConfig(
+            max_output_tokens=1000,
+            streaming=True,  # Enable streaming
+        ),
+        is_async=False,
+    )
+
+    # Format the user query
+    prompt = PromptFormatter.format_conversion_node_as_prompts(
+        model=endpoint.ai_model,
+        user_query=user_query,
+        attached_files=[],
+        previous_response=[],
+    )[0]
+
+    # Get context from previous turns (if any)
+    context = get_context(conversation_nodes, endpoint.ai_model) if conversation_nodes else []
+
+    # Generate streaming response
+    response = client.generate(
+        prompt=prompt,
+        context=context,
+        instructions=instructions,
+    )
+
+    # Process the streaming response
+    final_response = stream_processor.process_stream_response(response)
+
+    if not final_response:
+        raise Exception("Failed to get final response from stream")
+
+    # Create conversation node
+    node = ConversationNode(
+        user_query=user_query,
+        attached_files=[],
+        response=final_response.chat_response,
+        timestamp=datetime.datetime.now().isoformat(),
+    )
+
+    return node
+
+
+def run_streaming_multi_turn_conversation():
+    multi_turn_queries = [
+        "Tell me a short story about a robot learning to paint.",
+        "Continue the story but add a twist where the robot discovers something unexpected.",
+        "Conclude the story with an inspiring ending.",
+    ]
+
+    # Instructions for each turn
+    instructions_by_turn = [
+        ["Be creative and engaging."],
+        ["Build upon the previous story seamlessly."],
+        ["Bring the story to a satisfying conclusion."],
+    ]
+
+    # Create stream processor
+    stream_processor = StreamProcessor()
+
+    # Store conversation history
+    conversation_nodes = []
+
+    # Process each turn
+    for i, query in enumerate(multi_turn_queries):
+        # Choose a random model endpoint
+        model_endpoint = random.choice(resource_config.model_endpoints)
+        # OR choose if fixed order as
+        # model_endpoint = resource_config.get_model_endpoint(model_name=Claude35Haiku.model_name)
+
+        print(f"🔄 Turn {i + 1} with {model_endpoint.ai_model.model_name} from {model_endpoint.api.provider}\n")
+
+        print(f"User: {query}")
+        print(f"Model: {model_endpoint.ai_model.model_name}")
+
+        node = handle_streaming_conversation_turn(
+            user_query=query,
+            instructions=instructions_by_turn[i],  # Only if you need to change instruction on each turn, else leave []
+            endpoint=model_endpoint,
+            conversation_nodes=conversation_nodes,
+            stream_processor=stream_processor,
+        )
+
+        print("-" * 80)
+
+        # Append to nodes, so that next turn will have the context generated
+        conversation_nodes.append(node)
+
+
+if __name__ == "__main__":
+    run_streaming_multi_turn_conversation()

@@ -36,6 +36,7 @@ from dhenara.ai.types.genai import (
     ChatResponseUsage,
     StreamingChatResponse,
 )
+from dhenara.ai.types.genai.dhenara import ChatResponseToolCall
 from dhenara.ai.types.shared.api import SSEErrorResponse
 
 logger = logging.getLogger(__name__)
@@ -91,6 +92,27 @@ class AnthropicChat(AnthropicClientBase):
 
         if self.config.options:
             chat_args.update(self.config.options)
+
+        # ---  Tools ---
+        if self.config.tools:
+            chat_args["tools"] = [tool.to_anthropic_format() for tool in self.config.tools]
+
+        if self.config.tool_choice:
+            chat_args["tool_choice"] = self.config.tool_choice.to_anthropic_format()
+
+        # --- Structured Output ---
+        # Anthropic uses the tool system for structured output
+        if self.config.response_format:
+            if "tools" not in chat_args:
+                chat_args["tools"] = []
+
+            # Add structured output as a tool
+            structured_tool = self.config.response_format.to_anthropic_format()
+            chat_args["tools"].append(structured_tool)
+
+            # Auto-invoke the structured output tool
+            if "tool_choice" not in chat_args:
+                chat_args["tool_choice"] = {"type": "tool", "name": structured_tool["name"]}
 
         return {"chat_args": chat_args}
 
@@ -326,17 +348,15 @@ class AnthropicChat(AnthropicClientBase):
             )
 
         elif isinstance(content_item, ToolUseBlock):
+            content_item_dict = content_item.model_dump()
+
             return ChatResponseToolCallContentItem(
                 index=index,
                 role=role,
-                metadata={
-                    "tool_use": {
-                        "id": content_item.id,
-                        "input": content_item.input,
-                        "name": content_item.name,
-                    }
-                },
+                tool_call=ChatResponseToolCall.from_anthropic_format(content_item_dict),
+                metadata={},
             )
+
         else:
             return self.get_unknown_content_type_item(
                 index=index,
@@ -373,7 +393,7 @@ class AnthropicChat(AnthropicClientBase):
                     "signature": delta.signature,
                 },
             )
-
+        # TODO: Tools Not supported in streaming yet
         else:
             return self.get_unknown_content_type_item(
                 index=index,
