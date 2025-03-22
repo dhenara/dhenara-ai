@@ -21,13 +21,11 @@ from dhenara.ai.types.genai.foundation_models.openai.chat import GPT4oMini, O3Mi
 
 # Configure logging
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
-
-# Set dhenara logger to DEBUG level specifically
 logger = logging.getLogger("dhenara")
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 
 # Initialize all model enpoints and collect it into a ResourceConfig.
@@ -68,30 +66,94 @@ def get_context(previous_nodes: list[ConversationNode], destination_model: Any) 
     return context
 
 
-# Define a function
-get_weather_tool = ToolDefinition(
-    function=FunctionDefinition(
-        name="get_weather",
-        description="Get the current weather in a given location",
-        parameters=FunctionParameters(
-            type="object",
-            properties={
-                "location": FunctionParameter(
-                    type="string",
-                    description="The city and state, e.g. San Francisco, CA",
-                    required=True,
-                ),
-                "unit": FunctionParameter(
-                    type="string",
-                    description="The unit system to use: 'celsius' or 'fahrenheit'",
-                    allowed_values=["celsius", "fahrenheit"],
-                    default="celsius",
-                ),
-            },
-            required=["location"],
-        ),
-    )
+# Define a toll definition of type `FunctionDefinition`
+# There are 2 options, you can directly define it using `get_weather_tool_`
+get_weather_function = FunctionDefinition(
+    name="get_weather",
+    description="Get the current weather in a given location",
+    parameters=FunctionParameters(
+        type="object",
+        properties={
+            "location": FunctionParameter(
+                type="string",
+                description="The city and state, e.g. San Francisco, CA",
+                required=True,
+            ),
+            "unit": FunctionParameter(
+                type="string",
+                description="The unit system to use: 'celsius' or 'fahrenheit'",
+                allowed_values=["celsius", "fahrenheit"],
+                default="celsius",
+            ),
+        },
+        required=["location"],
+    ),
 )
+# and Create tool definition from the function
+get_weather_tool = ToolDefinition(function=get_weather_function)
+
+
+# OR
+#
+# Define Python function  with proper typing and docstrings
+def get_weather(location: str, unit: str = "celsius") -> dict[str, Any]:
+    """Get the current weather in a given location.
+
+    :param location: The city and state, e.g. San Francisco, CA
+    :param unit: The unit system to use: 'celsius' or 'fahrenheit'
+    :return: Weather information including temperature and conditions
+    """
+    # In a real implementation, this would call a weather API
+    # For demo purposes, we'll just return mock data
+    temp = random.randint(0, 30) if unit == "celsius" else random.randint(32, 86)
+    conditions = random.choice(["sunny", "cloudy", "rainy", "snowy"])
+
+    return {
+        "location": location,
+        "temperature": temp,
+        "unit": unit,
+        "conditions": conditions,
+        "forecast": f"It's {conditions} with a temperature of {temp}°{'C' if unit == 'celsius' else 'F'}",
+    }
+
+
+# and then use the `from_callable` in ToolDefinition to create the tool
+# The advantage of here is, you can later use your function to call with LLM generated arguments
+get_weather_tool = ToolDefinition.from_callable(get_weather)
+
+
+# Create a second function for calendar management
+def schedule_meeting(
+    title: str,
+    start_time: str,
+    duration_minutes: int = 30,
+    attendees: list[str] | None = None,
+    location: str | None = None,
+) -> dict[str, Any]:
+    """Schedule a meeting on the user's calendar.
+
+    :param title: The title of the meeting
+    :param start_time: When the meeting starts (ISO format)
+    :param duration_minutes: How long the meeting lasts
+    :param attendees: List of email addresses for attendees
+    :param location: Physical or virtual location for the meeting
+    :return: Details of the scheduled meeting
+    """
+    # Mock implementation
+    meeting_id = f"meet_{random.randint(1000, 9999)}"
+    return {
+        "meeting_id": meeting_id,
+        "title": title,
+        "start_time": start_time,
+        "end_time": f"calculated_from_{start_time}_plus_{duration_minutes}_minutes",
+        "attendees": attendees or [],
+        "location": location,
+        "status": "scheduled",
+    }
+
+
+# Create a second tool from the meeting function
+schedule_meeting_tool = ToolDefinition.from_callable(schedule_meeting)
 
 
 def handle_conversation_turn(
@@ -108,7 +170,7 @@ def handle_conversation_turn(
         config=AIModelCallConfig(
             max_output_tokens=1000,
             streaming=False,
-            tools=[get_weather_tool],
+            tools=[get_weather_tool, schedule_meeting_tool],  # Add both tools
             tool_choice=ToolChoice(type="one_or_more"),
         ),
         is_async=False,
@@ -146,10 +208,12 @@ def handle_conversation_turn(
 def run_multi_turn_conversation():
     multi_turn_queries = [
         "What's the weather like in New York?",
+        "Can you schedule a meeting with my team tomorrow at 2pm?",
+        "What functions can you call for me?",
     ]
 
     # Instructions for each turn
-    instructions_by_turn = [""]
+    instructions_by_turn = ["", "", ""]
 
     # Store conversation history
     conversation_nodes = []
@@ -175,11 +239,43 @@ def run_multi_turn_conversation():
         print(f"Model: {model_endpoint.ai_model.model_name}\n")
         for content in node.response.choices[0].contents:
             print(f"Model Response Content {content.index}:\n{content.get_text()}\n")
-        print("-" * 80)
 
+            if content.type == "tool_call" and content.tool_call:
+                tool_call = content.tool_call
+                function_name = tool_call.name
+                arguments = tool_call.arguments.arguments_dict
+                print("\n📞 Function call detected!")
+                print(f"Function: {function_name}")
+                print(f"Arguments: {arguments}")
+
+                # Call the fns
+                if function_name == "get_weather":
+                    result = get_weather(**arguments)
+                elif function_name == "schedule_meeting":
+                    result = schedule_meeting(**arguments)
+                else:
+                    print(f"Unknown function: {function_name}")
+
+                # Add a debug message to know the fn was called
+                print(f"function result: {result}")
+                # In a real implementation, you would process this result
+                # and potentially send it back to the model
+
+        print("-" * 80)
         # Append to nodes, so that next turn will have the context generated
         conversation_nodes.append(node)
 
 
 if __name__ == "__main__":
+    ## Print the generated tool definitions to see how they were created
+    # print("📚 Tool Definition from get_weather function:")
+    # print(get_weather_tool.model_dump_json(indent=2))
+
+    # print("\n📚 Tool Definition from schedule_meeting function:")
+    # print(schedule_meeting_tool.model_dump_json(indent=2))
+
+    # print("\n🔧 Generated OpenAI format for get_weather:")
+    # print(get_weather_tool.to_openai_format())
+
+    print("\n🚀 Starting conversation...\n")
     run_multi_turn_conversation()

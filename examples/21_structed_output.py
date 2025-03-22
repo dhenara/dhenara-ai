@@ -17,13 +17,11 @@ from dhenara.ai.types.genai.foundation_models.openai.chat import GPT4oMini, O3Mi
 
 # Configure logging
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
-
-# Set dhenara logger to DEBUG level specifically
 logger = logging.getLogger("dhenara")
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 
 # Initialize all model enpoints and collect it into a ResourceConfig.
