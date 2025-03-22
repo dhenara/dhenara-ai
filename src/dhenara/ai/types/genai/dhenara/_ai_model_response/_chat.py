@@ -6,13 +6,9 @@ from dhenara.ai.types.external_api._providers import AIModelAPIProviderEnum, AIM
 from dhenara.ai.types.shared.api import SSEEventType, SSEResponse
 from dhenara.ai.types.shared.base import BaseModel
 
-from ._content_item import ChatResponseContentItem, ChatResponseContentItemDelta, UsageCharge
-
-
-class AIModelCallResponseMetaData(BaseModel):
-    streaming: bool = False
-    duration_seconds: int | float | None = None
-    provider_metadata: dict | None = None
+from ._content_items._chat_items import ChatResponseContentItem, ChatResponseContentItemDelta
+from ._metadata import AIModelCallResponseMetaData
+from ._usage_charge import UsageCharge
 
 
 class ChatResponseChoice(BaseModel):

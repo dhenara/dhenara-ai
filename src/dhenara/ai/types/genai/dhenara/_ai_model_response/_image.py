@@ -3,8 +3,9 @@ from pydantic import Field
 from dhenara.ai.types.external_api._providers import AIModelProviderEnum
 from dhenara.ai.types.shared.base import BaseModel
 
-from ._chat import AIModelCallResponseMetaData
-from ._content_item import ImageResponseContentItem, UsageCharge
+from ._content_items._image_items import ImageResponseContentItem
+from ._metadata import AIModelCallResponseMetaData
+from ._usage_charge import UsageCharge
 
 
 class ImageResponseChoice(BaseModel):

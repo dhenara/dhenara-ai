@@ -1,77 +1,100 @@
+import logging
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel as PydanticBaseModel
+from pydantic import Field
 
+from dhenara.ai.types.shared.base import BaseModel
 
-class StructuredOutputSchema(BaseModel):
-    """Base class for structured output schema"""
-
-    description: str | None = Field(
-        default=None,
-        description="Description of the output format",
-    )
-
-    @classmethod
-    def to_json_schema(cls) -> dict[str, Any]:
-        """Convert Pydantic model to JSON Schema"""
-        _schema = cls.model_json_schema()
-        # Clean up some pydantic-specific fields
-        if "title" in _schema:
-            del _schema["title"]
-        return _schema
+logger = logging.getLogger(__name__)
 
 
 class StructuredOutputConfig(BaseModel):
     """Configuration for structured output"""
 
-    output_schema: type[StructuredOutputSchema] | dict[str, Any] = Field(
+    output_schema: type[PydanticBaseModel] | dict[str, Any] = Field(
         ...,
         description="Schema for the structured output",
     )
-    name: str | None = Field(
-        None,
-        description="Name for the response format",
-    )
-    description: str | None = Field(
-        None,
-        description="Description of what the response format represents",
-    )
+
+    def _get_schema(self) -> dict[str, Any]:
+        schema = None
+        if isinstance(self.output_schema, type) and issubclass(self.output_schema, PydanticBaseModel):
+            schema = self.output_schema.model_json_schema()
+        elif isinstance(self.output_schema, PydanticBaseModel):
+            schema = self.output_schema.model_json_schema()
+        elif isinstance(self.output_schema, dict):
+            schema = self.output_schema
+        else:
+            raise ValueError(f"Unknown output_schema type {type(self.output_schema)} ")
+
+        return schema
 
     def to_openai_format(self) -> dict[str, Any]:
-        """Convert to OpenAI response_format parameter"""
-        if isinstance(self.output_schema, type) and issubclass(self.output_schema, StructuredOutputSchema):
-            output_schema = self.output_schema.to_json_schema()
+        # Get the original JSON schema from Pydantic or dict
+        schema = self._get_schema()
+
+        # Extract the name from the title and remove the title key.
+        if "title" in schema:
+            schema_name = schema.pop("title")  # :NOTE: pop
         else:
-            output_schema = self.output_schema
+            schema_name = "output"
 
-        return {"type": "json_object", "schema": output_schema}
+        # Remove JSON Schema keywords that OpenAI doesn't permit
+        if "properties" in schema:
+            for prop in schema["properties"].values():
+                # Remove numeric constraints that are not permitted.from pydantic ge, le
+                prop.pop("minimum", None)
+                prop.pop("maximum", None)
 
-    def to_anthropic_format(self) -> dict[str, Any]:
-        """Convert to Anthropic tool for structured output"""
-        if isinstance(self.output_schema, type) and issubclass(self.output_schema, StructuredOutputSchema):
-            output_schema = self.output_schema.to_json_schema()
-        else:
-            output_schema = self.output_schema
+        # Ensure the schema has additionalProperties set to False
+        schema.setdefault("additionalProperties", False)
 
-        name = self.name or "structured_output"
+        # Add the name key required by OpenAI
+        schema["name"] = schema_name
 
-        return {
-            "name": name,
-            "description": self.description or "Generate a structured output",
-            "input_schema": {"type": "object", "properties": {}, "required": []},
-            "output_schema": output_schema,
+        # Optionally, if you want to enforce strict mode on the overall schema,
+        # you can wrap it or add a flag. In this example, we simply return the modified schema.
+        result = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": schema_name,
+                "schema": schema,
+                "strict": True,
+            },
         }
+        return result
 
     def to_google_format(self) -> dict[str, Any]:  # TODO
-        """Convert to Google Gemini format"""
-        # Google doesn't have a native structured output format,
-        # but we can use system instructions
-        if isinstance(self.output_schema, type) and issubclass(self.output_schema, StructuredOutputSchema):
-            output_schema = self.output_schema.to_json_schema()
-        else:
-            output_schema = self.output_schema
+        return self.output_schema
 
-        return {
-            "schema": output_schema,
-            # Google may need different handling at the prompt level
+    def to_anthropic_format(self) -> dict[str, Any]:
+        """
+        Convert structured output config to Anthropic tool format.
+        Since Anthropic doesn't directly support structured output,
+        we create a specialized tool and force the model to use it.
+        """
+        schema = self._get_schema()
+        name = schema.pop("title", None) or "structured_output"
+        description = "Generate structured output according to schema"
+
+        # Clean up schema for Anthropic compatibility
+        if "properties" in schema:
+            for prop in schema["properties"].values():
+                # Remove unsupported validations
+                for field in ["minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum"]:
+                    if field in prop:
+                        prop.pop(field)
+
+                # Convert enum to Anthropic format
+                if "enum" in prop:
+                    prop["enum"] = list(prop["enum"])
+
+        # Create the tool
+        tool = {
+            "name": name,
+            "description": description,
+            "input_schema": schema,
         }
+
+        return tool

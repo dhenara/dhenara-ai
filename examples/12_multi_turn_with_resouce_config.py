@@ -131,7 +131,8 @@ def run_multi_turn_conversation():
         # Display the conversation
         print(f"User: {query}")
         print(f"Model: {model_endpoint.ai_model.model_name}\n")
-        print(f"Model Response:\n {node.response.choices[0].contents[0].get_text()}\n")
+        for content in node.response.choices[0].contents:
+            print(f"Model Response Content {content.index}:\n{content.get_text()}\n")
         print("-" * 80)
 
         # Append to nodes, so that next turn will have the context generated

@@ -20,6 +20,8 @@ from dhenara.ai.types.genai import (
     ChatResponseContentItemDelta,
     ChatResponseReasoningContentItem,
     ChatResponseReasoningContentItemDelta,
+    ChatResponseStructuredOutput,
+    ChatResponseStructuredOutputContentItem,
     ChatResponseTextContentItem,
     ChatResponseTextContentItemDelta,
     ChatResponseToolCall,
@@ -95,8 +97,8 @@ class OpenAIChat(OpenAIClientBase):
             chat_args["tool_choice"] = self.config.tool_choice.to_openai_format()
 
         # --- Structured Output ---
-        if self.config.response_format:
-            chat_args["response_format"] = self.config.response_format.to_openai_format()
+        if self.config.structured_output:
+            chat_args["response_format"] = self.config.structured_output.to_openai_format()
 
         return {"chat_args": chat_args}
 
@@ -236,20 +238,22 @@ class OpenAIChat(OpenAIClientBase):
 
         choices = []
         for choice in response.choices:
-            _content = self.process_content_item(
+            content_items = self.process_content_item(
                 index=0,  # Only one content item. Might change with reasoing response?
                 role=choice.message.role,
                 content_item=choice.message,
             )
-            contents = _content if isinstance(_content, list) else [_content]
-            choice = ChatResponseChoice(
+
+            contents = content_items if isinstance(content_items, list) else [content_items]
+
+            choice_obj = ChatResponseChoice(
                 index=choice.index,
                 finish_reason=choice.finish_reason if hasattr(choice, "finish_reason") else None,
                 stop_sequence=None,
                 contents=contents,
-                metadata={},  # Choice metadata
+                metadata={},
             )
-            choices.append(choice)
+            choices.append(choice_obj)
 
         return ChatResponse(
             model=response.model,
@@ -258,7 +262,6 @@ class OpenAIChat(OpenAIClientBase):
             usage=usage,
             usage_charge=usage_charge,
             choices=choices,
-            # Response Metadata
             metadata=AIModelCallResponseMetaData(
                 streaming=False,
                 duration_seconds=0,  # TODO
@@ -308,13 +311,27 @@ class OpenAIChat(OpenAIClientBase):
                         )
                     )
 
-            all_items.append(
-                ChatResponseTextContentItem(
-                    index=_index,
-                    role=role,
-                    text=_content,
+            if self.config.structured_output is not None:
+                structured_output = ChatResponseStructuredOutput.from_model_output(
+                    raw_response=_content,
+                    config=self.config.structured_output,
                 )
-            )
+                all_items.append(
+                    ChatResponseStructuredOutputContentItem(
+                        index=_index,
+                        role=role,
+                        structured_output=structured_output,
+                    )
+                )
+            else:
+                all_items.append(
+                    ChatResponseTextContentItem(
+                        index=_index,
+                        role=role,
+                        text=_content,
+                    )
+                )
+
             return all_items
 
         elif hasattr(content_item, "tool_calls") and content_item.tool_calls:

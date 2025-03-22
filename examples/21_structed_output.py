@@ -1,34 +1,44 @@
 import datetime
+import logging
 import random
 from typing import Any
 
+from pydantic import BaseModel as PydanticBaseModel
+from pydantic import Field
+
 from dhenara.ai import AIModelClient
 from dhenara.ai.providers.common.prompt_formatter import PromptFormatter
-from dhenara.ai.types import AIModelCallConfig, AIModelEndpoint
+from dhenara.ai.types import AIModelCallConfig, AIModelEndpoint, ResourceConfig
 from dhenara.ai.types.conversation._node import ConversationNode
-from dhenara.ai.types.external_api import AIModelAPIProviderEnum
-from dhenara.ai.types.genai import AIModelAPI
+from dhenara.ai.types.external_api import AIModelAPIProviderEnum, StructuredOutputConfig
 from dhenara.ai.types.genai.foundation_models.anthropic.chat import Claude35Haiku, Claude37Sonnet
 from dhenara.ai.types.genai.foundation_models.google.chat import Gemini20Flash, Gemini20FlashLite
 from dhenara.ai.types.genai.foundation_models.openai.chat import GPT4oMini, O3Mini
 
-# Initialize API configurations
-anthropic_api = AIModelAPI(
-    provider=AIModelAPIProviderEnum.ANTHROPIC,
-    api_key="your_anthropic_api_key",
-)
-openai_api = AIModelAPI(
-    provider=AIModelAPIProviderEnum.OPEN_AI,
-    api_key="your_openai_api_key",
-)
-google_api = AIModelAPI(
-    provider=AIModelAPIProviderEnum.GOOGLE_AI,
-    api_key="your_google_api_key",
+# Configure logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 
+# Set dhenara logger to DEBUG level specifically
+logger = logging.getLogger("dhenara")
+logger.setLevel(logging.DEBUG)
 
-# Create various model endpoints
-all_model_endpoints = [
+
+# Initialize all model enpoints and collect it into a ResourceConfig.
+# Ideally, you will do once in your application when it boots, and make it global
+resource_config = ResourceConfig()
+resource_config.load_from_file(
+    credentials_file="~/.env_keys/.dhenara_credentials.yaml",  # Path to your file
+)
+
+anthropic_api = resource_config.get_api(AIModelAPIProviderEnum.ANTHROPIC)
+openai_api = resource_config.get_api(AIModelAPIProviderEnum.OPEN_AI)
+google_api = resource_config.get_api(AIModelAPIProviderEnum.GOOGLE_AI)
+
+# Create various model endpoints, and add them to resource config
+resource_config.model_endpoints = [
     AIModelEndpoint(api=anthropic_api, ai_model=Claude37Sonnet),
     AIModelEndpoint(api=anthropic_api, ai_model=Claude35Haiku),
     AIModelEndpoint(api=openai_api, ai_model=O3Mini),
@@ -54,6 +64,15 @@ def get_context(previous_nodes: list[ConversationNode], destination_model: Any) 
     return context
 
 
+# Define a schema
+class ProductReview(PydanticBaseModel):
+    product_name: str = Field(..., description="Name of the product being reviewed")
+    rating: int = Field(..., description="Rating from 1-5", ge=1, le=5)
+    pros: list[str] = Field(..., description="List of pros/positives about the product")
+    cons: list[str] = Field(..., description="List of cons/negatives about the product")
+    summary: str = Field(..., description="Short summary of the review")
+
+
 def handle_conversation_turn(
     user_query: str,
     instructions: list[str],
@@ -61,12 +80,18 @@ def handle_conversation_turn(
     conversation_nodes: list[ConversationNode],
 ) -> ConversationNode:
     """Process a single conversation turn with the specified model and query."""
+    # Create config with function calling
 
     client = AIModelClient(
         model_endpoint=endpoint,
         config=AIModelCallConfig(
             max_output_tokens=1000,
             streaming=False,
+            tools=None,
+            tool_choice=None,
+            structured_output=StructuredOutputConfig(
+                output_schema=ProductReview,
+            ),
         ),
         is_async=False,
     )
@@ -102,17 +127,11 @@ def handle_conversation_turn(
 
 def run_multi_turn_conversation():
     multi_turn_queries = [
-        "Tell me a short story about a robot learning to paint.",
-        "Continue the story but add a twist where the robot discovers something unexpected.",
-        "Conclude the story with an inspiring ending.",
+        "Write a review for the iPhone 15 Pro Max.",
     ]
 
     # Instructions for each turn
-    instructions_by_turn = [
-        ["Be creative and engaging."],
-        ["Build upon the previous story seamlessly."],
-        ["Bring the story to a satisfying conclusion."],
-    ]
+    instructions_by_turn = [""]
 
     # Store conversation history
     conversation_nodes = []
@@ -120,9 +139,9 @@ def run_multi_turn_conversation():
     # Process each turn
     for i, query in enumerate(multi_turn_queries):
         # Choose a random model endpoint
-        model_endpoint = random.choice(all_model_endpoints)
+        model_endpoint = random.choice(resource_config.model_endpoints)
         # OR choose if fixed order as
-        # model_endpoint = all_model_endpoints[i]
+        # model_endpoint = resource_config.get_model_endpoint(model_name=Claude35Haiku.model_name)
 
         print(f"🔄 Turn {i + 1} with {model_endpoint.ai_model.model_name} from {model_endpoint.api.provider}\n")
 
@@ -135,9 +154,9 @@ def run_multi_turn_conversation():
 
         # Display the conversation
         print(f"User: {query}")
+        print(f"Model: {model_endpoint.ai_model.model_name}\n")
         for content in node.response.choices[0].contents:
             print(f"Model Response Content {content.index}:\n{content.get_text()}\n")
-        print(f"Model Response:\n {node.response.choices[0].contents[0].get_text()}\n")
         print("-" * 80)
 
         # Append to nodes, so that next turn will have the context generated

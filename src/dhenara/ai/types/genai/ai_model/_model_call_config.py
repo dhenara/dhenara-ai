@@ -19,7 +19,7 @@ class AIModelCallConfig(BaseModel):
     tools: list[ToolDefinition] | None = None
     tool_choice: ToolChoice | None = None
 
-    response_format: StructuredOutputConfig | None = None
+    structured_output: StructuredOutputConfig | None = None
 
     metadata: dict = {}
     timeout: float | None = None

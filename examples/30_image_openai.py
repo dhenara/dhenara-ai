@@ -55,8 +55,15 @@ if response.image_response:
                 image = Image.open(io.BytesIO(image_bytes))
 
                 # Save the image
-                image.save("generated_image.png")
+                image.save("generated_image_b64.png")
                 print("Image saved as generated_image.png")
+            elif image_content.content_format == ImageContentFormat.BYTES:
+                # Directly use the bytes data
+                image = Image.open(io.BytesIO(image_content.content_bytes))
+
+                # Save the image
+                image.save("generated_image_bytes.png")
+                print("Image saved as generated_image_from_bytes.png")
             elif image_content.content_format == ImageContentFormat.URL:
                 print(f"URL: {image_content.content_url}")
 

@@ -30,6 +30,8 @@ from dhenara.ai.types.genai import (
     ChatResponseContentItemDelta,
     ChatResponseReasoningContentItem,
     ChatResponseReasoningContentItemDelta,
+    ChatResponseStructuredOutput,
+    ChatResponseStructuredOutputContentItem,
     ChatResponseTextContentItem,
     ChatResponseTextContentItemDelta,
     ChatResponseToolCallContentItem,
@@ -102,17 +104,20 @@ class AnthropicChat(AnthropicClientBase):
 
         # --- Structured Output ---
         # Anthropic uses the tool system for structured output
-        if self.config.response_format:
+        if self.config.structured_output:
+            # For Anthropic, we need to set up tool calling
             if "tools" not in chat_args:
                 chat_args["tools"] = []
 
             # Add structured output as a tool
-            structured_tool = self.config.response_format.to_anthropic_format()
+            structured_tool = self.config.structured_output.to_anthropic_format()
             chat_args["tools"].append(structured_tool)
 
-            # Auto-invoke the structured output tool
-            if "tool_choice" not in chat_args:
-                chat_args["tool_choice"] = {"type": "tool", "name": structured_tool["name"]}
+            # Enforce this tool
+            chat_args["tool_choice"] = {
+                "type": "tool",
+                "name": structured_tool["name"],
+            }
 
         return {"chat_args": chat_args}
 
@@ -349,13 +354,26 @@ class AnthropicChat(AnthropicClientBase):
 
         elif isinstance(content_item, ToolUseBlock):
             content_item_dict = content_item.model_dump()
+            tool_call = ChatResponseToolCall.from_anthropic_format(content_item_dict)
 
-            return ChatResponseToolCallContentItem(
-                index=index,
-                role=role,
-                tool_call=ChatResponseToolCall.from_anthropic_format(content_item_dict),
-                metadata={},
-            )
+            # For anthropic, structed output reqs are send as tool_call
+            if self.config.structured_output is not None:
+                structured_output = ChatResponseStructuredOutput.from_tool_call(
+                    tool_call=tool_call,
+                    config=self.config.structured_output,
+                )
+                return ChatResponseStructuredOutputContentItem(
+                    index=index,
+                    role=role,
+                    structured_output=structured_output,
+                )
+            else:
+                return ChatResponseToolCallContentItem(
+                    index=index,
+                    role=role,
+                    tool_call=tool_call,
+                    metadata={},
+                )
 
         else:
             return self.get_unknown_content_type_item(

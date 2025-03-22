@@ -22,6 +22,8 @@ from dhenara.ai.types.genai import (
     ChatResponseContentItemDelta,
     ChatResponseGenericContentItem,
     ChatResponseGenericContentItemDelta,
+    ChatResponseStructuredOutput,
+    ChatResponseStructuredOutputContentItem,
     ChatResponseTextContentItem,
     ChatResponseTextContentItemDelta,
     ChatResponseToolCall,
@@ -103,9 +105,9 @@ class GoogleAIChat(GoogleAIClientBase):
                     history.append(item)
 
         # --- Structured Output ---
-        if self.config.response_format:
+        if self.config.structured_output:
             generate_config.response_mime_type = "application/json"
-            generate_config.response_schema = self.config.response_format.to_google_format()
+            generate_config.response_schema = self.config.structured_output.to_google_format()
 
         return {
             "prompt": message,
@@ -283,11 +285,24 @@ class GoogleAIChat(GoogleAIClientBase):
     ) -> ChatResponseContentItem:
         if isinstance(content_item, Part):
             if hasattr(content_item, "text") and content_item.text is not None:
-                return ChatResponseTextContentItem(
-                    index=index,
-                    role=role,
-                    text=content_item.text,
-                )
+                _content = content_item.text
+
+                if self.config.structured_output is not None:
+                    structured_output = ChatResponseStructuredOutput.from_model_output(
+                        raw_response=_content,
+                        config=self.config.structured_output,
+                    )
+                    return ChatResponseStructuredOutputContentItem(
+                        index=index,
+                        role=role,
+                        structured_output=structured_output,
+                    )
+                else:
+                    return ChatResponseTextContentItem(
+                        index=index,
+                        role=role,
+                        text=_content,
+                    )
 
             elif hasattr(content_item, "function_call") and content_item.function_call is not None:
                 content_item_dict = content_item.function_call.model_dump()
