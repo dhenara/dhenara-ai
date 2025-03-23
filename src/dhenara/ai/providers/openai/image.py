@@ -4,10 +4,6 @@ from typing import Any
 from openai.types import ImagesResponse as OpenAIImagesResponse
 
 from dhenara.ai.providers.openai import OpenAIClientBase
-from dhenara.ai.types.external_api import (
-    AIModelAPIProviderEnum,
-    SystemInstructions,
-)
 from dhenara.ai.types.genai import (
     AIModelCallResponse,
     ImageContentFormat,
@@ -17,6 +13,7 @@ from dhenara.ai.types.genai import (
     ImageResponseUsage,
     StreamingChatResponse,
 )
+from dhenara.ai.types.genai.ai_model import AIModelAPIProviderEnum
 from dhenara.ai.types.shared.api import SSEErrorResponse
 
 logger = logging.getLogger(__name__)
@@ -34,7 +31,7 @@ class OpenAIImage(OpenAIClientBase):
         self,
         prompt: str,
         context: list[str] | None = None,
-        instructions: SystemInstructions | None = None,
+        instructions=None,  # TODO # :SystemInstructions | None = None,
     ) -> AIModelCallResponse:
         if not self._client:
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")

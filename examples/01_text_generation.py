@@ -1,7 +1,5 @@
 from dhenara.ai import AIModelClient
-from dhenara.ai.types import AIModelCallConfig, AIModelEndpoint
-from dhenara.ai.types.external_api import AIModelAPIProviderEnum
-from dhenara.ai.types.genai import AIModelAPI
+from dhenara.ai.types import AIModelAPI, AIModelAPIProviderEnum, AIModelCallConfig, AIModelEndpoint
 from dhenara.ai.types.genai.foundation_models.anthropic.chat import Claude37Sonnet
 
 # 1. Create an API

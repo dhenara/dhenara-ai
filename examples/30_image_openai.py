@@ -4,9 +4,7 @@ import io
 from PIL import Image  # NOTE: You need to install 'Pillow' # pip install Pillow
 
 from dhenara.ai import AIModelClient
-from dhenara.ai.types import AIModelCallConfig, AIModelEndpoint
-from dhenara.ai.types.external_api import AIModelAPIProviderEnum
-from dhenara.ai.types.genai import AIModelAPI, ImageContentFormat
+from dhenara.ai.types import AIModelAPI, AIModelAPIProviderEnum, AIModelCallConfig, AIModelEndpoint, ImageContentFormat
 from dhenara.ai.types.genai.foundation_models.openai.image import DallE3
 
 # 1. Create an API

@@ -1,7 +1,5 @@
 from dhenara.ai import AIModelClient
-from dhenara.ai.types import AIModelCallConfig, AIModelEndpoint
-from dhenara.ai.types.external_api import AIModelAPIProviderEnum
-from dhenara.ai.types.genai import AIModelAPI, ChatResponseChunk
+from dhenara.ai.types import AIModelAPI, AIModelAPIProviderEnum, AIModelCallConfig, AIModelEndpoint, ChatResponseChunk
 from dhenara.ai.types.genai.foundation_models.anthropic.chat import Claude37Sonnet
 from dhenara.ai.types.shared import SSEErrorResponse, SSEEventType, SSEResponse
 

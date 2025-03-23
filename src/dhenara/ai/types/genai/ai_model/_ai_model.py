@@ -3,8 +3,13 @@ from typing import Any
 
 from pydantic import Field, model_validator
 
-from dhenara.ai.types.external_api._providers import AIModelFunctionalTypeEnum, AIModelProviderEnum
-from dhenara.ai.types.genai.dhenara import ChatResponseUsage, ImageResponseUsage, UsageCharge
+from dhenara.ai.types.genai.ai_model import (
+    AIModelFunctionalTypeEnum,
+    AIModelProviderEnum,
+    ChatResponseUsage,
+    ImageResponseUsage,
+    UsageCharge,
+)
 from dhenara.ai.types.shared.base import BaseModel
 
 logger = logging.getLogger(__name__)

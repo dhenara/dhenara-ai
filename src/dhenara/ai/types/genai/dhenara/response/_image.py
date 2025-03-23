@@ -1,11 +1,8 @@
-from pydantic import Field
-
-from dhenara.ai.types.external_api._providers import AIModelProviderEnum
+from dhenara.ai.types.genai.ai_model import AIModelProviderEnum, ImageResponseUsage, UsageCharge
 from dhenara.ai.types.shared.base import BaseModel
 
 from ._content_items._image_items import ImageResponseContentItem
 from ._metadata import AIModelCallResponseMetaData
-from ._usage_charge import UsageCharge
 
 
 class ImageResponseChoice(BaseModel):
@@ -21,35 +18,6 @@ class ImageResponseChoice(BaseModel):
                 "content": {
                     "content_format": "url",
                     "content_url": "https://api.example.com/images/123.jpg",
-                },
-            }
-        }
-
-
-class ImageResponseUsage(BaseModel):
-    """Usage information for image generation.
-    Note that, for images, no usage data is received, so this class holds params required for usage/cost calculation"""
-
-    number_of_images: int = Field(
-        ...,
-        description="Number of Images generated",
-    )
-    model: str = Field(
-        default_factory=dict,
-        description="Model Name",
-    )
-    options: dict = Field(
-        default_factory=dict,
-        description="Options send to API",
-    )
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "model": "dall-e-3",
-                "options": {
-                    "size": "1024x1024",
-                    "quality": "standard",
                 },
             }
         }

@@ -1,7 +1,5 @@
 from dhenara.ai import AIModelClient
-from dhenara.ai.types import AIModelEndpoint
-from dhenara.ai.types.external_api import AIModelAPIProviderEnum
-from dhenara.ai.types.genai import AIModelAPI, ChatModelCostData
+from dhenara.ai.types import AIModelAPI, AIModelAPIProviderEnum, AIModelEndpoint, ChatModelCostData
 from dhenara.ai.types.genai.foundation_models.anthropic.chat import Claude35Sonnet
 
 # Initialize API configurations

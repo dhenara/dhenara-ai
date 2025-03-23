@@ -1,7 +1,7 @@
 import logging
 
-from dhenara.ai.types.external_api import StructuredOutputConfig, ToolChoice, ToolDefinition
 from dhenara.ai.types.genai.ai_model import AIModel
+from dhenara.ai.types.genai.dhenara.request import StructuredOutputConfig, ToolChoice, ToolDefinition
 from dhenara.ai.types.shared.base import BaseModel
 
 logger = logging.getLogger(__name__)

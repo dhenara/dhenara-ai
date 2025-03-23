@@ -5,11 +5,13 @@ import logging
 from PIL import Image  # NOTE: You need to install 'Pillow' # pip install Pillow
 
 from dhenara.ai import AIModelClient
-from dhenara.ai.types import AIModelCallConfig, AIModelEndpoint, ResourceConfig
-from dhenara.ai.types.external_api import (
+from dhenara.ai.types import (
     AIModelAPIProviderEnum,
+    AIModelCallConfig,
+    AIModelEndpoint,
+    ImageContentFormat,
+    ResourceConfig,
 )
-from dhenara.ai.types.genai import ImageContentFormat
 from dhenara.ai.types.genai.foundation_models.google.image import Imagen3Fast
 from dhenara.ai.types.genai.foundation_models.openai.image import DallE3
 

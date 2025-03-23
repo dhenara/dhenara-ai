@@ -3,14 +3,14 @@ import logging
 from dhenara.ai.providers.anthropic import AnthropicClientBase
 from dhenara.ai.providers.google import GoogleAIClientBase
 from dhenara.ai.providers.openai import OpenAIClientBase
-from dhenara.ai.types.external_api import (
+from dhenara.ai.types.genai import AIModel, ChatResponse, ChatResponseChoice, ImageResponse
+from dhenara.ai.types.genai.dhenara import (
     AIModelProviderEnum,
     AnthropicMessageRoleEnum,
     FormattedPrompt,
     GoogleAiMessageRoleEnum,
     OpenAiMessageRoleEnum,
 )
-from dhenara.ai.types.genai import AIModel, ChatResponse, ChatResponseChoice, ImageResponse
 from dhenara.ai.types.shared.file import GenericFile
 
 logger = logging.getLogger(__name__)

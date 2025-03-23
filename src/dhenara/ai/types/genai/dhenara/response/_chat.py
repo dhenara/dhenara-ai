@@ -2,13 +2,17 @@ from typing import Any
 
 from pydantic import Field
 
-from dhenara.ai.types.external_api._providers import AIModelAPIProviderEnum, AIModelProviderEnum
+from dhenara.ai.types.genai.ai_model import (
+    AIModelAPIProviderEnum,
+    AIModelProviderEnum,
+    ChatResponseUsage,
+    UsageCharge,
+)
 from dhenara.ai.types.shared.api import SSEEventType, SSEResponse
 from dhenara.ai.types.shared.base import BaseModel
 
 from ._content_items._chat_items import ChatResponseContentItem, ChatResponseContentItemDelta
 from ._metadata import AIModelCallResponseMetaData
-from ._usage_charge import UsageCharge
 
 
 class ChatResponseChoice(BaseModel):
@@ -42,23 +46,6 @@ class ChatResponseChoiceDelta(BaseModel):
     stop_sequence: Any | None = None
     content_deltas: list[ChatResponseContentItemDelta] | None = None
     metadata: dict = {}
-
-
-class ChatResponseUsage(BaseModel):
-    """Token usage statistics for the chat completion"""
-
-    total_tokens: int
-    prompt_tokens: int
-    completion_tokens: int
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "total_tokens": 100,
-                "prompt_tokens": 50,
-                "completion_tokens": 50,
-            }
-        }
 
 
 class ChatResponse(BaseModel):

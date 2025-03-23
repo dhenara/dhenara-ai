@@ -4,7 +4,7 @@ from typing import Any
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import Field
 
-from dhenara.ai.types.external_api import StructuredOutputConfig
+from dhenara.ai.types.genai.dhenara import StructuredOutputConfig
 from dhenara.ai.types.shared.base import BaseModel
 
 from ._tool_call import ChatResponseToolCall

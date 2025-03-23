@@ -2,8 +2,7 @@ from dhenara.ai.providers.anthropic import AnthropicChat
 from dhenara.ai.providers.base import AIModelCallConfig, AIModelProviderClientBase
 from dhenara.ai.providers.google import GoogleAIChat, GoogleAIImage
 from dhenara.ai.providers.openai import OpenAIChat, OpenAIImage
-from dhenara.ai.types.external_api import AIModelProviderEnum
-from dhenara.ai.types.genai.ai_model import AIModelEndpoint, AIModelFunctionalTypeEnum
+from dhenara.ai.types.genai.ai_model import AIModelEndpoint, AIModelFunctionalTypeEnum, AIModelProviderEnum
 
 
 class AIModelClientFactory:

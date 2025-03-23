@@ -5,10 +5,14 @@ from typing import Any
 
 from dhenara.ai import AIModelClient
 from dhenara.ai.providers.common.prompt_formatter import PromptFormatter
-from dhenara.ai.types import AIModelCallConfig, AIModelEndpoint, ResourceConfig
-from dhenara.ai.types.conversation._node import ConversationNode
-from dhenara.ai.types.external_api import AIModelAPIProviderEnum
-from dhenara.ai.types.genai import ChatResponseChunk
+from dhenara.ai.types import (
+    AIModelAPIProviderEnum,
+    AIModelCallConfig,
+    AIModelEndpoint,
+    ChatResponseChunk,
+    ResourceConfig,
+)
+from dhenara.ai.types.conversation import ConversationNode
 from dhenara.ai.types.genai.foundation_models.anthropic.chat import Claude35Haiku, Claude37Sonnet
 from dhenara.ai.types.genai.foundation_models.google.chat import Gemini20Flash, Gemini20FlashLite
 from dhenara.ai.types.genai.foundation_models.openai.chat import GPT4oMini, O3Mini

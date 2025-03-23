@@ -3,7 +3,7 @@ from typing import Annotated, Any, Literal, Union
 
 from pydantic import Field, field_validator
 
-from dhenara.ai.types.external_api import (
+from dhenara.ai.types.genai.dhenara.request import (
     AnthropicMessageRoleEnum,
     GoogleAiMessageRoleEnum,
     OpenAiMessageRoleEnum,

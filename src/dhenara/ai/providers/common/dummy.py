@@ -4,10 +4,6 @@ from collections.abc import AsyncGenerator, Generator
 
 from dhenara.ai.config import settings
 from dhenara.ai.providers.base import StreamingManager
-from dhenara.ai.types.external_api import (
-    ExternalApiCallStatus,
-    ExternalApiCallStatusEnum,
-)
 from dhenara.ai.types.genai import (
     AIModelCallResponse,
     AIModelCallResponseMetaData,
@@ -18,6 +14,8 @@ from dhenara.ai.types.genai import (
     ChatResponseTextContentItem,
     ChatResponseTextContentItemDelta,
     ChatResponseUsage,
+    ExternalApiCallStatus,
+    ExternalApiCallStatusEnum,
     ImageResponseUsage,
     StreamingChatResponse,
     UsageCharge,

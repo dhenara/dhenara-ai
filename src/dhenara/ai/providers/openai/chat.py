@@ -6,10 +6,6 @@ from openai.types.chat import ChatCompletion, ChatCompletionMessage
 from openai.types.chat.chat_completion_chunk import ChatCompletionChunk, ChoiceDelta
 
 from dhenara.ai.providers.openai import OpenAIClientBase
-from dhenara.ai.types.external_api import (
-    AIModelAPIProviderEnum,
-    AIModelProviderEnum,
-)
 from dhenara.ai.types.genai import (
     AIModelCallResponse,
     AIModelCallResponseMetaData,
@@ -29,6 +25,7 @@ from dhenara.ai.types.genai import (
     ChatResponseUsage,
     StreamingChatResponse,
 )
+from dhenara.ai.types.genai.ai_model import AIModelAPIProviderEnum, AIModelProviderEnum
 from dhenara.ai.types.shared.api import SSEErrorResponse
 
 logger = logging.getLogger(__name__)

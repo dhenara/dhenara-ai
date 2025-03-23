@@ -4,23 +4,11 @@ from typing import Any, Literal, get_type_hints
 
 from pydantic import BaseModel, Field, create_model
 
-from dhenara.ai.types.external_api import AIModelProviderEnum
+from dhenara.ai.types.genai.ai_model import AIModelProviderEnum
+from dhenara.ai.types.genai.dhenara.request import ToProviderMixin
 
 
-class ProviderConversionMixin:
-    def to_provider_format(self, provider: AIModelProviderEnum) -> dict[str, Any]:
-        """Convert to provider format"""
-        if provider == AIModelProviderEnum.OPEN_AI:
-            return self.to_openai_format()
-        elif provider == AIModelProviderEnum.ANTHROPIC:
-            return self.to_anthropic_format()
-        elif provider == AIModelProviderEnum.GOOGLE_AI:
-            return self.to_google_format()
-        else:
-            raise ValueError(f"Provider {provider} not supported")
-
-
-class FunctionParameter(BaseModel, ProviderConversionMixin):
+class FunctionParameter(BaseModel, ToProviderMixin):
     """Parameter definition for function/tool parameters"""
 
     type: str = Field(..., description="Type of the parameter (string, number, boolean, etc.)")
@@ -51,7 +39,7 @@ class FunctionParameter(BaseModel, ProviderConversionMixin):
         return result
 
 
-class FunctionParameters(BaseModel, ProviderConversionMixin):
+class FunctionParameters(BaseModel, ToProviderMixin):
     """Schema for function parameters"""
 
     type: Literal["object"] = "object"
@@ -87,7 +75,7 @@ class FunctionParameters(BaseModel, ProviderConversionMixin):
         return self._to_common_format(AIModelProviderEnum.GOOGLE_AI)
 
 
-class FunctionDefinition(BaseModel, ProviderConversionMixin):
+class FunctionDefinition(BaseModel, ToProviderMixin):
     """Generic function/tool definition that works across all providers"""
 
     name: str = Field(..., description="Name of the function")
@@ -119,7 +107,7 @@ class FunctionDefinition(BaseModel, ProviderConversionMixin):
         }
 
 
-class ToolDefinition(BaseModel, ProviderConversionMixin):
+class ToolDefinition(BaseModel, ToProviderMixin):
     """Tool definition that wraps a function"""
 
     type: Literal["function"] = "function"

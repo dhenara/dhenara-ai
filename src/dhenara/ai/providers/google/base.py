@@ -5,14 +5,14 @@ from google import genai
 
 from dhenara.ai.providers.base import AIModelProviderClientBase
 from dhenara.ai.providers.shared import APIProviderSharedFns
-from dhenara.ai.types.external_api import (
-    AIModelAPIProviderEnum,
+from dhenara.ai.types.genai import AIModel
+from dhenara.ai.types.genai.ai_model import AIModelAPIProviderEnum
+from dhenara.ai.types.genai.dhenara import (
     FormattedPrompt,
     GoogleAiMessageRoleEnum,
     GoogleAIPromptMessage,
     SystemInstructions,
 )
-from dhenara.ai.types.genai import AIModel
 from dhenara.ai.types.shared.file import FileFormatEnum, GenericFile
 
 logger = logging.getLogger(__name__)

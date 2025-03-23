@@ -14,14 +14,14 @@ from dhenara.ai.types import (
     ChatResponseGenericContentItem,
     ChatResponseGenericContentItemDelta,
     ChatResponseUsage,
+    ExternalApiCallStatus,
+    ExternalApiCallStatusEnum,
     ImageResponse,
     ImageResponseUsage,
     StreamingChatResponse,
     UsageCharge,
 )
-from dhenara.ai.types.external_api import (
-    ExternalApiCallStatus,
-    ExternalApiCallStatusEnum,
+from dhenara.ai.types.genai.dhenara import (
     FormattedPrompt,
     SystemInstructions,
 )

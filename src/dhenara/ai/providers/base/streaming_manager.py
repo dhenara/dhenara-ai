@@ -2,7 +2,6 @@ import logging
 from datetime import datetime as datetime_type
 
 from dhenara.ai.config import settings
-from dhenara.ai.types.external_api import ExternalApiCallStatus, ExternalApiCallStatusEnum
 from dhenara.ai.types.genai import (
     AIModelCallResponse,
     AIModelCallResponseMetaData,
@@ -18,6 +17,8 @@ from dhenara.ai.types.genai import (
     ChatResponseTextContentItem,
     ChatResponseToolCallContentItem,
     ChatResponseUsage,
+    ExternalApiCallStatus,
+    ExternalApiCallStatusEnum,
     ImageResponseUsage,
     StreamingChatResponse,
     UsageCharge,

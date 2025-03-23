@@ -1,6 +1,6 @@
 from pydantic import Field
 
-from dhenara.ai.types.external_api import AIModelAPIProviderEnum
+from dhenara.ai.types.genai.ai_model import AIModelAPIProviderEnum
 from dhenara.ai.types.shared.base import BaseEnum, BaseModel
 
 

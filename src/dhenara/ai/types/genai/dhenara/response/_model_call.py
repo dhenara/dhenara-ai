@@ -4,9 +4,9 @@ from typing import Union
 
 from pydantic import Field
 
-from dhenara.ai.types.external_api import ExternalApiCallStatus
-from dhenara.ai.types.genai.dhenara import (
+from dhenara.ai.types.genai.dhenara.response import (
     ChatResponse,
+    ExternalApiCallStatus,
     ImageResponse,
     StreamingChatResponse,
 )

@@ -1,8 +1,9 @@
 from pydantic import Field, model_validator
 
-from dhenara.ai.types.external_api import AIModelAPIProviderEnum, AIModelProviderEnum
 from dhenara.ai.types.genai.ai_model import (
     AIModelAPI,
+    AIModelAPIProviderEnum,
+    AIModelProviderEnum,
     BaseAIModel,
     ChatModelCostData,
     ChatResponseUsage,

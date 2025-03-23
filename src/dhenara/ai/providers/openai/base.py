@@ -4,15 +4,14 @@ from typing import Any
 from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, OpenAI
 
 from dhenara.ai.providers.base import AIModelProviderClientBase
-from dhenara.ai.types.external_api import (
-    AIModelAPIProviderEnum,
-    AIModelFunctionalTypeEnum,
+from dhenara.ai.types.genai import AIModel
+from dhenara.ai.types.genai.ai_model import AIModelAPIProviderEnum, AIModelFunctionalTypeEnum
+from dhenara.ai.types.genai.dhenara import (
     FormattedPrompt,
     OpenAiMessageRoleEnum,
     OpenAIPromptMessage,
     SystemInstructions,
 )
-from dhenara.ai.types.genai import AIModel
 from dhenara.ai.types.shared.file import FileFormatEnum, GenericFile
 
 logger = logging.getLogger(__name__)
