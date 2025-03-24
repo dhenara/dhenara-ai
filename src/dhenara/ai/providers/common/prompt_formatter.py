@@ -15,8 +15,11 @@ from dhenara.ai.types.shared.file import GenericFile
 
 logger = logging.getLogger(__name__)
 
+# TODO: Delete this file
+# No more used
 
-class PromptFormatter:
+
+class LegacyPromptFormatter:
     """Handles conversion of content into model-specific prompt formats"""
 
     PROVIDER_CONFIG = {
@@ -81,7 +84,7 @@ class PromptFormatter:
         # Extract and truncate previous response if available
         response_messages = []
         _previous_response_text = None
-        config = PromptFormatter.PROVIDER_CONFIG[model.provider]
+        config = LegacyPromptFormatter.PROVIDER_CONFIG[model.provider]
         formatter = config["formatter"]
 
         if attached_files is None:
@@ -120,7 +123,7 @@ class PromptFormatter:
                     )
 
                     if _previous_response_text:
-                        response_text = PromptFormatter._truncate_text_by_words(
+                        response_text = LegacyPromptFormatter._truncate_text_by_words(
                             _previous_response_text, max_words_response
                         )
                     # Format previous response if present
@@ -149,14 +152,14 @@ class PromptFormatter:
                 logger.error(f"Failed to extract previous response text: {e}")
 
         # Truncate user query if needed
-        query_text = PromptFormatter._truncate_text_by_words(user_query, max_words_query) if user_query else None
+        query_text = LegacyPromptFormatter._truncate_text_by_words(user_query, max_words_query) if user_query else None
 
         # Initialize prompt components
         file_contents = []
         query_message = None
 
         # Validate provider
-        if model.provider not in PromptFormatter.PROVIDER_CONFIG:
+        if model.provider not in LegacyPromptFormatter.PROVIDER_CONFIG:
             raise ValueError(f"Unsupported model provider: {model.provider}")
 
         # Format query if present

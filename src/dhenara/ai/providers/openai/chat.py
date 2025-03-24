@@ -37,7 +37,7 @@ class OpenAIChat(OpenAIClientBase):
         self,
         prompt: dict,
         context: list[dict] | None = None,
-        instructions: list[str] | None = None,
+        instructions: dict | None = None,
     ) -> AIModelCallResponse:
         if not self._client:
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
@@ -49,13 +49,13 @@ class OpenAIChat(OpenAIClientBase):
         user = self.config.get_user()
 
         # Process instructions
-        instructions_prompt = self.process_instructions(instructions)
-        if instructions_prompt:
-            messages.append(instructions_prompt)
+        if instructions:
+            messages.append(instructions)
 
         # Add previous messages and current prompt
         if context:
             messages.extend(context)
+
         messages.append(prompt)
 
         # Prepare API call arguments
@@ -88,14 +88,23 @@ class OpenAIChat(OpenAIClientBase):
 
         # ---  Tools ---
         if self.config.tools:
-            chat_args["tools"] = [tool.to_openai_format() for tool in self.config.tools]
+            chat_args["tools"] = self.formatter.format_tools(
+                tools=self.config.tools,
+                model_endpoint=self.model_endpoint,
+            )
 
         if self.config.tool_choice:
-            chat_args["tool_choice"] = self.config.tool_choice.to_openai_format()
+            chat_args["tool_choice"] = self.formatter.format_tool_choice(
+                tool_choice=self.config.tool_choice,
+                model_endpoint=self.model_endpoint,
+            )
 
         # --- Structured Output ---
         if self.config.structured_output:
-            chat_args["response_format"] = self.config.structured_output.to_openai_format()
+            chat_args["response_format"] = self.formatter.format_structured_output(
+                structured_output=self.config.structured_output,
+                model_endpoint=self.model_endpoint,
+            )
 
         return {"chat_args": chat_args}
 

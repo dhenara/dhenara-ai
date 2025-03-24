@@ -11,7 +11,6 @@ from dhenara.ai.types.genai import (
     ImageResponseContentItem,
     ImageResponseUsage,
 )
-from dhenara.ai.types.genai.dhenara import SystemInstructions
 
 logger = logging.getLogger(__name__)
 
@@ -24,9 +23,9 @@ class GoogleAIImage(GoogleAIClientBase):
 
     def get_api_call_params(
         self,
-        prompt: str,
-        context: list[str] | None = None,
-        instructions: SystemInstructions | None = None,
+        prompt: dict,
+        context: list[dict] | None = None,
+        instructions: dict | None = None,
     ) -> AIModelCallResponse:
         if not self._client:
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
@@ -34,7 +33,11 @@ class GoogleAIImage(GoogleAIClientBase):
         if self._input_validation_pending:
             raise ValueError("Inputs must be validated before API calls")
 
-        instructions_str = " ".join(instructions)
+        if instructions:
+            instructions_str = instructions["parts"][0]["text"]
+        else:
+            instructions_str = ""
+
         prompt_text = f"{instructions_str} {context} {prompt}"
 
         generate_config_args = self.get_default_generate_config_args()

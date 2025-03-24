@@ -1,9 +1,7 @@
 import datetime
 import random
-from typing import Any
 
 from dhenara.ai import AIModelClient
-from dhenara.ai.providers.common.prompt_formatter import PromptFormatter
 from dhenara.ai.types import AIModelAPI, AIModelAPIProviderEnum, AIModelCallConfig, AIModelEndpoint
 from dhenara.ai.types.conversation import ConversationNode
 from dhenara.ai.types.genai.foundation_models.anthropic.chat import Claude35Haiku, Claude37Sonnet
@@ -36,22 +34,6 @@ all_model_endpoints = [
 ]
 
 
-def get_context(previous_nodes: list[ConversationNode], destination_model: Any) -> list[Any]:
-    """Process previous conversation nodes into context for the next turn."""
-    context = []
-
-    for node in previous_nodes:
-        prompts = PromptFormatter.format_conversion_node_as_prompts(
-            model=destination_model,
-            user_query=node.user_query,
-            attached_files=node.attached_files,
-            previous_response=node.response,
-        )
-        context.extend(prompts)
-
-    return context
-
-
 def handle_conversation_turn(
     user_query: str,
     instructions: list[str],
@@ -69,16 +51,10 @@ def handle_conversation_turn(
         is_async=False,
     )
 
-    # Format the user query
-    prompt = PromptFormatter.format_conversion_node_as_prompts(
-        model=endpoint.ai_model,
-        user_query=user_query,
-        attached_files=[],
-        previous_response=[],
-    )[0]
-
-    # Get context from previous turns (if any)
-    context = get_context(conversation_nodes, endpoint.ai_model) if conversation_nodes else []
+    prompt = user_query
+    context = []
+    for node in conversation_nodes:
+        context += node.get_context()
 
     # Generate response
     response = client.generate(

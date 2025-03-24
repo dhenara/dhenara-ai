@@ -1,10 +1,8 @@
 # streaming_multi_turn_eg.py
 import datetime
 import random
-from typing import Any
 
 from dhenara.ai import AIModelClient
-from dhenara.ai.providers.common.prompt_formatter import PromptFormatter
 from dhenara.ai.types import (
     AIModelAPIProviderEnum,
     AIModelCallConfig,
@@ -13,9 +11,9 @@ from dhenara.ai.types import (
     ResourceConfig,
 )
 from dhenara.ai.types.conversation import ConversationNode
-from dhenara.ai.types.genai.foundation_models.anthropic.chat import Claude35Haiku, Claude37Sonnet
-from dhenara.ai.types.genai.foundation_models.google.chat import Gemini20Flash, Gemini20FlashLite
-from dhenara.ai.types.genai.foundation_models.openai.chat import GPT4oMini, O3Mini
+from dhenara.ai.types.genai.foundation_models.anthropic.chat import Claude35Haiku
+from dhenara.ai.types.genai.foundation_models.google.chat import Gemini20FlashLite
+from dhenara.ai.types.genai.foundation_models.openai.chat import GPT4oMini
 from dhenara.ai.types.shared import SSEErrorResponse, SSEEventType, SSEResponse
 
 # Initialize all model endpoints and collect it into a ResourceConfig.
@@ -31,11 +29,8 @@ google_api = resource_config.get_api(AIModelAPIProviderEnum.GOOGLE_AI)
 
 # Create various model endpoints, and add them to resource config
 resource_config.model_endpoints = [
-    AIModelEndpoint(api=anthropic_api, ai_model=Claude37Sonnet),
     AIModelEndpoint(api=anthropic_api, ai_model=Claude35Haiku),
-    AIModelEndpoint(api=openai_api, ai_model=O3Mini),
     AIModelEndpoint(api=openai_api, ai_model=GPT4oMini),
-    AIModelEndpoint(api=google_api, ai_model=Gemini20Flash),
     AIModelEndpoint(api=google_api, ai_model=Gemini20FlashLite),
 ]
 
@@ -104,22 +99,6 @@ class StreamProcessor:
         print(f"\nWarning: {message}")
 
 
-def get_context(previous_nodes: list[ConversationNode], destination_model: Any) -> list[Any]:
-    """Process previous conversation nodes into context for the next turn."""
-    context = []
-
-    for node in previous_nodes:
-        prompts = PromptFormatter.format_conversion_node_as_prompts(
-            model=destination_model,
-            user_query=node.user_query,
-            attached_files=node.attached_files,
-            previous_response=node.response,
-        )
-        context.extend(prompts)
-
-    return context
-
-
 def handle_streaming_conversation_turn(
     user_query: str,
     instructions: list[str],
@@ -138,16 +117,10 @@ def handle_streaming_conversation_turn(
         is_async=False,
     )
 
-    # Format the user query
-    prompt = PromptFormatter.format_conversion_node_as_prompts(
-        model=endpoint.ai_model,
-        user_query=user_query,
-        attached_files=[],
-        previous_response=[],
-    )[0]
-
-    # Get context from previous turns (if any)
-    context = get_context(conversation_nodes, endpoint.ai_model) if conversation_nodes else []
+    prompt = user_query
+    context = []
+    for node in conversation_nodes:
+        context += node.get_context()
 
     # Generate streaming response
     response = client.generate(

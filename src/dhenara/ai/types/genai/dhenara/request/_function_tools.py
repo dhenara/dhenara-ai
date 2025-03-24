@@ -4,7 +4,6 @@ from typing import Any, Literal, get_type_hints
 
 from pydantic import BaseModel, Field, create_model
 
-from dhenara.ai.types.genai.ai_model import AIModelProviderEnum
 from dhenara.ai.types.genai.dhenara.request import ToProviderMixin
 
 
@@ -17,27 +16,6 @@ class FunctionParameter(BaseModel, ToProviderMixin):
     allowed_values: list[Any] | None = Field(default=None, description="Allowed values")
     default: Any | None = Field(default=None, description="Default value for the parameter")
 
-    def to_openai_format(self) -> dict[str, Any]:
-        result = self.model_dump(
-            exclude={"required", "allowed_values", "default"},
-        )
-        return result
-
-    def to_anthropic_format(self) -> dict[str, Any]:
-        result = self.model_dump(
-            exclude={"required", "allowed_values", "default"},
-        )
-        if self.allowed_values is not None:
-            result["enum"] = self.allowed_values
-
-        return result
-
-    def to_google_format(self) -> dict[str, Any]:
-        result = self.model_dump(
-            exclude={"required", "allowed_values", "default"},
-        )
-        return result
-
 
 class FunctionParameters(BaseModel, ToProviderMixin):
     """Schema for function parameters"""
@@ -45,34 +23,6 @@ class FunctionParameters(BaseModel, ToProviderMixin):
     type: Literal["object"] = "object"
     properties: dict[str, FunctionParameter] = Field(..., description="Properties of the function parameters")
     required: list[str] | None = Field(default_factory=list, description="List of required parameters")
-
-    def _to_common_format(self, provider: AIModelProviderEnum) -> dict[str, Any]:
-        """Convert to OpenAI format"""
-        # Create a new dictionary with transformed properties
-        result = {
-            "type": self.type,
-            "properties": {name: param.to_provider_format(provider) for name, param in self.properties.items()},
-        }
-
-        # Auto-build the required list based on parameters marked as required
-        required_params = [name for name, param in self.properties.items() if param.required]
-
-        # Only include required field if there are required parameters
-        if required_params:
-            result["required"] = required_params
-        elif self.required:  # If manually specified required array exists
-            result["required"] = self.required
-
-        return result
-
-    def to_openai_format(self) -> dict[str, Any]:
-        return self._to_common_format(AIModelProviderEnum.OPEN_AI)
-
-    def to_anthropic_format(self) -> dict[str, Any]:
-        return self._to_common_format(AIModelProviderEnum.ANTHROPIC)
-
-    def to_google_format(self) -> dict[str, Any]:
-        return self._to_common_format(AIModelProviderEnum.GOOGLE_AI)
 
 
 class FunctionDefinition(BaseModel, ToProviderMixin):
@@ -82,48 +32,12 @@ class FunctionDefinition(BaseModel, ToProviderMixin):
     description: str | None = Field(default=None, description="Description of the function")
     parameters: FunctionParameters = Field(..., description="Parameters for the function")
 
-    def to_openai_format(self) -> dict[str, Any]:
-        """Convert to OpenAI format"""
-        return {
-            "name": self.name,
-            "description": self.description,
-            "parameters": self.parameters.to_openai_format(),
-        }
-
-    def to_anthropic_format(self) -> dict[str, Any]:
-        """Convert to Anthropic format"""
-        return {
-            "name": self.name,
-            "description": self.description,
-            "input_schema": self.parameters.to_anthropic_format(),
-        }
-
-    def to_google_format(self) -> dict[str, Any]:
-        """Convert to Google Gemini format"""
-        return {
-            "name": self.name,
-            "description": self.description,
-            "parameters": self.parameters.to_google_format(),
-        }
-
 
 class ToolDefinition(BaseModel, ToProviderMixin):
     """Tool definition that wraps a function"""
 
     type: Literal["function"] = "function"
     function: FunctionDefinition = Field(..., description="Function definition")
-
-    def to_openai_format(self) -> dict[str, Any]:
-        return {
-            "type": "function",
-            "function": self.function.to_openai_format(),
-        }
-
-    def to_anthropic_format(self) -> dict[str, Any]:
-        return self.function.to_anthropic_format()
-
-    def to_google_format(self) -> dict[str, Any]:
-        return {"function_declarations": [self.function.to_google_format()]}
 
     @classmethod
     def from_callable(cls, func: Callable) -> "ToolDefinition":
@@ -219,42 +133,3 @@ class ToolChoice(BaseModel):
         ),
     )
     specific_tool_name: str | None = None
-
-    def to_openai_format(self) -> dict[str, Any]:
-        if self.type is None:
-            return None
-        elif self.type == "zero_or_more":  # Auto: (Default) Call zero, one, or multiple functions. tool_choice: "auto"
-            return "auto"
-        elif self.type == "one_or_more":  # Required: Call one or more functions. tool_choice: "required"
-            return "required"
-        elif self.type == "specific":  # Forced Function: Call exactly one specific function. tool_choice:
-            return {"type": "function", "name": self.specific_tool_name}
-
-    def to_anthropic_format(self) -> dict[str, Any]:
-        if self.type is None:
-            return None
-        elif self.type == "zero_or_more":
-            return {"type": "auto"}
-        elif self.type == "one_or_more":
-            return {"type": "any"}
-        elif self.type == "specific":
-            return {"type": "tool", "name": self.specific_tool_name}
-
-    def to_google_format(self) -> dict[str, Any]:
-        if self.type is None:
-            return None
-        elif self.type == "zero_or_more":
-            _cfg = {
-                "mode": "AUTO",
-            }
-        elif self.type == "one_or_more":
-            _cfg = {
-                "mode": "ANY",
-            }
-        elif self.type == "specific":
-            _cfg = {
-                "mode": "AUTO",
-                "allowed_function_names": [self.specific_tool_name],
-            }
-
-        return {"function_calling_config": _cfg}

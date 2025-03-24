@@ -50,7 +50,7 @@ class AnthropicChat(AnthropicClientBase):
         self,
         prompt: dict,
         context: list[dict] | None = None,
-        instructions: list[str] | None = None,
+        instructions: dict | None = None,
     ) -> AIModelCallResponse:
         if not self._client:
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
@@ -62,11 +62,19 @@ class AnthropicChat(AnthropicClientBase):
         user = self.config.get_user()
 
         # Process system instructions
-        system_prompt = self.process_instructions(instructions)
+        system_prompt = None
+        if instructions:
+            if not (isinstance(instructions, dict) and "content" in instructions.keys()):
+                raise ValueError(
+                    f"Invalid Instructions format. "
+                    f"Instructions should be processed and passed in prompt format. Value is {instructions} "
+                )
+            system_prompt = instructions["content"]  # Extract text from system prompt
 
         # Add previous messages and current prompt
         if context:
             messages.extend(context)
+
         messages.append(prompt)
 
         # Prepare API call arguments
@@ -97,10 +105,16 @@ class AnthropicChat(AnthropicClientBase):
 
         # ---  Tools ---
         if self.config.tools:
-            chat_args["tools"] = [tool.to_anthropic_format() for tool in self.config.tools]
+            chat_args["tools"] = self.formatter.format_tools(
+                tools=self.config.tools,
+                model_endpoint=self.model_endpoint,
+            )
 
         if self.config.tool_choice:
-            chat_args["tool_choice"] = self.config.tool_choice.to_anthropic_format()
+            chat_args["tool_choice"] = self.formatter.format_tool_choice(
+                tool_choice=self.config.tool_choice,
+                model_endpoint=self.model_endpoint,
+            )
 
         # --- Structured Output ---
         # Anthropic uses the tool system for structured output
@@ -110,7 +124,10 @@ class AnthropicChat(AnthropicClientBase):
                 chat_args["tools"] = []
 
             # Add structured output as a tool
-            structured_tool = self.config.structured_output.to_anthropic_format()
+            structured_tool = self.formatter.format_structured_output(
+                structured_output=self.config.structured_output,
+                model_endpoint=self.model_endpoint,
+            )
             chat_args["tools"].append(structured_tool)
 
             # Enforce this tool

@@ -3,14 +3,32 @@ from typing import Annotated, Any, Literal, Union
 
 from pydantic import Field, field_validator
 
-from dhenara.ai.types.genai.dhenara.request import (
-    AnthropicMessageRoleEnum,
-    GoogleAiMessageRoleEnum,
-    OpenAiMessageRoleEnum,
-)
-from dhenara.ai.types.shared.base import BaseModel
+from dhenara.ai.types.shared.base import BaseEnum, BaseModel
 
 logger = logging.getLogger(__name__)
+
+
+# TODO: Delete this file
+# No more used
+
+
+class OpenAiMessageRoleEnum(BaseEnum):
+    USER = "user"
+    ASSISTANT = "assistant"
+    SYSTEM = "system"
+
+
+class GoogleAiMessageRoleEnum(BaseEnum):
+    USER = "user"
+    MODEL = "model"
+
+
+class AnthropicMessageRoleEnum(BaseEnum):
+    USER = "user"
+    ASSISTANT = "assistant"
+    # NOTE: There is no "system" role for input messages in the Messages API.
+    #  To include a system prompt, you can use the top-level system parameter
+    # SYSTEM = "system"
 
 
 # OpenAI Specific Models

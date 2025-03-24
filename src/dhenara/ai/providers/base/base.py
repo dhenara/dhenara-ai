@@ -21,10 +21,7 @@ from dhenara.ai.types import (
     StreamingChatResponse,
     UsageCharge,
 )
-from dhenara.ai.types.genai.dhenara import (
-    FormattedPrompt,
-    SystemInstructions,
-)
+from dhenara.ai.types.genai.dhenara.request import Prompt, PromptText, SystemInstructions
 from dhenara.ai.types.shared.api import SSEErrorCode, SSEErrorData, SSEErrorResponse
 
 logger = logging.getLogger(__name__)
@@ -33,7 +30,7 @@ logger = logging.getLogger(__name__)
 class AIModelProviderClientBase(ABC):
     """Base class for AI model provider handlers"""
 
-    prompt_message_class = None
+    formatter = None
 
     def __init__(self, model_endpoint: AIModelEndpoint, config: AIModelCallConfig, is_async: bool = True):
         self.model_endpoint = model_endpoint
@@ -44,6 +41,10 @@ class AIModelProviderClientBase(ABC):
         self._initialized = False
         self._input_validation_pending = True
         self.streaming_manager = None
+        self.formatted_config = None
+
+        if self.formatter is None:
+            raise ValueError("Formatter is not set")
 
     async def __aenter__(self):
         if self.is_async:
@@ -97,9 +98,9 @@ class AIModelProviderClientBase(ABC):
 
     def generate_response_sync(
         self,
-        prompt: dict,
-        context: list[dict] | None = None,
-        instructions: SystemInstructions | None = None,
+        prompt: str | dict | Prompt,
+        context: list[str | dict | Prompt] | None = None,
+        instructions: list[str | PromptText] | SystemInstructions | None = None,
     ) -> AIModelCallResponse:
         parsed_response: ChatResponse | None = None
         api_call_status: ExternalApiCallStatus | None = None
@@ -142,9 +143,9 @@ class AIModelProviderClientBase(ABC):
 
     async def generate_response_async(
         self,
-        prompt: dict,
-        context: list[dict] | None = None,
-        instructions: SystemInstructions | None = None,
+        prompt: str | dict | Prompt,
+        context: list[str | dict | Prompt] | None = None,
+        instructions: list[str | PromptText] | SystemInstructions | None = None,
     ) -> AIModelCallResponse:
         parsed_response: ChatResponse | None = None
         api_call_status: ExternalApiCallStatus | None = None
@@ -185,17 +186,22 @@ class AIModelProviderClientBase(ABC):
             logger.exception(f"Error in generate_response_async: {e}")
             api_call_status = self._create_error_status(str(e))
 
-    def _validate_and_generate_response_sync(
+    def _format_and_generate_response_sync(
         self,
-        prompt: FormattedPrompt,
-        context: list[FormattedPrompt] | None = None,
-        instructions: SystemInstructions | None = None,
+        prompt: str | dict | Prompt,
+        context: list[str | dict | Prompt] | None = None,
+        instructions: list[str | PromptText] | SystemInstructions | None = None,
     ) -> AIModelCallResponse:
         """Generate response from the model"""
 
-        if settings.ENABLE_PROMPT_VALIDATION:
-            validated_inputs = self.validate_inputs(prompt=prompt, context=context)
-            if not validated_inputs:
+        if settings.ENABLE_INPUT_FORMAT_CONVERSION:
+            formatted_inputs = self.format_inputs(
+                prompt=prompt,
+                context=context,
+                instructions=instructions,
+            )
+            print(f"AJJ: format_input= {formatted_inputs}")
+            if not formatted_inputs:
                 return AIModelCallResponse(
                     status=self._create_error_status(
                         message="Input validation failed, not proceeding to generation.",
@@ -203,9 +209,9 @@ class AIModelProviderClientBase(ABC):
                     )
                 )
             return self.generate_response_sync(
-                prompt=validated_inputs[0],
-                context=validated_inputs[1],
-                instructions=instructions,
+                prompt=formatted_inputs["prompt"],
+                context=formatted_inputs["context"],
+                instructions=formatted_inputs["instructions"],
             )
         else:
             self._input_validation_pending = False
@@ -215,17 +221,21 @@ class AIModelProviderClientBase(ABC):
                 instructions=instructions,
             )
 
-    async def _validate_and_generate_response_async(
+    async def _format_and_generate_response_async(
         self,
-        prompt: FormattedPrompt,
-        context: list[FormattedPrompt] | None = None,
-        instructions: SystemInstructions | None = None,
+        prompt: str | dict | Prompt,
+        context: list[str | dict | Prompt] | None = None,
+        instructions: list[str | PromptText] | SystemInstructions | None = None,
     ) -> AIModelCallResponse:
         """Generate response from the model"""
 
-        if settings.ENABLE_PROMPT_VALIDATION:
-            validated_inputs = self.validate_inputs(prompt=prompt, context=context)
-            if not validated_inputs:
+        if settings.ENABLE_INPUT_FORMAT_CONVERSION:
+            formatted_inputs = self.format_inputs(
+                prompt=prompt,
+                context=context,
+                instructions=instructions,
+            )
+            if not formatted_inputs:
                 return AIModelCallResponse(
                     status=self._create_error_status(
                         message="Input validation failed, not proceeding to generation.",
@@ -233,8 +243,8 @@ class AIModelProviderClientBase(ABC):
                     )
                 )
             return await self.generate_response_async(
-                prompt=validated_inputs[0],
-                context=validated_inputs[1],
+                prompt=formatted_inputs[0],
+                context=formatted_inputs[1],
                 instructions=instructions,
             )
         else:
@@ -335,16 +345,11 @@ class AIModelProviderClientBase(ABC):
         pass
 
     @abstractmethod
-    def process_instructions(
-        self,
-        instructions: SystemInstructions,
-    ) -> FormattedPrompt | str | None:
-        pass
-
-    @abstractmethod
     def get_api_call_params(
         self,
-        api_call_params: dict,
+        prompt: dict,
+        context: list[dict] | None = None,
+        instructions: dict | None = None,
     ) -> AIModelCallResponse:
         pass
 
@@ -388,47 +393,62 @@ class AIModelProviderClientBase(ABC):
     def _get_usage_from_provider_response(self, response):
         pass
 
-    def validate_inputs(
+    def format_inputs(
         self,
-        prompt: FormattedPrompt | dict,
-        context: list[FormattedPrompt | dict] | None = None,
-    ) -> tuple[FormattedPrompt, list[FormattedPrompt] | None] | None:
+        prompt: str | dict | Prompt,
+        context: list[str | dict | Prompt] | None = None,
+        instructions: list[str | PromptText] | SystemInstructions | None = None,
+        **kwargs,
+    ) -> tuple[dict, list[dict], list[str] | dict | None]:
+        """Format inputs into provider-specific formats"""
         try:
-            validated_prompt = self._validate_prompt(prompt)
-            validated_context = [self._validate_prompt(pmt) for pmt in context]
+            # Get the appropriate formatter for this provider
 
-            if not self.validate_options():
-                logger.error("validate_inputs: ERROR: validate_options failed")
-                return None
+            # Format prompt
+            formatted_prompt = self.formatter.format_prompt(
+                prompt=prompt,
+                model_endpoint=self.model_endpoint,
+                **kwargs,
+            )
+
+            # Format context
+            formatted_context = []
+            if context:
+                formatted_context = self.formatter.format_context(
+                    context=context,
+                    model_endpoint=self.model_endpoint,
+                    **kwargs,
+                )
+
+            # Format instructions
+            formatted_instructions = None
+            if instructions:
+                formatted_instructions = self.formatter.format_instructions(
+                    instructions=instructions,
+                    model_endpoint=self.model_endpoint,
+                    **kwargs,
+                )
+
+            # Validate Options
+            if not self.model_endpoint.ai_model.validate_options(self.config.options):
+                raise ValueError("validate_inputs: ERROR: validate_options failed")
+
+            # Options validation successful.
+            # TODO_FUTURE
+            # Clone the config, and convert t relevant fields to provider format
+            # self.formatted_config = self.config.model_copy()
+            self.formatted_config = self.config
 
             self._input_validation_pending = False
-            return validated_prompt, validated_context
+            return {
+                "prompt": formatted_prompt,
+                "context": formatted_context,
+                "instructions": formatted_instructions,
+            }
+
         except Exception as e:
-            logger.exception(f"validate_inputs: {e}")
-            return None
-
-    def _validate_prompt(
-        self,
-        prompt: FormattedPrompt | dict,
-    ) -> tuple[dict, list[dict] | None]:
-        if isinstance(prompt, self.prompt_message_class):
-            validated = prompt
-        elif isinstance(prompt, dict):
-            validated = self.prompt_message_class(**prompt)
-        elif (
-            isinstance(prompt, str)
-            and self.model_endpoint.ai_model.functional_type == AIModelFunctionalTypeEnum.IMAGE_GENERATION
-        ):
-            validated = prompt
-            return prompt
-        else:
-            raise ValueError(f"Prompt type {type(prompt)} not valid. prompt={prompt} ")
-
-        return validated.model_dump()
-
-    def validate_options(self) -> bool:
-        """Validate configuration options"""
-        return self.model_endpoint.ai_model.validate_options(self.config.options)
+            logger.exception(f"format_inputs: {e}")
+            return None, None, None
 
     # -------------------------------------------------------------------------
     # For Usage and cost

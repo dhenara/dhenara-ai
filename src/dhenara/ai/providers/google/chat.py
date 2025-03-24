@@ -47,7 +47,7 @@ class GoogleAIChat(GoogleAIClientBase):
         self,
         prompt: dict,
         context: list[dict] | None = None,
-        instructions: list[str] | None = None,
+        instructions: dict | None = None,
     ) -> AIModelCallResponse:
         if not self._client:
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
@@ -59,16 +59,25 @@ class GoogleAIChat(GoogleAIClientBase):
         generate_config = GenerateContentConfig(**generate_config_args)
 
         # Process instructions
-        instructions_str = self.process_instructions(instructions)
-        if isinstance(instructions_str, dict):
-            if context:
-                context.insert(0, instructions_str)
+
+        if instructions:
+            if not (isinstance(instructions, dict) and "parts" in instructions.keys()):
+                raise ValueError(
+                    f"Invalid Instructions format. "
+                    f"Instructions should be processed and passed in prompt format. Value is {instructions} "
+                )
+
+            # Some models don't support system instructions
+            if any(self.model_endpoint.ai_model.model_name.startswith(model) for model in ["gemini-1.0-pro"]):
+                instruction_as_prompt = instructions
+
+                if context:
+                    context.insert(0, instruction_as_prompt)
+                else:
+                    context = [instruction_as_prompt]
             else:
-                context = [instructions_str]
-        elif instructions_str and not any(
-            self.model_endpoint.ai_model.model_name.startswith(model) for model in ["gemini-1.0-pro"]
-        ):
-            generate_config.system_instruction = instructions_str
+                instructions_str = instructions["parts"][0]["text"]
+                generate_config.system_instruction = instructions_str
 
         # ---  Tools ---
         if self.config.tools:
@@ -77,14 +86,24 @@ class GoogleAIChat(GoogleAIClientBase):
             _tools = [
                 Tool(
                     **{
-                        "function_declarations": [tool.function.to_google_format() for tool in self.config.tools],
+                        "function_declarations": [
+                            self.formatter.convert_function_definition(  # A bit wiered here
+                                func_def=tool.function,
+                                model_endpoint=self.model_endpoint,
+                            )
+                            for tool in self.config.tools
+                        ],
                     }
                 )
             ]
             generate_config.tools = _tools
 
         if self.config.tool_choice:
-            _tool_config = self.config.tool_choice.to_google_format()
+            _tool_config = self.formatter.format_tool_choice(
+                tool_choice=self.config.tool_choice,
+                model_endpoint=self.model_endpoint,
+            )
+
             generate_config.tool_config = ToolConfig(**_tool_config)
 
         # TODO_FUTURE: Google API need special formating after version updates
@@ -107,7 +126,10 @@ class GoogleAIChat(GoogleAIClientBase):
         # --- Structured Output ---
         if self.config.structured_output:
             generate_config.response_mime_type = "application/json"
-            generate_config.response_schema = self.config.structured_output.to_google_format()
+            generate_config.response_schema = self.formatter.format_structured_output(
+                structured_output=self.config.structured_output,
+                model_endpoint=self.model_endpoint,
+            )
 
         return {
             "prompt": message,

@@ -7,6 +7,14 @@ from dhenara.ai.types.shared.base import BaseModel
 logger = logging.getLogger(__name__)
 
 
+# TODO_FUTURE:
+# Create seperate class for the parameter required conversion,
+# class AIModelCallData(BaseModel):
+#    tools: list[ToolDefinition] | None = None
+#    tool_choice: ToolChoice | None = None
+#    structured_output: StructuredOutputConfig | None = None
+
+
 class AIModelCallConfig(BaseModel):
     """Configuration for AI model calls"""
 

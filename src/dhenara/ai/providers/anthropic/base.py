@@ -1,5 +1,4 @@
 import logging
-from typing import Any
 
 from anthropic import (
     Anthropic,
@@ -12,15 +11,9 @@ from anthropic import (
 
 from dhenara.ai.providers.base import AIModelProviderClientBase
 from dhenara.ai.providers.shared import APIProviderSharedFns
-from dhenara.ai.types.genai import AIModel
 from dhenara.ai.types.genai.ai_model import AIModelAPIProviderEnum
-from dhenara.ai.types.genai.dhenara import (
-    AnthropicMessageRoleEnum,
-    AnthropicPromptMessage,
-    FormattedPrompt,
-    SystemInstructions,
-)
-from dhenara.ai.types.shared.file import FileFormatEnum, GenericFile
+
+from .formatter import AnthropicFormatter
 
 logger = logging.getLogger(__name__)
 
@@ -28,24 +21,13 @@ logger = logging.getLogger(__name__)
 class AnthropicClientBase(AIModelProviderClientBase):
     """Base class for all Anthropic Clients"""
 
-    prompt_message_class = AnthropicPromptMessage
+    formatter = AnthropicFormatter
 
     def initialize(self) -> None:
         pass
 
     def cleanup(self) -> None:
         pass
-
-    def process_instructions(
-        self,
-        instructions: SystemInstructions,
-    ) -> FormattedPrompt | str | None:
-        if instructions:
-            if isinstance(instructions, list):
-                return " ".join(instructions)
-            logger.warning(f"process_instructions: instructions should be a list not {type(instructions)}")
-            return str(instructions)
-        return None
 
     def _get_client_params(self, api) -> tuple[str, dict]:
         """Common logic for both sync and async clients"""
@@ -93,68 +75,3 @@ class AnthropicClientBase(AIModelProviderClientBase):
             return AsyncAnthropicVertex(**params)
         else:  # bedrock
             return AsyncAnthropicBedrock(**params)
-
-    @staticmethod
-    def get_prompt(
-        model: AIModel,
-        role: AnthropicMessageRoleEnum,
-        text: str,
-        file_contents: list[dict[str, Any]],
-    ) -> dict[str, Any]:
-        if file_contents:
-            # Combine text and file contents into a single content array
-            content = [
-                {
-                    "type": "text",
-                    "text": text,
-                },
-                *file_contents,
-            ]
-        else:
-            # For text-only messages, content should be a string
-            content = text
-
-        return {"role": role.value, "content": content}
-
-    @staticmethod
-    def get_prompt_file_contents(
-        model: AIModel,
-        files: list[GenericFile],
-        max_words: int | None,
-    ) -> list[dict[str, Any]]:
-        contents: list[dict[str, Any]] = []
-        for file in files:
-            file_format = file.get_file_format()
-            try:
-                if file_format in [FileFormatEnum.COMPRESSED, FileFormatEnum.TEXT]:
-                    text = (
-                        f"\nFile: {file.get_source_file_name()}  "
-                        f"Content: {file.get_processed_file_data(max_words=max_words)}"
-                    )
-                    contents.append(
-                        {
-                            "type": "text",
-                            "text": text,
-                        }
-                    )
-                elif file_format == FileFormatEnum.IMAGE:
-                    mime_type = file.get_mime_type()
-                    if mime_type not in ["image/jpeg", "image/png", "image/gif", "image/webp"]:
-                        raise ValueError(f"Unsupported media type: {mime_type}")
-
-                    contents.append(
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": mime_type,
-                                "data": file.get_processed_file_data_content_only(),
-                            },
-                        }
-                    )
-                else:
-                    logger.error(f"Unknown file_format {file_format} for file {file.name}")
-            except Exception as e:
-                logger.error(f"Error processing file {file.name}: {e}")
-
-        return contents

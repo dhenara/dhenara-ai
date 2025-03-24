@@ -5,9 +5,11 @@ All settings can be overridden by creating a settings file and setting DHENARA_S
 
 #  ---- Request /Content Settings
 """
-Validate promots before api-calls. Might have issues at the moment
+Convert all inputs (prompt/context/instructions/call_config params) to
+provider specific formats before api-calls.
+Disable only if you want to take care of different provider formats manually
 """
-ENABLE_PROMPT_VALIDATION = True
+ENABLE_INPUT_FORMAT_CONVERSION = True
 
 # ----  Response Content Settings
 

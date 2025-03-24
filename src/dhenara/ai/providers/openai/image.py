@@ -29,9 +29,9 @@ class OpenAIImage(OpenAIClientBase):
 
     def get_api_call_params(
         self,
-        prompt: str,
-        context: list[str] | None = None,
-        instructions=None,  # TODO # :SystemInstructions | None = None,
+        prompt: dict,
+        context: list[dict] | None = None,
+        instructions: dict | None = None,
     ) -> AIModelCallResponse:
         if not self._client:
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
@@ -39,7 +39,11 @@ class OpenAIImage(OpenAIClientBase):
         if self._input_validation_pending:
             raise ValueError("inputs must be validated with `self.validate_inputs()` before api calls")
 
-        instructions_str = " ".join(instructions)
+        if instructions:
+            instructions_str = instructions["content"]
+        else:
+            instructions_str = ""
+
         prompt_text = f"{instructions_str} {context} {prompt}"
         model_options = self.model_endpoint.ai_model.get_options_with_defaults(self.config.options)
         user = self.config.get_user()

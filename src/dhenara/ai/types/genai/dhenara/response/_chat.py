@@ -8,6 +8,8 @@ from dhenara.ai.types.genai.ai_model import (
     ChatResponseUsage,
     UsageCharge,
 )
+from dhenara.ai.types.genai.dhenara.request import PromptMessageRoleEnum
+from dhenara.ai.types.genai.dhenara.request.data import Content, Prompt, PromptText
 from dhenara.ai.types.shared.api import SSEEventType, SSEResponse
 from dhenara.ai.types.shared.base import BaseModel
 
@@ -64,6 +66,32 @@ class ChatResponse(BaseModel):
 
     def get_visible_fields(self) -> dict:
         return self.model_dump(exclude=["choices"])
+
+    # Add to ChatResponse class in _chat.py
+    def to_prompt(self) -> "Prompt":
+        """Convert response to a context message for next turn"""
+
+        # Get text from the first choice's contents
+        if not self.choices:
+            return None
+
+        choice = self.choices[0]
+        if not choice.contents:
+            return None
+
+        # Combine all content items into one text
+        text_parts = [content_item.get_text() for content_item in choice.contents]
+
+        text = "\n".join(text_parts)
+
+        # Create Content object
+        content = Content(type="text", text=text)
+
+        # Create PromptText object
+        prompt_text = PromptText(content=content)
+
+        # Create and return Prompt object
+        return Prompt(role=PromptMessageRoleEnum.ASSISTANT, text=prompt_text)
 
 
 class ChatResponseChunk(BaseModel):
