@@ -32,7 +32,7 @@ class ConversationNode(BaseModel):
     def get_context(
         self,
         max_words_query=None,
-        max_words_files=None,
+        max_words_file=None,
         max_words_response=None,
     ) -> list[Prompt]:
         question_prompt = Prompt(
@@ -41,7 +41,7 @@ class ConversationNode(BaseModel):
             files=self.input_files,
             config=PromptConfig(
                 max_words_text=max_words_query,
-                max_words_file=max_words_files,
+                max_words_file=max_words_file,
             ),
         )
         response_prompt = self.response.to_prompt(

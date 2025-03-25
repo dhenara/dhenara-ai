@@ -53,14 +53,19 @@ class ProcessedFile(GenericFile):
 
     def get_processed_file_data(self, max_words: int | None = None) -> str:
         """Get processed file data with optional word limit"""
+
+        if max_words == 0:
+            return ""
+
         # content = str(self.processed_content.content or "")
         # content = self.model_dump_json()
         _content = self.model_dump()
         content = str(_content)
 
-        if max_words:
+        if max_words is not None:
             words = content.split()
             content = " ".join(words[:max_words])
+
         return content
 
     def get_processed_file_data_content_only(self):
