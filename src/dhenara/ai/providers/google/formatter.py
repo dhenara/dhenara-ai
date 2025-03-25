@@ -35,8 +35,7 @@ class GoogleFormatter(BaseFormatter):
         formatted_prompt: FormattedPrompt,
         model_endpoint: AIModelEndpoint | None = None,
         files: list[GenericFile] | None = None,
-        max_words: int | None = None,  # TODO: Not implemented
-        max_words_files: int | None = None,  # TODO: Not implemented
+        max_words_file: int | None = None,
     ) -> dict[str, Any]:
         # Map Dhenara formats to provider format
         parts = []
@@ -45,7 +44,7 @@ class GoogleFormatter(BaseFormatter):
             file_contents = cls.convert_files_to_provider_content(
                 files=files,
                 model_endpoint=model_endpoint,
-                max_words=max_words_files,
+                max_words=max_words_file,
             )
 
         # if model_endpoint.ai_model.functional_type == AIModelFunctionalTypeEnum.IMAGE_GENERATION:

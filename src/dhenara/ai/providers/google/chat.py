@@ -1,7 +1,6 @@
 import logging
 
 from google.genai.types import (
-    Content,
     GenerateContentConfig,
     GenerateContentResponse,
     Part,
@@ -79,6 +78,14 @@ class GoogleAIChat(GoogleAIClientBase):
                 instructions_str = instructions["parts"][0]["text"]
                 generate_config.system_instruction = instructions_str
 
+        messages = []
+
+        # Add previous messages and current prompt
+        if context:
+            messages.extend(context)
+
+        messages.append(prompt)
+
         # ---  Tools ---
         if self.config.tools:
             # NOTE: Google supports extra tools other than fns, so gather all fns together into function_declarations
@@ -106,23 +113,6 @@ class GoogleAIChat(GoogleAIClientBase):
 
             generate_config.tool_config = ToolConfig(**_tool_config)
 
-        # TODO_FUTURE: Google API need special formating after version updates
-        # Make this generic by considering this while creating/converting prompts
-
-        if isinstance(prompt, dict) and "parts" in prompt and prompt["parts"] and "text" in prompt["parts"][0]:
-            message = prompt["parts"][0]["text"]
-        else:
-            message = str(prompt)
-
-        history = []
-        if context:
-            for item in context:
-                if isinstance(item, dict):
-                    parts = [{"text": p["text"]} for p in item["parts"]] if "parts" in item else []
-                    history.append(Content(role=item["role"], parts=parts))
-                else:
-                    history.append(item)
-
         # --- Structured Output ---
         if self.config.structured_output:
             generate_config.response_mime_type = "application/json"
@@ -132,8 +122,7 @@ class GoogleAIChat(GoogleAIClientBase):
             )
 
         return {
-            "prompt": message,
-            "history": history,
+            "contents": messages,
             "generate_config": generate_config,
         }
 
@@ -141,48 +130,44 @@ class GoogleAIChat(GoogleAIClientBase):
         self,
         api_call_params: dict,
     ) -> AIModelCallResponse:
-        chat = self._client.chats.create(
+        response = self._client.models.generate_content(
             model=self.model_name_in_api_calls,
             config=api_call_params["generate_config"],
-            history=api_call_params["history"],
+            contents=api_call_params["contents"],
         )
-        response = chat.send_message(message=api_call_params["prompt"])
         return response
 
     async def do_api_call_async(
         self,
         api_call_params: dict,
     ) -> AIModelCallResponse:
-        chat = self._client.chats.create(
+        response = await self._client.models.generate_content(
             model=self.model_name_in_api_calls,
             config=api_call_params["generate_config"],
-            history=api_call_params["history"],
+            contents=api_call_params["contents"],
         )
-        response = await chat.send_message(message=api_call_params["prompt"])
         return response
 
     def do_streaming_api_call_sync(
         self,
         api_call_params,
     ) -> AIModelCallResponse:
-        chat = self._client.chats.create(
+        stream = self._client.models.generate_content_stream(
             model=self.model_name_in_api_calls,
             config=api_call_params["generate_config"],
-            history=api_call_params["history"],
+            contents=api_call_params["contents"],
         )
-        stream = chat.send_message_stream(message=api_call_params["prompt"])
         return stream
 
     async def do_streaming_api_call_async(
         self,
         api_call_params,
     ) -> AIModelCallResponse:
-        chat = self._client.chats.create(
+        stream = await self._client.models.generate_content_stream(
             model=self.model_name_in_api_calls,
             config=api_call_params["generate_config"],
-            history=api_call_params["history"],
+            contents=api_call_params["contents"],
         )
-        stream = await chat.send_message_stream(message=api_call_params["prompt"])
         return stream
 
     def get_default_generate_config_args(self) -> dict:

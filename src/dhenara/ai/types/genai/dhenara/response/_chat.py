@@ -9,7 +9,7 @@ from dhenara.ai.types.genai.ai_model import (
     UsageCharge,
 )
 from dhenara.ai.types.genai.dhenara.request import PromptMessageRoleEnum
-from dhenara.ai.types.genai.dhenara.request.data import Content, Prompt, PromptText
+from dhenara.ai.types.genai.dhenara.request.data import Content, Prompt, PromptConfig, PromptText
 from dhenara.ai.types.shared.api import SSEEventType, SSEResponse
 from dhenara.ai.types.shared.base import BaseModel
 
@@ -67,15 +67,18 @@ class ChatResponse(BaseModel):
     def get_visible_fields(self) -> dict:
         return self.model_dump(exclude=["choices"])
 
-    # Add to ChatResponse class in _chat.py
-    def to_prompt(self) -> "Prompt":
+    def to_prompt(
+        self,
+        choice_index: int = 0,
+        max_words_text: int | None = None,
+    ) -> "Prompt":
         """Convert response to a context message for next turn"""
 
         # Get text from the first choice's contents
         if not self.choices:
             return None
 
-        choice = self.choices[0]
+        choice = self.choices[choice_index]
         if not choice.contents:
             return None
 
@@ -91,7 +94,14 @@ class ChatResponse(BaseModel):
         prompt_text = PromptText(content=content)
 
         # Create and return Prompt object
-        return Prompt(role=PromptMessageRoleEnum.ASSISTANT, text=prompt_text)
+        return Prompt(
+            role=PromptMessageRoleEnum.ASSISTANT,
+            text=prompt_text,
+            config=PromptConfig(
+                max_words_text=max_words_text,
+                max_words_file=None,
+            ),
+        )
 
 
 class ChatResponseChunk(BaseModel):

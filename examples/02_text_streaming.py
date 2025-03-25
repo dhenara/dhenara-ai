@@ -31,10 +31,7 @@ client = AIModelClient(
 
 
 response = client.generate(
-    prompt={
-        "role": "user",
-        "content": "Explain quantum computing?",
-    },
+    prompt="Explain quantum computing?",
     context=[],
     instructions=[],
 )

@@ -172,7 +172,7 @@ def handle_conversation_turn(
     # Create conversation node
     node = ConversationNode(
         user_query=user_query,
-        attached_files=[],
+        input_files=[],
         response=response.chat_response,
         timestamp=datetime.datetime.now().isoformat(),
     )

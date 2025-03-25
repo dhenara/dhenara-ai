@@ -138,7 +138,7 @@ def handle_streaming_conversation_turn(
     # Create conversation node
     node = ConversationNode(
         user_query=user_query,
-        attached_files=[],
+        input_files=[],
         response=final_response.chat_response,
         timestamp=datetime.datetime.now().isoformat(),
     )

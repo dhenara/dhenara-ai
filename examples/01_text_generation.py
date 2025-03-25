@@ -30,10 +30,7 @@ client = AIModelClient(
 
 
 response = client.generate(
-    prompt={
-        "role": "user",
-        "content": "What are three ways to improve productivity?",
-    },
+    prompt="What are three ways to improve productivity?",
     context=[],  # Optional history/context. Will show this on another example
     instructions=[
         "Be specific and actionable.",  # Optional instructions

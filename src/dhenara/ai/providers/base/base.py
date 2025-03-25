@@ -200,7 +200,6 @@ class AIModelProviderClientBase(ABC):
                 context=context,
                 instructions=instructions,
             )
-            print(f"AJJ: format_input= {formatted_inputs}")
             if not formatted_inputs:
                 return AIModelCallResponse(
                     status=self._create_error_status(

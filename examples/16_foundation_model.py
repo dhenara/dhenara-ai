@@ -40,10 +40,7 @@ client = AIModelClient(
 
 
 response = client.generate(
-    prompt={
-        "role": "user",
-        "content": "Tell me a joke.",
-    },
+    prompt="Tell me a joke.",
     context=[],
     instructions=[],
 )

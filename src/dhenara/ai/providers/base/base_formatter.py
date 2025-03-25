@@ -31,15 +31,17 @@ class BaseFormatter(ABC):
         cls,
         prompt: str | dict | Prompt,
         model_endpoint: AIModelEndpoint | None = None,
-        files: list[GenericFile] | None = None,
-        max_words: int | None = None,
-        max_words_files: int | None = None,
         **kwargs,
     ) -> FormattedPrompt:
         # First convert a prompt to Dhenara Prompt format
         if isinstance(prompt, str):
-            role = PromptMessageRoleEnum.USER
-            content = prompt
+            # Formatted Prompt
+            formatted_prompt = FormattedPrompt(
+                role=PromptMessageRoleEnum.USER,
+                text=prompt,
+            )
+            files = []
+            max_words_file = None
         else:
             if isinstance(prompt, dict):
                 pyd_prompt = Prompt(**prompt)
@@ -48,36 +50,31 @@ class BaseFormatter(ABC):
             else:
                 raise ValueError(f"format_prompt: unknown prompt type {type(prompt)}. prompt={prompt}")
 
-            if isinstance(pyd_prompt.text, PromptText):
-                content = pyd_prompt.text.format(**kwargs)
-            elif isinstance(pyd_prompt.text, str):
-                content = pyd_prompt.text
-            else:
-                raise ValueError(f"format_prompt: unknown prompt.text type {type(pyd_prompt.text)}")
+            files = pyd_prompt.files
+            max_words_text = pyd_prompt.config.max_words_text if pyd_prompt.config else None
+            max_words_file = pyd_prompt.config.max_words_file if pyd_prompt.config else None
 
             role = pyd_prompt.role
-            content = content
+            formatted_text = pyd_prompt.get_formatted_text(
+                max_words=max_words_text,
+                **kwargs,
+            )
+            # Formatted Prompt
+            formatted_prompt = FormattedPrompt(
+                role=role,
+                text=formatted_text,
+            )
 
-        # Formatted Prompt
-        formatted_prompt = FormattedPrompt(
-            role=role,
-            text=content,
-        )
-
-        # Do files sanity checks
-        if files is None:
-            files = []
-
-        if (files and not isinstance(files, list)) or not all(isinstance(f, GenericFile) for f in files):
-            raise ValueError(f"Invalid type {type(files)} for files. Should be list of GenericFile")
+            # Do files sanity checks
+            if (files and not isinstance(files, list)) or not all(isinstance(f, GenericFile) for f in files):
+                raise ValueError(f"Invalid type {type(files)} for files. Should be list of GenericFile")
 
         # Convert dhenara formated prompt and files to provider format
         return cls.convert_prompt(
             formatted_prompt=formatted_prompt,
             model_endpoint=model_endpoint,
             files=files,
-            max_words=max_words,
-            max_words_files=max_words_files,
+            max_words_file=max_words_file,
         )
 
     @classmethod
@@ -197,8 +194,7 @@ class BaseFormatter(ABC):
         formatted_prompt: FormattedPrompt,
         model_endpoint: AIModelEndpoint | None = None,
         files: list[GenericFile] | None = None,
-        max_words: int | None = None,
-        max_words_files: int | None = None,
+        max_words_file: int | None = None,
     ) -> dict[str, Any]:
         """Convert prompt to provider format"""
         pass

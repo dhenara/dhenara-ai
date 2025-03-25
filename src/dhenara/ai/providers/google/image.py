@@ -43,19 +43,8 @@ class GoogleAIImage(GoogleAIClientBase):
         generate_config_args = self.get_default_generate_config_args()
         generate_config = GenerateImagesConfig(**generate_config_args)
 
-        ## Process instructions
-        # instructions_str = self.process_instructions(instructions)
-        # if isinstance(instructions_str, dict):
-        #    if context:
-        #        context.insert(0, instructions_str)
-        #    else:
-        #        context = [instructions_str]
-        # elif instructions_str and not any(model_name.startswith(model) for model in ["gemini-1.0-pro"]):
-        #    generate_config.system_instruction = instructions_str
-
         return {
             "prompt": prompt_text,
-            "history": context or [],
             "generate_config": generate_config,
         }
 

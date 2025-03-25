@@ -37,12 +37,14 @@ class Content(BaseModel):
         description="Multiple text contents for batch processing",
         example=["Text 1", "Text 2"],
     )
-    json: dict[str, Any] = Field(
+
+    # Not using name `json` as it shadows an attribute in parent "BaseModel"
+    json_c: dict[str, Any] = Field(
         default_factory=dict,
         description="Structured JSON data for processing",
         example={"key": "value"},
     )
-    jsonl: list[dict[str, Any]] = Field(
+    jsonl_c: list[dict[str, Any]] = Field(
         default_factory=list,
         description="List of JSON objects in JSONL format",
         example=[{"id": 1, "text": "example"}, {"id": 2, "text": "example2"}],
@@ -56,8 +58,8 @@ class Content(BaseModel):
                 {
                     "text": "What is the capital of France?",
                     "textl": ["Text 1", "Text 2"],
-                    "json": {"key": "value"},
-                    "jsonl": [{"id": 1, "text": "example"}],
+                    "json_c": {"key": "value"},
+                    "jsonl_c": [{"id": 1, "text": "example"}],
                 },
             ],
         }
@@ -73,8 +75,8 @@ class Content(BaseModel):
             [
                 self.text is not None,
                 self.textl is not None,
-                bool(self.json),
-                bool(self.jsonl),
+                bool(self.json_c),
+                bool(self.jsonl_c),
             ]
         )
 
@@ -93,15 +95,15 @@ class Content(BaseModel):
         requested format. It handles text content, URLs, JSON, and JSONL data.
 
         Args:
-            return_type: Desired return type format (text, list, dict, or jsonl)
+            return_type: Desired return type format (text, list, dict, or jsonl_c)
             separator: String separator for joining text content when return_type is TEXT
 
         Returns:
             Content in the requested format:
             - TEXT: Single string with all content joined
             - LIST: List of strings
-            - DICT: Dictionary from json
-            - JSONL: List of dictionaries from jsonl
+            - DICT: Dictionary from json_c
+            - JSONL: List of dictionaries from jsonl_c
         """
         if not self.has_content:
             raise ValueError("No content available in any field")
@@ -120,23 +122,23 @@ class Content(BaseModel):
         # Return based on requested type
         if self.type == ContentType.TEXT:
             # Include JSON content if present
-            if self.json:
-                text_list.append(json.dumps(self.json, ensure_ascii=False))
-            if self.jsonl:
-                text_list.extend(json.dumps(item, ensure_ascii=False) for item in self.jsonl)
+            if self.json_c:
+                text_list.append(json.dumps(self.json_c, ensure_ascii=False))
+            if self.jsonl_c:
+                text_list.extend(json.dumps(item, ensure_ascii=False) for item in self.jsonl_c)
             return separator.join(text_list)
 
         elif self.type == ContentType.LIST:
             return text_list
 
         elif self.type == ContentType.DICT:
-            if not self.json:
+            if not self.json_c:
                 raise ValueError("No JSON content available")
-            return self.json
+            return self.json_c
 
         elif self.type == ContentType.JSONL:
-            if not self.jsonl:
+            if not self.jsonl_c:
                 raise ValueError("No JSONL content available")
-            return self.jsonl
+            return self.jsonl_c
         else:
             raise ValueError(f"get_content: Unknown type {self.type}")
