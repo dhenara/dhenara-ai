@@ -10,11 +10,10 @@ from dhenara.ai.types.genai.dhenara.request import (
     Prompt,
     PromptMessageRoleEnum,
     StructuredOutputConfig,
-    SystemInstructions,
+    SystemInstruction,
     ToolChoice,
     ToolDefinition,
 )
-from dhenara.ai.types.genai.dhenara.request.data._prompt import PromptText
 from dhenara.ai.types.shared.file import GenericFile
 
 
@@ -91,6 +90,7 @@ class BaseFormatter(ABC):
             cls.format_prompt(
                 prompt=prompt,
                 model_endpoint=model_endpoint,
+                **kwargs,
             )
             for prompt in context
         ]
@@ -99,26 +99,37 @@ class BaseFormatter(ABC):
     @classmethod
     def join_instructions(
         cls,
-        instructions: list[str | PromptText] | SystemInstructions,
+        instructions: list[str | SystemInstruction],
+        model_endpoint: AIModelEndpoint | None = None,
         **kwargs,
     ) -> dict[str, Any]:
         if not instructions:
             return None
 
-        if isinstance(instructions, SystemInstructions):
-            formatted = " ".join(instructions.format(**kwargs))
-        elif isinstance(instructions, list):
-            string_list = [instr.format(**kwargs) if isinstance(instr, PromptText) else instr for instr in instructions]
-            formatted = " ".join(string_list)
-        else:
-            formatted = str(instructions)
+        def _process_single_instruction(instr):
+            if isinstance(instr, str):
+                formatted = instr
+            else:
+                if isinstance(instr, SystemInstruction):
+                    _pyd_instr = instr
+                elif isinstance(instr, dict):
+                    _pyd_instr = SystemInstruction(**instr)
+                else:
+                    raise ValueError(f"Illegal instruction type {type(instr)}")
 
-        return formatted
+                formatted = _pyd_instr.get_formatted_text(**kwargs)
+            return formatted
+
+        formatted_instructions = [_process_single_instruction(instr, **kwargs) for instr in instructions]
+
+        joined = " ".join(formatted_instructions)
+
+        return joined
 
     @classmethod
     def format_instructions(
         cls,
-        instructions: list[str] | SystemInstructions,
+        instructions: list[str | dict | Prompt],
         model_endpoint: AIModelEndpoint | None = None,
         **kwargs,
     ) -> dict[str, Any]:

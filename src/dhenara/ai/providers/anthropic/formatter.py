@@ -209,7 +209,7 @@ class AnthropicFormatter(BaseFormatter):
         Since Anthropic doesn't directly support structured output,
         we create a specialized tool and force the model to use it.
         """
-        schema = structured_output._get_schema()
+        schema = structured_output.get_schema()
         name = schema.pop("title", None) or "structured_output"
         description = "Generate structured output according to schema"
 

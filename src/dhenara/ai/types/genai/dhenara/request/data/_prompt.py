@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import Field, model_validator
 
 from dhenara.ai.types.shared.base import BaseModel
@@ -44,11 +46,16 @@ class PromptConfig(BaseModel):
     )
 
 
-class Prompt(BaseModel):
-    role: PromptMessageRoleEnum
-    text: str | PromptText
-    files: list[GenericFile] = Field(default_factory=list)
-    config: PromptConfig | None = None
+class BaseTextPrompt(BaseModel):
+    text: str | PromptText = Field(
+        ...,
+        description="Prompt Text.",
+    )
+    variables: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Variable name s and values for template resolution in prompt.",
+        example={"style": "modern", "name": "Annie"},
+    )
 
     def get_formatted_text(
         self,
@@ -57,7 +64,9 @@ class Prompt(BaseModel):
     ) -> str:
         """Format the prompt as a generic dictionary"""
         if isinstance(self.text, PromptText):
-            formatted_text = self.text.format(**kwargs)
+            var_dict = self.variables.copy()
+            var_dict.update(**kwargs)
+            formatted_text = self.text.format(**var_dict)
         elif isinstance(self.text, str):
             formatted_text = self.text
         else:
@@ -70,6 +79,25 @@ class Prompt(BaseModel):
         return formatted_text
 
 
+class Prompt(BaseTextPrompt):
+    role: PromptMessageRoleEnum = Field(
+        ...,
+        description="Role",
+    )
+    files: list[GenericFile] = Field(
+        default_factory=list,
+        description="Files",
+    )
+    config: PromptConfig | None = Field(
+        default=None,
+        description="Prompt Config.",
+    )
+
+
 class FormattedPrompt(BaseModel):
     role: PromptMessageRoleEnum
     text: str
+
+
+class SystemInstruction(BaseTextPrompt):
+    pass

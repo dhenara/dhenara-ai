@@ -3,7 +3,7 @@ import random
 from dhenara.ai import AIModelClient
 from dhenara.ai.types import AIModelAPIProviderEnum, AIModelCallConfig, AIModelEndpoint, ResourceConfig
 from dhenara.ai.types.genai.dhenara import PromptMessageRoleEnum
-from dhenara.ai.types.genai.dhenara.request.data import Content, Prompt, PromptText, SystemInstructions
+from dhenara.ai.types.genai.dhenara.request.data import Content, Prompt, PromptText, SystemInstruction
 from dhenara.ai.types.genai.foundation_models.anthropic.chat import Claude35Haiku
 from dhenara.ai.types.genai.foundation_models.google.chat import Gemini20FlashLite
 from dhenara.ai.types.genai.foundation_models.openai.chat import GPT4oMini
@@ -77,9 +77,9 @@ def demonstrate_multiple_formats():
     )
     print(f"Response: {response3.chat_response.choices[0].contents[0].get_text()[:100]}...\n")
 
-    # Format 4: Using SystemInstructions
-    print("📝 FORMAT 4: Using SystemInstructions")
-    instructions = SystemInstructions(instructions=["Be specific and actionable."])
+    # Format 4: Using SystemInstruction
+    print("📝 FORMAT 4: Using SystemInstruction")
+    instructions = [SystemInstruction(text="Be specific and actionable.")]
 
     response4 = client.generate(
         prompt="What are three ways to improve productivity?",

@@ -269,26 +269,25 @@ class OpenAIFormatter(BaseFormatter):
     ) -> dict[str, Any]:
         """Convert StructuredOutputConfig to OpenAI format"""
         # Get the original JSON schema from Pydantic or dict
-        schema = structured_output._get_schema()
+        schema = structured_output.get_schema()
 
-        # Extract the name from the title and remove the title key
-        if "title" in schema:
-            schema_name = schema.pop("title")
-        else:
-            schema_name = "output"
+        # Ensure additionalProperties is set in the root schema and all nested definitions
+        schema["additionalProperties"] = False
 
-        # Remove JSON Schema keywords that OpenAI doesn't permit
+        # Also set additionalProperties for nested schemas
+        if "$defs" in schema:
+            for def_schema in schema["$defs"].values():
+                def_schema["additionalProperties"] = False
+
+        # Extract the name from the title and use it for schema name
+        schema_name = schema.get("title", "output")
+
+        # Clean up JSON Schema keywords that OpenAI doesn't permit
         if "properties" in schema:
             for prop in schema["properties"].values():
-                # Remove numeric constraints that are not permitted.from pydantic ge, le
+                # Remove numeric constraints that are not permitted. (from pydantic ge, le)
                 prop.pop("minimum", None)
                 prop.pop("maximum", None)
-
-        # Ensure the schema has additionalProperties set to False
-        schema.setdefault("additionalProperties", False)
-
-        # Add the name key required by OpenAI
-        schema["name"] = schema_name
 
         # Return formatted response format
         return {
@@ -296,6 +295,6 @@ class OpenAIFormatter(BaseFormatter):
             "json_schema": {
                 "name": schema_name,
                 "schema": schema,
-                "strict": True,
+                # "strict": True,
             },
         }

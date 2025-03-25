@@ -5,4 +5,3 @@ from ._content import *
 from ._text_template import *
 
 from ._prompt import *
-from ._instructions import *

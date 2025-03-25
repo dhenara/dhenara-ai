@@ -4,7 +4,7 @@ import time
 from contextlib import AsyncExitStack, ExitStack, contextmanager
 
 from dhenara.ai.types import AIModelCallConfig, AIModelCallResponse, AIModelEndpoint
-from dhenara.ai.types.genai.dhenara.request import Prompt, PromptText, SystemInstructions
+from dhenara.ai.types.genai.dhenara.request import Prompt, SystemInstruction
 
 from .factory import AIModelClientFactory
 
@@ -147,14 +147,14 @@ class AIModelClient:
         async with AsyncExitStack() as stack:
             if self.config.timeout:
                 await stack.enter_async_context(asyncio.timeout(self.config.timeout))
-            return await self._provider_client._formate_and_generate_response_async(*args, **kwargs)
+            return await self._provider_client._format_and_generate_response_async(*args, **kwargs)
 
     # Genereate Response Fns
     def generate(
         self,
         prompt: str | dict | Prompt,
         context: list[str | dict | Prompt] | None = None,
-        instructions: list[str | PromptText] | SystemInstructions | None = None,
+        instructions: list[str | dict | SystemInstruction] | None = None,
     ) -> AIModelCallResponse:
         """Synchronous generate method"""
         if self.is_async:
@@ -173,7 +173,7 @@ class AIModelClient:
         self,
         prompt: str | dict | Prompt,
         context: list[str | dict | Prompt] | None = None,
-        instructions: list[str | PromptText] | SystemInstructions | None = None,
+        instructions: list[str | dict | SystemInstruction] | None = None,
     ) -> AIModelCallResponse:
         """Asynchronous generate method"""
         if not self.is_async:
@@ -190,7 +190,7 @@ class AIModelClient:
         self,
         prompt: str | dict | Prompt,
         context: list[str | dict | Prompt] | None = None,
-        instructions: list[str | PromptText] | SystemInstructions | None = None,
+        instructions: list[str | dict | SystemInstruction] | None = None,
     ) -> AIModelCallResponse:
         """
         Generate a response using an existing connection or create a new one.
@@ -224,7 +224,7 @@ class AIModelClient:
         self,
         prompt: str | dict | Prompt,
         context: list[str | dict | Prompt] | None = None,
-        instructions: list[str | PromptText] | SystemInstructions | None = None,
+        instructions: list[str | dict | SystemInstruction] | None = None,
     ) -> AIModelCallResponse:
         if not self._provider_client:
             self._provider_client = self._client_stack.enter_async_context(
@@ -253,7 +253,7 @@ class AIModelClient:
         self,
         prompt: str | dict | Prompt,
         context: list[str | dict | Prompt] | None = None,
-        instructions: list[str | PromptText] | SystemInstructions | None = None,
+        instructions: list[str | dict | SystemInstruction] | None = None,
     ) -> AIModelCallResponse:
         if not self._provider_client:
             self._provider_client = await self._client_stack.enter_async_context(

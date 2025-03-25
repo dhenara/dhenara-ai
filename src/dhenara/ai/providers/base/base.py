@@ -21,7 +21,7 @@ from dhenara.ai.types import (
     StreamingChatResponse,
     UsageCharge,
 )
-from dhenara.ai.types.genai.dhenara.request import Prompt, PromptText, SystemInstructions
+from dhenara.ai.types.genai.dhenara.request import Prompt, SystemInstruction
 from dhenara.ai.types.shared.api import SSEErrorCode, SSEErrorData, SSEErrorResponse
 
 logger = logging.getLogger(__name__)
@@ -100,7 +100,7 @@ class AIModelProviderClientBase(ABC):
         self,
         prompt: str | dict | Prompt,
         context: list[str | dict | Prompt] | None = None,
-        instructions: list[str | PromptText] | SystemInstructions | None = None,
+        instructions: list[str | dict | SystemInstruction] | None = None,
     ) -> AIModelCallResponse:
         parsed_response: ChatResponse | None = None
         api_call_status: ExternalApiCallStatus | None = None
@@ -145,7 +145,7 @@ class AIModelProviderClientBase(ABC):
         self,
         prompt: str | dict | Prompt,
         context: list[str | dict | Prompt] | None = None,
-        instructions: list[str | PromptText] | SystemInstructions | None = None,
+        instructions: list[str | dict | SystemInstruction] | None = None,
     ) -> AIModelCallResponse:
         parsed_response: ChatResponse | None = None
         api_call_status: ExternalApiCallStatus | None = None
@@ -190,7 +190,7 @@ class AIModelProviderClientBase(ABC):
         self,
         prompt: str | dict | Prompt,
         context: list[str | dict | Prompt] | None = None,
-        instructions: list[str | PromptText] | SystemInstructions | None = None,
+        instructions: list[str | dict | SystemInstruction] | None = None,
     ) -> AIModelCallResponse:
         """Generate response from the model"""
 
@@ -224,7 +224,7 @@ class AIModelProviderClientBase(ABC):
         self,
         prompt: str | dict | Prompt,
         context: list[str | dict | Prompt] | None = None,
-        instructions: list[str | PromptText] | SystemInstructions | None = None,
+        instructions: list[str | dict | SystemInstruction] | None = None,
     ) -> AIModelCallResponse:
         """Generate response from the model"""
 
@@ -242,9 +242,9 @@ class AIModelProviderClientBase(ABC):
                     )
                 )
             return await self.generate_response_async(
-                prompt=formatted_inputs[0],
-                context=formatted_inputs[1],
-                instructions=instructions,
+                prompt=formatted_inputs["prompt"],
+                context=formatted_inputs["context"],
+                instructions=formatted_inputs["instructions"],
             )
         else:
             self._input_validation_pending = False
@@ -396,7 +396,7 @@ class AIModelProviderClientBase(ABC):
         self,
         prompt: str | dict | Prompt,
         context: list[str | dict | Prompt] | None = None,
-        instructions: list[str | PromptText] | SystemInstructions | None = None,
+        instructions: list[str | dict | SystemInstruction] | None = None,
         **kwargs,
     ) -> tuple[dict, list[dict], list[str] | dict | None]:
         """Format inputs into provider-specific formats"""

@@ -2,8 +2,7 @@ import datetime
 import logging
 import random
 
-from pydantic import BaseModel as PydanticBaseModel
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from dhenara.ai import AIModelClient
 from dhenara.ai.types import (
@@ -11,7 +10,7 @@ from dhenara.ai.types import (
     AIModelCallConfig,
     AIModelEndpoint,
     ResourceConfig,
-    StructuredOutputConfig,
+    # StructuredOutputConfig,
 )
 from dhenara.ai.types.conversation import ConversationNode
 from dhenara.ai.types.genai.foundation_models.anthropic.chat import Claude35Haiku
@@ -46,10 +45,16 @@ resource_config.model_endpoints = [
 ]
 
 
-# Define a schema
-class ProductReview(PydanticBaseModel):
-    product_name: str = Field(..., description="Name of the product being reviewed")
+class ProductRatings(BaseModel):
     rating: int = Field(..., description="Rating from 1-5", ge=1, le=5)
+    value_for_money_rating: int = Field(..., description="Value for money rating from 1-5", ge=1, le=5)
+
+
+# Define a schema
+class ProductReview(BaseModel):
+    product_name: str = Field(..., description="Name of the product being reviewed")
+    # rating: int = Field(..., description="Rating from 1-5", ge=1, le=5)
+    rating: ProductRatings = Field(..., description="Rating")
     pros: list[str] = Field(..., description="List of pros/positives about the product")
     cons: list[str] = Field(..., description="List of cons/negatives about the product")
     summary: str = Field(..., description="Short summary of the review")
@@ -71,9 +76,12 @@ def handle_conversation_turn(
             streaming=False,
             tools=None,
             tool_choice=None,
-            structured_output=StructuredOutputConfig(
-                output_schema=ProductReview,
-            ),
+            ## -- Either pass a schema using `StructuredOutputConfig`
+            # structured_output=StructuredOutputConfig(
+            #    output_schema=ProductReview.model_json_schema(),
+            # ),
+            ## -- OR pass a pydantic model
+            structured_output=ProductReview,
         ),
         is_async=False,
     )

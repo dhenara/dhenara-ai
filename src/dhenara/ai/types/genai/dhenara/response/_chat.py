@@ -1,5 +1,6 @@
 from typing import Any
 
+from pydantic import BaseModel as PydanticBaseModel
 from pydantic import Field
 
 from dhenara.ai.types.genai.ai_model import (
@@ -13,7 +14,12 @@ from dhenara.ai.types.genai.dhenara.request.data import Content, Prompt, PromptC
 from dhenara.ai.types.shared.api import SSEEventType, SSEResponse
 from dhenara.ai.types.shared.base import BaseModel
 
-from ._content_items._chat_items import ChatResponseContentItem, ChatResponseContentItemDelta
+from ._content_items._chat_items import (
+    ChatResponseContentItem,
+    ChatResponseContentItemDelta,
+    ChatResponseContentItemType,
+    ChatResponseToolCall,
+)
 from ._metadata import AIModelCallResponseMetaData
 
 
@@ -102,6 +108,39 @@ class ChatResponse(BaseModel):
                 max_words_file=None,
             ),
         )
+
+    def first(self, content_type: ChatResponseContentItemType):
+        "Returns the first content of matching type"
+        for choice in self.choices:
+            for content in choice.contents:
+                if content.type == content_type:
+                    return content
+        return None
+
+    def text(self) -> str | None:
+        "Returns the first text type content"
+        text_item = self.first(ChatResponseContentItemType.TEXT)
+        return text_item.text if text_item else None
+
+    def reasoning(self) -> str | None:
+        "Returns the first thinkning/reasoning type content"
+        reasoning_item = self.first(ChatResponseContentItemType.REASONING)
+        return reasoning_item.thinking_text if reasoning_item else None
+
+    def tools(self) -> list[ChatResponseToolCall]:
+        "Returns all tool type content"
+        tools = [
+            content
+            for choice in self.choices
+            for content in choice.contents
+            if content.type == ChatResponseContentItemType.TOOL_CALL
+        ]
+        return tools
+
+    def structured(self) -> PydanticBaseModel:
+        "Returns the first structured-output type content"
+        structured_output = self.first(ChatResponseContentItemType.STRUCTURED_OUTPUT)
+        return structured_output.structured_data if structured_output else None
 
 
 class ChatResponseChunk(BaseModel):

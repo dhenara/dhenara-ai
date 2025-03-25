@@ -38,6 +38,7 @@ class ToolDefinition(BaseModel, ToProviderMixin):
 
     type: Literal["function"] = "function"
     function: FunctionDefinition = Field(..., description="Function definition")
+    function_reference: Callable | None = Field(default=None, description="Callable fn reference")
 
     @classmethod
     def from_callable(cls, func: Callable) -> "ToolDefinition":
@@ -113,7 +114,7 @@ class ToolDefinition(BaseModel, ToProviderMixin):
         )
 
         # Create and return tool definition
-        return cls(function=function_def)
+        return cls(function=function_def, function_reference=func)
 
 
 # TODO: Add privider specific fns

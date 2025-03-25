@@ -69,7 +69,7 @@ class ChatResponseStructuredOutputContentItem(BaseChatResponseContentItem):
     def get_text(self) -> str:
         if self.structured_output:
             if self.structured_output.structured_data is not None:
-                return f"Structured  Output: {self.structured_output.structured_data.model_dump()}"
+                return f"Structured  Output: {self.structured_output.structured_data}"
             else:
                 return f"Structured  Output was failed to parse. Unparsed items: {self.structured_output.model_dump()}"
         return str(self.metadata)

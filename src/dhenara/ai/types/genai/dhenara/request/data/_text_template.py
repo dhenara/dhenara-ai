@@ -24,7 +24,7 @@ class TextTemplate(BaseModel):
     text: str = Field(
         description="Text template with optional {placeholders} for string formatting",
     )
-    variables: dict[str, TextTemplateVariableProps] = Field(
+    variables: dict[str, TextTemplateVariableProps | None] = Field(
         default_factory=dict,
         description="Variables/parameters for the template",
     )

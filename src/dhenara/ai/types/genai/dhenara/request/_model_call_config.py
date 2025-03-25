@@ -1,7 +1,14 @@
 import logging
 
+from pydantic import BaseModel as PydanticBaseModel
+from pydantic import model_validator
+
 from dhenara.ai.types.genai.ai_model import AIModel
-from dhenara.ai.types.genai.dhenara.request import StructuredOutputConfig, ToolChoice, ToolDefinition
+from dhenara.ai.types.genai.dhenara.request import (
+    StructuredOutputConfig,
+    ToolChoice,
+    ToolDefinition,
+)
 from dhenara.ai.types.shared.base import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -27,7 +34,7 @@ class AIModelCallConfig(BaseModel):
     tools: list[ToolDefinition] | None = None
     tool_choice: ToolChoice | None = None
 
-    structured_output: StructuredOutputConfig | None = None
+    structured_output: type[PydanticBaseModel] | StructuredOutputConfig | None = None
 
     metadata: dict = {}
     timeout: float | None = None
@@ -35,6 +42,14 @@ class AIModelCallConfig(BaseModel):
     retry_delay: float = 1.0
     max_retry_delay: float = 10.0
     test_mode: bool = False
+
+    @model_validator(mode="after")
+    def validate_structured_output(self) -> "AIModelCallConfig":
+        if isinstance(self.structured_output, type) and issubclass(self.structured_output, PydanticBaseModel):
+            self.structured_output = StructuredOutputConfig.from_model(
+                model_class=self.structured_output,
+            )
+        return self
 
     def get_user(self):
         user = self.metadata.get("user", None)

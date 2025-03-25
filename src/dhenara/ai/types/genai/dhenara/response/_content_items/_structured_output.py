@@ -1,5 +1,6 @@
+import json
 import logging
-from typing import Any
+from typing import TypeVar
 
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import Field
@@ -10,6 +11,8 @@ from dhenara.ai.types.shared.base import BaseModel
 from ._tool_call import ChatResponseToolCall
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T", bound=PydanticBaseModel)
 
 
 class ChatResponseStructuredOutput(BaseModel):
@@ -29,7 +32,7 @@ class ChatResponseStructuredOutput(BaseModel):
         ...,
         description="StructuredOutputConfig used for generating this response",
     )
-    structured_data: Any = Field(
+    structured_data: dict = Field(
         None,
         description="Parsed structured data according to the schema",
     )
@@ -52,7 +55,10 @@ class ChatResponseStructuredOutput(BaseModel):
             return f"Error parsing structured output: {self.parse_error}"
         return ""
 
-    def as_pydantic(self, model_class: type[PydanticBaseModel] | None = None) -> PydanticBaseModel | None:
+    def as_pydantic(
+        self,
+        model_class: type[PydanticBaseModel] | None = None,
+    ) -> PydanticBaseModel | None:
         """Convert the structured data to a pydantic model instance
 
         Args:
@@ -65,13 +71,72 @@ class ChatResponseStructuredOutput(BaseModel):
         if self.structured_data is None:
             return None
 
+        if not model_class:
+            model_class = self.config.model_class_reference
+
         try:
             if model_class is not None:
                 return model_class.model_validate(self.structured_data)
-            return self.structured_data  # If already a pydantic model
+            else:
+                logger.error("Error: need model_class to convert to pydantic model")
+                return None
         except Exception as e:
             logger.error(f"Error converting structured data to pydantic model: {e}")
             return None
+
+    @classmethod
+    def _parse_and_validate(
+        cls,
+        raw_data: str | dict,
+        config: StructuredOutputConfig,
+    ) -> tuple[dict | None, str | None]:
+        """Private helper method to parse and validate data against a schema
+
+        Args:
+            raw_data: Raw data from the model (string or dict)
+            config: Configuration with schema information
+
+        Returns:
+            Tuple of (parsed_data, error_message)
+        """
+        error = None
+        parsed_data = None
+
+        # Get the model class from config
+        model_cls: type[PydanticBaseModel] = None
+        if isinstance(config.model_class_reference, type) and issubclass(
+            config.model_class_reference, PydanticBaseModel
+        ):
+            model_cls = config.model_class_reference
+        elif isinstance(config.model_class_reference, PydanticBaseModel):
+            model_cls = config.model_class_reference.__class__
+
+        # Process based on whether we have a model class and data type
+        if model_cls:
+            try:
+                # Handle string or dict input differently
+                if isinstance(raw_data, str):
+                    parsed_data_pyd = model_cls.model_validate_json(raw_data)
+                else:  # dict
+                    parsed_data_pyd = model_cls.model_validate(raw_data)
+                parsed_data = parsed_data_pyd.model_dump()
+            except Exception as e:
+                logger.exception(f"parse_response: Error: {e}")
+                error = str(e)
+        else:
+            # No model class, just try to parse if string or use as is if dict
+            if isinstance(raw_data, dict):
+                parsed_data = raw_data
+            elif isinstance(raw_data, str):
+                try:
+                    parsed_data = json.loads(raw_data)
+                except Exception as e:
+                    logger.exception(f"parse_response: Error: {e}")
+                    error = str(e)
+            else:
+                error = f"Failed to parse response of type {type(raw_data)}"
+
+        return parsed_data, error
 
     @classmethod
     def from_model_output(
@@ -82,34 +147,17 @@ class ChatResponseStructuredOutput(BaseModel):
         """Create a structured output content item from model output
 
         Args:
-            output: Raw output from the model
-            schema: Schema to validate against
-            role: Role of the message sender
-            index: Index of the content item
+            raw_response: Raw output from the model
+            config: Schema to validate against
 
         Returns:
-            ChatResponseStructuredOutputContentItem
+            ChatResponseStructuredOutput
         """
-
-        error = None
-        model_cls: type[PydanticBaseModel] = None
-        if isinstance(config.output_schema, type) and issubclass(config.output_schema, PydanticBaseModel):
-            model_cls = config.output_schema
-        elif isinstance(config.output_schema, PydanticBaseModel):
-            model_cls = config.output_schema.__class__
-        else:
-            error = "from_model_output: Unsupported schema type for structured output."
-
-        try:
-            # Attempt to load and validate the response
-            parsed_data = model_cls.model_validate_json(raw_response)
-        except Exception as e:
-            logger.exception(f"parse_response: Error: {e}")
-            error = str(e)
+        parsed_data, error = cls._parse_and_validate(raw_response, config)
 
         return cls(
             config=config,
-            structured_data=parsed_data if error is None else None,
+            structured_data=parsed_data,
             raw_data=raw_response,
             parse_error=error,
         )
@@ -129,29 +177,12 @@ class ChatResponseStructuredOutput(BaseModel):
         Returns:
             ChatResponseStructuredOutput instance
         """
-        error = None
-        parsed_data = None
         raw_response = tool_call.arguments.arguments_dict  # Get the dict directly
-
-        model_cls: type[PydanticBaseModel] = None
-        if isinstance(config.output_schema, type) and issubclass(config.output_schema, PydanticBaseModel):
-            model_cls = config.output_schema
-        elif isinstance(config.output_schema, PydanticBaseModel):
-            model_cls = config.output_schema.__class__
-        else:
-            error = "from_tool_call: Unsupported schema type for structured output."
-
-        try:
-            # Use model_validate instead of model_validate_json since we already have a dict
-            if error is None:
-                parsed_data = model_cls.model_validate(raw_response)
-        except Exception as e:
-            logger.exception(f"parse_response: Error: {e}")
-            error = str(e)
+        parsed_data, error = cls._parse_and_validate(raw_response, config)
 
         return cls(
             config=config,
-            structured_data=parsed_data if error is None else None,
+            structured_data=parsed_data,
             raw_data=raw_response,
             parse_error=error,
         )
