@@ -14,15 +14,15 @@ class TextTemplateVariableProps(BaseModel):
 
 
 class TextTemplate(BaseModel):
-    """Template configuration for AI interactions.
-
-    A generic template structure for configuring various AI interaction texts,
-    including prompts, system instructions, context information, or any templated text.
-    Supports dynamic variable substitution through standard Python string formatting.
+    """
+    Enhanced template configuration for AI interactions.
+    Supports both Python style formatting with {placeholders} and
+    expression-based templates with ${expressions}.
+    Note that ${expressions} are not parsed within this package
     """
 
     text: str = Field(
-        description="Text template with optional {placeholders} for string formatting",
+        description="Text template with optional {placeholders} and ${expressions}",
     )
     variables: dict[str, TextTemplateVariableProps | None] = Field(
         default_factory=dict,
@@ -31,10 +31,10 @@ class TextTemplate(BaseModel):
 
     @model_validator(mode="after")
     def validate_variables(self) -> "TextTemplate":
-        """Validate that all variables are present in the template text and vice versa."""
-
+        """Validate that all Python-style variables are present in the template text."""
+        # Original validation for Python-style formatting
         text = self.text
-        template_args = list(self.variables.keys())
+        python_template_args = list(self.variables.keys())
 
         # Check for variables that don't appear in the text
         # Use string.Formatter to extract field names from the template
@@ -44,12 +44,12 @@ class TextTemplate(BaseModel):
         field_names = [field_name for _, field_name, _, _ in formatter.parse(text) if field_name is not None]
 
         # Check for variables defined but not used in template
-        missing_in_text = [arg for arg in template_args if arg not in field_names]
+        missing_in_text = [arg for arg in python_template_args if arg not in field_names]
         if missing_in_text:
             raise ValueError(f"Variables {missing_in_text} are defined but not used in the template text")
 
         # Check for placeholders in the text that aren't defined in variables
-        extra_in_text = [field for field in field_names if field not in template_args]
+        extra_in_text = [field for field in field_names if field not in python_template_args]
         if extra_in_text:
             raise ValueError(f"Placeholders {extra_in_text} are used in the template text but not defined in variables")
 
@@ -59,12 +59,20 @@ class TextTemplate(BaseModel):
         """Get a dictionary of variable default values."""
         return {key: props.default_value for key, props in self.variables.items() if props.default_value is not None}
 
-    def format(self, **kwargs) -> str:
-        """Formats the template with provided values.
+    # def get_args_default_values(self) -> dict[str, Any]:
+    #    """Get a dictionary of variable default values."""
+    #    return {
+    #        key: props.get("default_value")
+    #        for key, props in self.variables.items()
+    #        if props and "default_value" in props
+    #    }
 
+    def format(self, **kwargs) -> str:
+        """
+        Formats the template with provided values, supporting both Python-style
+        placeholders and expression-based templates.
         Additional keyword variables can be passed at runtime to be included
         in the template formatting, overriding any matching keys in the
-        default_values dictionary.
 
         Args:
             **kwargs: Runtime values for template variables (overrides defaults)
@@ -72,7 +80,7 @@ class TextTemplate(BaseModel):
         Returns:
             str: The complete formatted text
         """
-        # Start with default values and override with runtime values
+        # First apply Python-style formatting
         format_values = self.get_args_default_values()
         format_values.update(kwargs)
 
@@ -82,12 +90,14 @@ class TextTemplate(BaseModel):
             if missing_args:
                 raise ValueError(f"Missing required variables: {missing_args}")
 
-        # Handle special placeholders
+        # Apply Python-style formatting
         # TODO_FUTURE: Use `jinja2` for processing specail jinja2 and remove if not present
         # special_placeholders = {
         #    "dh_input_content": self._handle_input_content,
         #    # more special placeholders and their handlers here
         # }
+        result = self.text.format(**format_values)
 
-        # Format template with variables
-        return self.text.format(**format_values)
+        #  Note: evaluating expressions are not within the scope of this package
+        # It should be taken care seperately.
+        return result

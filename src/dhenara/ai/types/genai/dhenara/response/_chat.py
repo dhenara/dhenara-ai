@@ -139,8 +139,8 @@ class ChatResponse(BaseModel):
 
     def structured(self) -> PydanticBaseModel:
         "Returns the first structured-output type content"
-        structured_output = self.first(ChatResponseContentItemType.STRUCTURED_OUTPUT)
-        return structured_output.structured_data if structured_output else None
+        structured_item = self.first(ChatResponseContentItemType.STRUCTURED_OUTPUT)
+        return structured_item.structured_output.structured_data if structured_item else None
 
 
 class ChatResponseChunk(BaseModel):

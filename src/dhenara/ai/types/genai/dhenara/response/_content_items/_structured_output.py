@@ -32,7 +32,7 @@ class ChatResponseStructuredOutput(BaseModel):
         ...,
         description="StructuredOutputConfig used for generating this response",
     )
-    structured_data: dict = Field(
+    structured_data: dict | None = Field(
         None,
         description="Parsed structured data according to the schema",
     )
