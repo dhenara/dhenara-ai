@@ -93,6 +93,33 @@ class Prompt(BaseTextPrompt):
         description="Prompt Config.",
     )
 
+    @classmethod
+    def with_text(cls, text: str, variables: dict | None = None):
+        return cls(
+            role=PromptMessageRoleEnum.USER,
+            text=PromptText(
+                content=None,
+                template=TextTemplate(
+                    text=text,
+                    variables=variables or {},
+                ),
+            ),
+        )
+
+    @classmethod
+    def with_dad_text(cls, text: str, variables: dict | None = None):
+        return cls(
+            role=PromptMessageRoleEnum.USER,
+            text=PromptText(
+                content=None,
+                template=TextTemplate(
+                    disable_checks=True,
+                    text=text,
+                    variables=variables or {},
+                ),
+            ),
+        )
+
 
 class FormattedPrompt(BaseModel):
     role: PromptMessageRoleEnum

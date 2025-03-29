@@ -6,8 +6,8 @@ from dhenara.ai.types.shared.base import BaseModel
 
 
 class TextTemplateVariableProps(BaseModel):
-    default_value: Any | None = Field(default=None, description="Default value for the parameter")
-    allowed_values: list[Any] | None = Field(default=None, description="Allowed values")
+    default: Any | None = Field(default=None, description="Default value for the parameter")
+    allowed: list[Any] | None = Field(default=None, description="Allowed values")
     # type: str = Field(..., description="Type of the parameter (string, number, boolean, etc.)")
     # description: str | None = Field(default=None, description="Description of the parameter")
     # required: bool = Field(default=False, description="Whether the parameter is required")
@@ -28,43 +28,49 @@ class TextTemplate(BaseModel):
         default_factory=dict,
         description="Variables/parameters for the template",
     )
+    disable_checks: bool = Field(
+        default=False,
+    )
 
     @model_validator(mode="after")
     def validate_variables(self) -> "TextTemplate":
-        """Validate that all Python-style variables are present in the template text."""
-        # Original validation for Python-style formatting
-        text = self.text
-        python_template_args = list(self.variables.keys())
+        if not self.disable_checks:
+            """Validate that all Python-style variables are present in the template text."""
+            # Original validation for Python-style formatting
+            text = self.text
+            python_template_args = list(self.variables.keys())
 
-        # Check for variables that don't appear in the text
-        # Use string.Formatter to extract field names from the template
-        import string
+            # Check for variables that don't appear in the text
+            # Use string.Formatter to extract field names from the template
+            import string
 
-        formatter = string.Formatter()
-        field_names = [field_name for _, field_name, _, _ in formatter.parse(text) if field_name is not None]
+            formatter = string.Formatter()
+            field_names = [field_name for _, field_name, _, _ in formatter.parse(text) if field_name is not None]
 
-        # Check for variables defined but not used in template
-        missing_in_text = [arg for arg in python_template_args if arg not in field_names]
-        if missing_in_text:
-            raise ValueError(f"Variables {missing_in_text} are defined but not used in the template text")
+            # Check for variables defined but not used in template
+            missing_in_text = [arg for arg in python_template_args if arg not in field_names]
+            if missing_in_text:
+                raise ValueError(f"Variables {missing_in_text} are defined but not used in the template text")
 
-        # Check for placeholders in the text that aren't defined in variables
-        extra_in_text = [field for field in field_names if field not in python_template_args]
-        if extra_in_text:
-            raise ValueError(f"Placeholders {extra_in_text} are used in the template text but not defined in variables")
+            # Check for placeholders in the text that aren't defined in variables
+            extra_in_text = [field for field in field_names if field not in python_template_args]
+            if extra_in_text:
+                raise ValueError(
+                    f"Placeholders {extra_in_text} are used in the template text but not defined in variables"
+                )
 
         return self
 
     def get_args_default_values(self) -> dict[str, Any]:
         """Get a dictionary of variable default values."""
-        return {key: props.default_value for key, props in self.variables.items() if props.default_value is not None}
+        return {key: props.default for key, props in self.variables.items() if props and props.default is not None}
 
     # def get_args_default_values(self) -> dict[str, Any]:
     #    """Get a dictionary of variable default values."""
     #    return {
-    #        key: props.get("default_value")
+    #        key: props.get("default")
     #        for key, props in self.variables.items()
-    #        if props and "default_value" in props
+    #        if props and "default" in props
     #    }
 
     def format(self, **kwargs) -> str:
@@ -85,7 +91,7 @@ class TextTemplate(BaseModel):
         format_values.update(kwargs)
 
         # Check if all required variables are provided
-        if self.variables:
+        if not self.disable_checks and self.variables:
             missing_args = [arg for arg in self.variables.keys() if arg not in format_values]
             if missing_args:
                 raise ValueError(f"Missing required variables: {missing_args}")
