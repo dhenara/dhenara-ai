@@ -107,3 +107,25 @@ class ResourceConfigItem(BaseModel):
 
         # Case 3: Mixed cases are considered different
         return False
+
+    # Factory methods
+    @classmethod
+    def with_model(cls, model_name: str) -> list["ResourceConfigItem"]:
+        return [
+            cls(
+                item_type=ResourceConfigItemTypeEnum.ai_model_endpoint,
+                query={ResourceQueryFieldsEnum.model_name: model_name},
+                is_default=True,
+            )
+        ]
+
+    @classmethod
+    def with_models(cls, model_names: list[str]) -> list["ResourceConfigItem"]:
+        return [
+            cls(
+                item_type=ResourceConfigItemTypeEnum.ai_model_endpoint,
+                query={ResourceQueryFieldsEnum.model_name: model_name},
+                is_default=True if index == 0 else False,
+            )
+            for index, model_name in enumerate(model_names)
+        ]

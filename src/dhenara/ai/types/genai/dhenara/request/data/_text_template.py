@@ -107,3 +107,15 @@ class TextTemplate(BaseModel):
         #  Note: evaluating expressions are not within the scope of this package
         # It should be taken care seperately.
         return result
+
+
+class ObjectTemplate(BaseModel):
+    """
+    Template configuration for retrieving objects from expressions.
+    Unlike TextTemplate, this preserves the type of the evaluated expression
+    rather than converting to string.
+    """
+
+    expression: str = Field(
+        description="Expression template containing a ${expression} that returns an object",
+    )
