@@ -94,7 +94,12 @@ class Prompt(BaseTextPrompt):
     )
 
     @classmethod
-    def with_text(cls, text: str, variables: dict | None = None):
+    def with_text(
+        cls,
+        text: str,
+        variables: dict | None = None,
+        disable_checks: bool = False,
+    ):
         return cls(
             role=PromptMessageRoleEnum.USER,
             text=PromptText(
@@ -102,20 +107,26 @@ class Prompt(BaseTextPrompt):
                 template=TextTemplate(
                     text=text,
                     variables=variables or {},
+                    disable_checks=disable_checks,
                 ),
             ),
         )
 
     @classmethod
-    def with_dad_text(cls, text: str, variables: dict | None = None):
+    def with_dad_text(
+        cls,
+        text: str,
+        variables: dict | None = None,
+        disable_checks: bool = False,
+    ):
         return cls(
             role=PromptMessageRoleEnum.USER,
             text=PromptText(
                 content=None,
                 template=TextTemplate(
-                    disable_checks=True,
                     text=text,
                     variables=variables or {},
+                    disable_checks=disable_checks,
                 ),
             ),
         )
