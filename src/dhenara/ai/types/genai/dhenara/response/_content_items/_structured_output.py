@@ -153,19 +153,22 @@ class ChatResponseStructuredOutput(BaseModel):
         Returns:
             ChatResponseStructuredOutput
         """
-        parsed_data, error = cls._parse_and_validate(raw_response, config)
+
+        raw_response_ro_parse = raw_response or {}
+        parsed_data, error = cls._parse_and_validate(raw_response_ro_parse, config)
 
         return cls(
             config=config,
             structured_data=parsed_data,
-            raw_data=raw_response,
+            raw_data=raw_response,  # Keep original response regardless of parsing
             parse_error=error,
         )
 
     @classmethod
     def from_tool_call(
         cls,
-        tool_call: ChatResponseToolCall,
+        raw_response: str | dict,
+        tool_call: ChatResponseToolCall | None,
         config: StructuredOutputConfig,
     ) -> "ChatResponseStructuredOutput":
         """Create a structured output from a tool call response
@@ -177,12 +180,25 @@ class ChatResponseStructuredOutput(BaseModel):
         Returns:
             ChatResponseStructuredOutput instance
         """
-        raw_response = tool_call.arguments.arguments_dict  # Get the dict directly
-        parsed_data, error = cls._parse_and_validate(raw_response, config)
+
+        if tool_call is not None:
+            if tool_call.arguments:
+                raw_response_ro_parse = tool_call.arguments  # Get the dict directly
+                parsed_data, error = cls._parse_and_validate(raw_response_ro_parse, config)
+                # In case of error, keep the  orginal data
+                raw_data = raw_response if error is not None else None
+            else:
+                parsed_data = None
+                error = tool_call.parse_error
+                raw_data = raw_response
+        else:
+            parsed_data = None
+            error = "No tool call provided with `from_tool_call` method"
+            raw_data = raw_response
 
         return cls(
             config=config,
             structured_data=parsed_data,
-            raw_data=raw_response,
+            raw_data=raw_data,  # Keep original response regardless of parsing
             parse_error=error,
         )

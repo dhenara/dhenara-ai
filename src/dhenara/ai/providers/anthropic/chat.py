@@ -370,12 +370,17 @@ class AnthropicChat(AnthropicClientBase):
             )
 
         elif isinstance(content_item, ToolUseBlock):
-            content_item_dict = content_item.model_dump()
-            tool_call = ChatResponseToolCall.from_anthropic_format(content_item_dict)
+            raw_response = content_item.model_dump()
+            try:
+                tool_call = ChatResponseToolCall.from_anthropic_format(raw_response)
+            except Exception as e:
+                logger.exception(f"Error parsing tool call: {e}")
+                tool_call = None
 
             # For anthropic, structed output reqs are send as tool_call
             if self.config.structured_output is not None:
                 structured_output = ChatResponseStructuredOutput.from_tool_call(
+                    raw_response=raw_response,
                     tool_call=tool_call,
                     config=self.config.structured_output,
                 )
@@ -385,12 +390,20 @@ class AnthropicChat(AnthropicClientBase):
                     structured_output=structured_output,
                 )
             else:
-                return ChatResponseToolCallContentItem(
-                    index=index,
-                    role=role,
-                    tool_call=tool_call,
-                    metadata={},
-                )
+                if tool_call:
+                    return ChatResponseToolCallContentItem(
+                        index=index,
+                        role=role,
+                        tool_call=tool_call,
+                        metadata={},
+                    )
+                else:
+                    return self.get_unknown_content_type_item(
+                        index=index,
+                        role=role,
+                        unknown_item=content_item,
+                        streaming=False,
+                    )
 
         else:
             return self.get_unknown_content_type_item(

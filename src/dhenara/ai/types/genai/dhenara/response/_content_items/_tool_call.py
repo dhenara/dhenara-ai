@@ -6,54 +6,88 @@ from pydantic import Field
 from dhenara.ai.types.shared.base import BaseModel
 
 
-class ChatResponseToolCallArguments(BaseModel):
-    """Arguments for a tool call received from an LLM"""
-
-    arguments_dict: dict[str, Any] = Field(default_factory=dict)
-    raw_json: str | None = None
-
-    @classmethod
-    def parse(cls, arguments: str | dict) -> "ChatResponseToolCallArguments":
-        """Parse arguments from either JSON striing or dict"""
-        if isinstance(arguments, str):
-            try:
-                return cls(arguments_dict=json.loads(arguments), raw_json=arguments)
-            except json.JSONDecodeError:
-                return cls(arguments_dict={}, raw_json=arguments)
-        return cls(arguments_dict=arguments)
-
-
 class ChatResponseToolCall(BaseModel):
     """Representation of a tool call from an LLM"""
 
     id: str | None = None
     name: str
-    arguments: ChatResponseToolCallArguments
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    raw_data: str | dict | None = Field(
+        None,
+        description="Raw unparsed response from the model",
+    )
+    parse_error: str | None = Field(
+        None,
+        description="Error that occurred during parsing, if any",
+    )
+
+    @classmethod
+    def _parse(cls, arguments: str | dict) -> dict:
+        """Parse arguments from either JSON striing or dict"""
+        arguments_dict = {}
+        raw_data = None
+        parse_error = None
+        if isinstance(arguments, str):
+            try:
+                arguments_dict = json.loads(arguments)
+            except Exception as e:
+                raw_data = arguments
+                parse_error = str(e)
+        elif isinstance(arguments, dict):
+            try:
+                arguments_dict = arguments
+            except Exception as e:
+                raw_data = arguments
+                parse_error = str(e)
+        else:
+            raw_data = arguments
+            parse_error = f"Invalid arguments type {(type(arguments))}"
+
+        return {
+            "arguments_dict": arguments_dict,
+            "raw_data": raw_data,
+            "parse_error": parse_error,
+        }
 
     @classmethod
     def from_openai_format(cls, props: dict) -> "ChatResponseToolCall":
         """Create from OpenAI tool call format"""
+        _args = props.get("function", {}).get("arguments")
+        _parse_result = cls._parse(_args)
+
         return cls(
             id=props.get("id"),
             name=props.get("function", {}).get("name"),
-            arguments=ChatResponseToolCallArguments.parse(props.get("function", {}).get("arguments")),
+            arguments=_parse_result.get("arguments_dict"),
+            raw_data=_parse_result.get("raw_data"),
+            parse_error=_parse_result.get("parse_error"),
         )
 
     @classmethod
     def from_anthropic_format(cls, props: dict) -> "ChatResponseToolCall":
         """Create from Anthropic tool use format"""
+        _args = props.get("input")
+        _parse_result = cls._parse(_args)
+
         return cls(
             id=props.get("id"),
             name=props.get("name"),
-            arguments=ChatResponseToolCallArguments.parse(props.get("input")),
+            arguments=_parse_result.get("arguments_dict"),
+            raw_data=_parse_result.get("raw_data"),
+            parse_error=_parse_result.get("parse_error"),
         )
 
     @classmethod
     def from_google_format(cls, props: dict) -> "ChatResponseToolCall":
+        _args = props.get("args")
+        _parse_result = cls._parse(_args)
+
         return cls(
             id=props.get("id"),
             name=props.get("name"),
-            arguments=ChatResponseToolCallArguments.parse(props.get("args")),
+            arguments=_parse_result.get("arguments_dict"),
+            raw_data=_parse_result.get("raw_data"),
+            parse_error=_parse_result.get("parse_error"),
         )
 
 

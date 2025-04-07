@@ -218,7 +218,7 @@ def run_multi_turn_conversation():
             if content.type == "tool_call" and content.tool_call:
                 tool_call = content.tool_call
                 function_name = tool_call.name
-                arguments = tool_call.arguments.arguments_dict
+                arguments = tool_call.arguments
                 print("\n📞 Function call detected!")
                 print(f"Function: {function_name}")
                 print(f"Arguments: {arguments}")
