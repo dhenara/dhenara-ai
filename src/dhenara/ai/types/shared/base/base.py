@@ -64,3 +64,39 @@ class BaseModel(PydanticBaseModel):
     #        return cls.model_validate(data), None
     #    except ValidationError as e:
     #        return None, e
+
+    # TODO_FUTURE: Comeup with better soution to mask selective fields
+    def model_dump_safe(self, **kwargs):
+        """Get a string representation with masked sensitive data"""
+        # Get the regular model dump
+        data = self.model_dump()
+        # Create a copy to avoid modifying the original data
+        return self._mask_sensitive_data(data.copy())
+
+    def _mask_sensitive_data(self, data: dict) -> dict:
+        """Recursively mask sensitive fields in a dictionary"""
+        if not isinstance(data, dict):
+            return data
+
+        for key, value in data.items():
+            if key == "api_key" and value:
+                data[key] = f"{str(value)[:4]}...{str(value)[-4:]}" if len(str(value)) > 8 else value
+            elif key == "credentials" and value and isinstance(value, dict):
+                data[key] = {
+                    k: f"{str(v)[:4]}...{str(v)[-4:]}" if v and len(str(v)) > 8 else v for k, v in value.items()
+                }
+            elif isinstance(value, dict):
+                data[key] = self._mask_sensitive_data(value)
+            elif isinstance(value, list):
+                data[key] = [self._mask_sensitive_data(i) if isinstance(i, dict) else i for i in value]
+        return data
+
+    def _get_masked_representation(self) -> str:
+        masked_data = self.model_dump_safe()
+
+        # import json
+        # return json.dumps(self.model_dump_safe(), indent=2)
+
+        # Format it like the default __repr__ but with masked data
+        fields = ", ".join(f"{k}={repr(v)}" for k, v in masked_data.items())  # noqa: RUF010
+        return f"{self.__class__.__name__}({fields})"

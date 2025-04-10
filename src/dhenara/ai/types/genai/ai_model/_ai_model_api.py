@@ -288,3 +288,14 @@ class AIModelAPI(BaseModel):
             current_model,
             config=config,
         ).config
+
+    # *************************************************************************
+    # Override representation for masking sensitive data
+    # TODO_FUTURE: Find better alternative
+    def __str__(self) -> str:
+        return self._get_masked_representation()
+
+    def __repr__(self) -> str:
+        return self._get_masked_representation()
+
+    # *************************************************************************
