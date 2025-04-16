@@ -47,6 +47,7 @@ class TextTemplate(BaseModel):
         """
         Validate that all defined variables appear in the template.
         Looks for $var{variable_name} patterns in the template text.
+        Supports variables with dot notation (nested variables).
         """
         if not self.disable_checks:
             import re
@@ -70,7 +71,13 @@ class TextTemplate(BaseModel):
 
             # Now find all non-escaped variable patterns
             var_pattern = re.compile(r"\$var{([^}]+)}")
-            used_vars = [match.group(1).strip() for match in var_pattern.finditer(text_for_validation)]
+            used_vars_full = [match.group(1).strip() for match in var_pattern.finditer(text_for_validation)]
+
+            # Extract root variable names from possibly nested paths (e.g., 'task_spec.description' -> 'task_spec')
+            used_vars = set()
+            for var_path in used_vars_full:
+                root_var = var_path.split(".")[0].strip()
+                used_vars.add(root_var)
 
             # Check for variables defined but not used in template
             missing_in_text = [var for var in defined_vars if var not in used_vars]

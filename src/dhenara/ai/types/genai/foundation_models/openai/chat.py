@@ -108,4 +108,68 @@ O3Mini = FoundationModel(
     ),
 )
 
-CHAT_MODELS = [GPT4o, GPT4oMini, O1, O1Mini, O3Mini]
+
+GPT41 = FoundationModel(
+    model_name="gpt-4.1",
+    display_name="GPT-4.1",
+    provider=AIModelProviderEnum.OPEN_AI,
+    functional_type=AIModelFunctionalTypeEnum.TEXT_GENERATION,
+    settings=ChatModelSettings(
+        max_context_window_tokens=1047576,
+        max_output_tokens=32768,
+    ),
+    valid_options={},
+    metadata={
+        "details": "Flagship model for complex tasks. It is well suited for problem solving across domains.",
+    },
+    order=11,
+    cost_data=ChatModelCostData(
+        input_token_cost_per_million=2.0,
+        output_token_cost_per_million=8.0,
+    ),
+)
+
+
+GPT41Mini = FoundationModel(
+    model_name="gpt-4.1-mini",
+    display_name="GPT-4.1-mini",
+    provider=AIModelProviderEnum.OPEN_AI,
+    functional_type=AIModelFunctionalTypeEnum.TEXT_GENERATION,
+    settings=ChatModelSettings(
+        max_context_window_tokens=1047576,
+        max_output_tokens=32768,
+    ),
+    valid_options={},
+    metadata={
+        "details": "GPT-4.1 mini provides a balance between intelligence, speed, and cost.",
+    },
+    order=11,
+    cost_data=ChatModelCostData(
+        input_token_cost_per_million=0.40,
+        output_token_cost_per_million=1.60,
+    ),
+)
+
+
+GPT41Nano = FoundationModel(
+    model_name="gpt-4.1-nano",
+    display_name="GPT-4.1-nano",
+    provider=AIModelProviderEnum.OPEN_AI,
+    functional_type=AIModelFunctionalTypeEnum.TEXT_GENERATION,
+    settings=ChatModelSettings(
+        max_context_window_tokens=1047576,
+        max_output_tokens=32768,
+    ),
+    valid_options={},
+    metadata={
+        "details": "GPT-4.1 nano is the fastest, most cost-effective GPT-4.1 model.",
+    },
+    order=11,
+    cost_data=ChatModelCostData(
+        input_token_cost_per_million=0.10,
+        output_token_cost_per_million=0.40,
+    ),
+)
+
+
+CHAT_MODELS = [GPT41, GPT41Mini, GPT41Nano, GPT4o, GPT4oMini, O1, O1Mini, O3Mini]

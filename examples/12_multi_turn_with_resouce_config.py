@@ -6,7 +6,7 @@ from dhenara.ai.types import AIModelAPIProviderEnum, AIModelCallConfig, AIModelE
 from dhenara.ai.types.conversation._node import ConversationNode
 from dhenara.ai.types.genai.foundation_models.anthropic.chat import Claude35Haiku, Claude37Sonnet
 from dhenara.ai.types.genai.foundation_models.google.chat import Gemini20Flash, Gemini20FlashLite
-from dhenara.ai.types.genai.foundation_models.openai.chat import GPT4oMini, O3Mini
+from dhenara.ai.types.genai.foundation_models.openai.chat import GPT41Nano, O3Mini
 
 # Initialize all model enpoints and collect it into a ResourceConfig.
 # Ideally, you will do once in your application when it boots, and make it global
@@ -24,7 +24,7 @@ resource_config.model_endpoints = [
     AIModelEndpoint(api=anthropic_api, ai_model=Claude37Sonnet),
     AIModelEndpoint(api=anthropic_api, ai_model=Claude35Haiku),
     AIModelEndpoint(api=openai_api, ai_model=O3Mini),
-    AIModelEndpoint(api=openai_api, ai_model=GPT4oMini),
+    AIModelEndpoint(api=openai_api, ai_model=GPT41Nano),
     AIModelEndpoint(api=google_api, ai_model=Gemini20Flash),
     AIModelEndpoint(api=google_api, ai_model=Gemini20FlashLite),
 ]
