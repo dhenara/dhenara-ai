@@ -13,7 +13,7 @@ from dhenara.ai.types import (
     ResourceConfig,
 )
 from dhenara.ai.types.genai.foundation_models.google.image import Imagen3Fast
-from dhenara.ai.types.genai.foundation_models.openai.image import DallE3
+from dhenara.ai.types.genai.foundation_models.openai.image import DallE3, GPTImage1
 
 # Configure logging
 logging.basicConfig(
@@ -35,6 +35,7 @@ openai_api = resource_config.get_api(AIModelAPIProviderEnum.OPEN_AI)
 vertext_api = resource_config.get_api(AIModelAPIProviderEnum.GOOGLE_VERTEX_AI)
 
 # Create various model endpoints, and add them to resource config
+gpt_ep = AIModelEndpoint(api=openai_api, ai_model=GPTImage1)
 dalle_ep = AIModelEndpoint(api=openai_api, ai_model=DallE3)
 imagen_ep = AIModelEndpoint(api=vertext_api, ai_model=Imagen3Fast)
 
@@ -72,7 +73,29 @@ def print_response(response):
 user_query = "Elephant amigurumi walking in savanna, a professional photograph, blurry background"
 
 # OpenAI
-# Create the client
+# GPT-Image
+client = AIModelClient(
+    model_endpoint=gpt_ep,
+    config=AIModelCallConfig(
+        options={
+            "quality": "low",
+            "size": "1024x1024",
+            "n": 1,
+        },
+    ),
+    is_async=False,  # Sync mode
+)
+
+
+response = client.generate(
+    prompt=user_query,
+    context=[],
+    instructions=[],
+)
+print_response(response)
+
+
+# Dalle
 client = AIModelClient(
     model_endpoint=dalle_ep,
     config=AIModelCallConfig(
@@ -83,7 +106,6 @@ client = AIModelClient(
             "n": 1,
             "response_format": "b64_json",  # or "url"
         },
-        test_mode=False,
     ),
     is_async=False,  # Sync mode
 )
@@ -106,7 +128,6 @@ client = AIModelClient(
             "number_of_images": 1,
             "person_generation": "dont_allow",
         },
-        test_mode=False,
     ),
     is_async=False,  # Sync mode
 )

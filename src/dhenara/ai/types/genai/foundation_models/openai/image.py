@@ -130,4 +130,73 @@ DallE3 = FoundationModel(
     ),
 )
 
-IMAGE_MODELS = [DallE2, DallE3]
+
+GPTImage1 = FoundationModel(
+    model_name="gpt-image-1",
+    display_name="gpt-image-1",
+    provider=AIModelProviderEnum.OPEN_AI,
+    functional_type=AIModelFunctionalTypeEnum.IMAGE_GENERATION,
+    settings=ImageModelSettings(max_words=1000),
+    valid_options={
+        "quality": ValidOptionValue(
+            allowed_values=["low", "medium", "high"],
+            default_value="medium",
+            cost_sensitive=True,
+            description="Image quality",
+        ),
+        "size": ValidOptionValue(
+            allowed_values=["1024x1024", "1024x1536", "1536x1024"],
+            default_value="1024x1024",
+            cost_sensitive=True,
+            description="Dimensions",
+        ),
+        "n": ValidOptionValue(
+            allowed_values=list(range(1, 10)),
+            default_value=1,
+            cost_sensitive=True,
+            description="Number of images",
+        ),
+        # NO "response_format", responses will be always in b64_json
+    },
+    metadata={
+        "details": "GPTImage 1",
+    },
+    cost_data=ImageModelCostData(
+        flat_cost_per_image=None,  # Pricing is within options
+        image_options_cost_data=[
+            {
+                "quality": ["low"],
+                "size": ["1024x1024"],
+                "cost_per_image": 0.011,
+            },
+            {
+                "quality": ["low"],
+                "size": ["1024x1536", "1536x1024"],
+                "cost_per_image": 0.016,
+            },
+            {
+                "quality": ["medium"],
+                "size": ["1024x1024"],
+                "cost_per_image": 0.042,
+            },
+            {
+                "quality": ["medium"],
+                "size": ["1024x1536", "1536x1024"],
+                "cost_per_image": 0.063,
+            },
+            {
+                "quality": ["high"],
+                "size": ["1024x1024"],
+                "cost_per_image": 0.167,
+            },
+            {
+                "quality": ["high"],
+                "size": ["1024x1536", "1536x1024"],
+                "cost_per_image": 0.25,
+            },
+        ],
+    ),
+)
+
+
+IMAGE_MODELS = [DallE2, DallE3, GPTImage1]

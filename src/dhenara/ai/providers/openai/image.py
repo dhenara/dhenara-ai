@@ -59,7 +59,8 @@ class OpenAIImage(OpenAIClientBase):
                 image_args["user"] = user
 
         # Store additional params
-        self.response_format = model_options["response_format"]  # Special case
+        # NOTE: response_format is not supported for newer models and response is always in b64_json format
+        self.response_format = model_options.get("response_format", "b64_json")  # Special case.
 
         return {"image_args": image_args}
 
