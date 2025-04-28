@@ -86,6 +86,10 @@ class TextTemplate(BaseModel):
 
         return self
 
+    def get_variable_names(self) -> dict[str, Any]:
+        """Get a dictionary of variable default values."""
+        return list(self.variables.keys())
+
     def get_args_default_values(self) -> dict[str, Any]:
         """Get a dictionary of variable default values."""
         return {key: props.default for key, props in self.variables.items() if props and props.default is not None}
