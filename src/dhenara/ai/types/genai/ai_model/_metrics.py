@@ -9,7 +9,7 @@ class UsageCharge(BaseModel):
         description="Cost",
     )
     charge: float | None = Field(
-        ...,
+        default=None,
         description="Charge after considering internal expences and margins."
         " Will be  None if  `cost_multiplier_percentage` is not set in cost data.",
     )
