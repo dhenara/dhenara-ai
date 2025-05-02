@@ -142,6 +142,11 @@ class ChatResponse(BaseModel):
         structured_item = self.first(ChatResponseContentItemType.STRUCTURED_OUTPUT)
         return structured_item.structured_output.structured_data if structured_item else None
 
+    def structured_unprocessed(self) -> dict | None:
+        "Returns the first structured-output type content as dict"
+        structured_item = self.first(ChatResponseContentItemType.STRUCTURED_OUTPUT)
+        return structured_item.structured_output
+
     def structured_pyd(self) -> PydanticBaseModel:
         "Returns the first structured-output type content as its pydantic model instance configured in the input call"
         structured_item = self.first(ChatResponseContentItemType.STRUCTURED_OUTPUT)
