@@ -220,4 +220,31 @@ class GoogleFormatter(BaseFormatter):
         model_endpoint: AIModelEndpoint | None = None,
     ) -> dict[str, Any]:
         """Convert StructuredOutputConfig to Google format"""
-        return structured_output.output_schema
+        # return structured_output.output_schema
+
+        def _clean_schema_for_api(schema):
+            """Remove `additionalProperties` in nested list/dict"""
+            if isinstance(schema, dict):
+                # Remove additionalProperties: false
+                if "additionalProperties" in schema and schema["additionalProperties"] is False:
+                    del schema["additionalProperties"]
+
+                # Remove empty examples lists
+                if "examples" in schema and not schema["examples"]:
+                    del schema["examples"]
+
+                # Process nested schemas
+                for _key, value in list(schema.items()):
+                    if isinstance(value, (dict, list)):
+                        _clean_schema_for_api(value)
+
+            elif isinstance(schema, list):
+                for item in schema:
+                    if isinstance(item, (dict, list)):
+                        _clean_schema_for_api(item)
+
+            return schema
+
+        # Get the original JSON schema from Pydantic or dict
+        _schema = structured_output.get_schema()
+        return _clean_schema_for_api(_schema)

@@ -79,8 +79,8 @@ MODEL_TO_API_MAPPING = {
         AIModelAPIProviderEnum.MICROSOFT_OPENAI,
     ],
     AIModelProviderEnum.GOOGLE_AI: [
+        AIModelAPIProviderEnum.GOOGLE_VERTEX_AI,  # If both are available, prioritize vertext_ai
         AIModelAPIProviderEnum.GOOGLE_AI,
-        AIModelAPIProviderEnum.GOOGLE_VERTEX_AI,
     ],
     AIModelProviderEnum.DEEPSEEK: [
         AIModelAPIProviderEnum.MICROSOFT_AZURE_AI,
