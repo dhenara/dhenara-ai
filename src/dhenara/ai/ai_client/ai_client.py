@@ -1,6 +1,7 @@
 import asyncio
-import signal
 import time
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from contextlib import AsyncExitStack, ExitStack, contextmanager
 
 from dhenara.ai.types import AIModelCallConfig, AIModelCallResponse, AIModelEndpoint
@@ -132,15 +133,25 @@ class AIModelClient:
         raise last_exception or RuntimeError("All retry attempts failed")
 
     def _execute_with_timeout_sync(self, *args, **kwargs) -> AIModelCallResponse:
-        """Synchronous timeout handling"""
-        with ExitStack() as stack:  # noqa: F841
-            if self.config.timeout:
-                signal.alarm(self.config.timeout)
+        """Synchronous timeout handling using threading instead of signals"""
+        if not self.config.timeout:
+            # If no timeout is set, just execute directly
+            return self._provider_client._format_and_generate_response_sync(*args, **kwargs)
+
+        # Use a thread pool to run the generation function
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            # Submit the function to the executor
+            future = executor.submit(self._provider_client._format_and_generate_response_sync, *args, **kwargs)
+
             try:
-                return self._provider_client._format_and_generate_response_sync(*args, **kwargs)
-            finally:
-                if self.config.timeout:
-                    signal.alarm(0)
+                # Wait for the result with a timeout
+                # The timeout value can remain a float here
+                return future.result(timeout=self.config.timeout)
+            except FuturesTimeoutError:
+                # Cancel the future if possible
+                future.cancel()
+                # Create a custom error message
+                raise TimeoutError(f"API call timed out after {self.config.timeout} seconds")
 
     async def _execute_with_timeout_async(self, *args, **kwargs) -> AIModelCallResponse:
         """Asynchronous timeout handling"""
@@ -227,13 +238,14 @@ class AIModelClient:
         instructions: list[str | dict | SystemInstruction] | None = None,
     ) -> AIModelCallResponse:
         if not self._provider_client:
-            self._provider_client = self._client_stack.enter_async_context(
+            self._provider_client = self._client_stack.enter_context(
                 AIModelClientFactory.create_provider_client(
                     self.model_endpoint,
                     self.config,
+                    is_async=False,
                 ),
             )
-        return self._execute_with_retry(
+        return self._execute_with_retry_sync(
             prompt=prompt,
             context=context,
             instructions=instructions,
@@ -260,9 +272,10 @@ class AIModelClient:
                 AIModelClientFactory.create_provider_client(
                     self.model_endpoint,
                     self.config,
+                    is_async=True,
                 ),
             )
-        return await self._execute_with_retry(
+        return await self._execute_with_retry_async(
             prompt=prompt,
             context=context,
             instructions=instructions,

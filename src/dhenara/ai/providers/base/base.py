@@ -96,6 +96,13 @@ class AIModelProviderClientBase(ABC):
         if self.is_async:
             raise NotImplementedError("_setup_client_async")
 
+    def _get_client_http_params(self, api=None) -> tuple[str, dict]:
+        params = {}
+        if self.config.timeout:
+            params["timeout"] = self.config.timeout
+
+        return params
+
     def generate_response_sync(
         self,
         prompt: str | dict | Prompt,

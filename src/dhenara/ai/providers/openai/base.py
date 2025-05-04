@@ -25,22 +25,30 @@ class OpenAIClientBase(AIModelProviderClientBase):
     def _get_client_params(self, api) -> tuple[str, dict]:
         """Common logic for both sync and async clients"""
         if api.provider == AIModelAPIProviderEnum.OPEN_AI:
-            return "openai", {"api_key": api.api_key}
+            params = {
+                "api_key": api.api_key,
+                **self._get_client_http_params(api),
+            }
+            return "openai", params
 
         elif api.provider == AIModelAPIProviderEnum.MICROSOFT_OPENAI:
             client_params = api.get_provider_credentials()
-            return "azure_openai", {
+            params = {
                 "api_key": client_params["api_key"],
                 "azure_endpoint": client_params["azure_endpoint"],
                 "api_version": client_params["api_version"],
+                **self._get_client_http_params(api),
             }
+            return "azure_openai", params
 
         elif api.provider == AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
             client_params = api.get_provider_credentials()
-            return "azure_ai", {
+            params = {
                 "endpoint": client_params["azure_endpoint"],
                 "credential": client_params["api_key"],
+                **self._get_client_http_params(api),
             }
+            return "azure_ai", params
 
         error_msg = f"Unsupported API provider {api.provider} for OpenAI functions"
         logger.error(error_msg)

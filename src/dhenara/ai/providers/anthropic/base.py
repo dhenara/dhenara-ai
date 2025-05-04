@@ -32,23 +32,31 @@ class AnthropicClientBase(AIModelProviderClientBase):
     def _get_client_params(self, api) -> tuple[str, dict]:
         """Common logic for both sync and async clients"""
         if api.provider == AIModelAPIProviderEnum.ANTHROPIC:
-            return "anthropic", {"api_key": api.api_key}
+            params = {
+                "api_key": api.api_key,
+                **self._get_client_http_params(api),
+            }
+            return "anthropic", params
 
         elif api.provider == AIModelAPIProviderEnum.GOOGLE_VERTEX_AI:
             client_params = APIProviderSharedFns.get_vertex_ai_credentials(api)
-            return "vertex_ai", {
+            params = {
                 "credentials": client_params["credentials"],
                 "project_id": client_params["project_id"],
                 "region": client_params["location"],
+                **self._get_client_http_params(api),
             }
+            return "vertex_ai", params
 
         elif api.provider == AIModelAPIProviderEnum.AMAZON_BEDROCK:
             client_params = api.get_provider_credentials()
-            return "bedrock", {
+            params = {
                 "aws_access_key": client_params["aws_access_key"],
                 "aws_secret_key": client_params["aws_secret_key"],
                 "aws_region": client_params.get("aws_region", "us-east-1"),
+                **self._get_client_http_params(api),
             }
+            return "bedrock", params
 
         error_msg = f"Unsupported API provider {api.provider} for Anthropic"
         logger.error(error_msg)
