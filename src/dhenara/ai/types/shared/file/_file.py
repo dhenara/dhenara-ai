@@ -1,4 +1,7 @@
 import logging
+from typing import Literal
+
+from pydantic import Field
 
 from dhenara.ai.types.shared.base import BaseModel
 from dhenara.ai.types.shared.file import FileContentData, FileContentFormatEnum, FileFormatEnum, FileMetadata
@@ -8,19 +11,34 @@ logger = logging.getLogger(__name__)
 
 # TODO: Need cleanup
 # -----------------------------------------------------------------------------
+class GenericFileContent(BaseModel):
+    content_format: Literal["bytes", "base64"] = Field(
+        default=None,
+        description="Content format",
+    )
+    content_bytes: bytes | None = Field(
+        None,
+        description="Raw image content in bytes",
+    )
+    content_b64_json: str | None = Field(
+        None,
+        description="Base64 encoded image content",
+    )
+
+
 class GenericFile(BaseModel):
     name: str
     metadata: FileMetadata | None = None
 
 
 # -----------------------------------------------------------------------------
-class LocalFile(GenericFile):
-    url: str | None
-
-
-# -----------------------------------------------------------------------------
 class StoredFile(GenericFile):
-    url: str | None
+    url: str | None = Field(default=None)
+    content: GenericFileContent | None = Field(
+        default=None,
+        description="File Content ",
+    )
+    path: str | None = Field(default=None)
 
 
 # -----------------------------------------------------------------------------

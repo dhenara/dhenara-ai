@@ -14,12 +14,6 @@ DallE2 = FoundationModel(
     functional_type=AIModelFunctionalTypeEnum.IMAGE_GENERATION,
     settings=ImageModelSettings(max_words=1000),
     valid_options={
-        "quality": ValidOptionValue(
-            allowed_values=["standard"],
-            default_value="standard",
-            cost_sensitive=True,
-            description="Image quality",
-        ),
         "size": ValidOptionValue(
             allowed_values=["256x256", "512x512", "1024x1024"],
             default_value="1024x1024",
