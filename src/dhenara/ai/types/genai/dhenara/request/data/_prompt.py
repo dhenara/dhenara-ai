@@ -117,7 +117,7 @@ class Prompt(BaseTextPrompt):
         cls,
         text: str,
         variables: dict | None = None,
-        disable_checks: bool = False,
+        disable_checks: bool = True,
     ):
         return cls(
             role=PromptMessageRoleEnum.USER,

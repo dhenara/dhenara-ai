@@ -80,3 +80,12 @@ class AIModelCallResponse(BaseModel):
     @property
     def stream_generator(self) -> AsyncGenerator | Generator | None:
         return self.async_stream_generator if self.async_stream_generator else self.sync_stream_generator
+
+    def preview_dict(self):
+        """
+        Returns a preview version of the response excluding the choices
+        """
+        if self.full_response is None:
+            return None
+
+        return self.full_response.preview_dict()

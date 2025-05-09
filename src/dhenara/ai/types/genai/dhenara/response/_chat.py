@@ -152,6 +152,32 @@ class ChatResponse(BaseModel):
         structured_item = self.first(ChatResponseContentItemType.STRUCTURED_OUTPUT)
         return structured_item.structured_output.as_pydantic() if structured_item else None
 
+    def preview_dict(self):
+        """
+        Returns a preview version of the response excluding the full content of choices
+        but including metadata about them
+        """
+        _dict = self.model_dump(exclude=["choices"])
+
+        # Add summary information about choices instead of full content
+        choice_summaries = []
+        for choice in self.choices:
+            choice_summary = {
+                "index": choice.index,
+                "content_count": len(choice.contents),
+                "contents_summary": [
+                    {
+                        "index": content.index,
+                        "type": str(content.type),
+                    }
+                    for content in choice.contents
+                ],
+            }
+            choice_summaries.append(choice_summary)
+
+        _dict["choices_summary"] = choice_summaries
+        return _dict
+
 
 class ChatResponseChunk(BaseModel):
     """Chat response Chunk from an AI model
