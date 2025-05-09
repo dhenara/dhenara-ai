@@ -243,10 +243,24 @@ class GoogleAIChat(GoogleAIClientBase):
         self,
         response: GenerateContentResponse,
     ) -> ChatResponseUsage:
+        candidates_tokens = response.usage_metadata.candidates_token_count or 0
+        thoughts_tokens = (
+            (response.usage_metadata.thoughts_token_count or 0)
+            if hasattr(response.usage_metadata, "thoughts_token_count")
+            else 0
+        )
+        tool_use_tokens = (
+            (response.usage_metadata.tool_use_prompt_token_count or 0)
+            if hasattr(response.usage_metadata, "tool_use_prompt_token_count")
+            else 0
+        )
+
+        completion_tokens = candidates_tokens + thoughts_tokens + tool_use_tokens
+
         return ChatResponseUsage(
-            total_tokens=response.usage_metadata.total_token_count,
-            prompt_tokens=response.usage_metadata.prompt_token_count,
-            completion_tokens=response.usage_metadata.candidates_token_count,
+            total_tokens=response.usage_metadata.total_token_count or 0,
+            prompt_tokens=response.usage_metadata.prompt_token_count or 0,
+            completion_tokens=completion_tokens,
         )
 
     def parse_response(

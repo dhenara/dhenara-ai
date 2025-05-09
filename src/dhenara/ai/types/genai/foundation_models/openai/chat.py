@@ -130,6 +130,26 @@ O3Mini = FoundationModel(
     ),
 )
 
+O4Mini = FoundationModel(
+    model_name="o4-mini",
+    display_name="o4-mini",
+    provider=AIModelProviderEnum.OPEN_AI,
+    functional_type=AIModelFunctionalTypeEnum.TEXT_GENERATION,
+    settings=ChatModelSettings(
+        max_context_window_tokens=200000,
+        max_output_tokens=100000,
+    ),
+    valid_options={},
+    metadata={
+        "details": "OpenAI o4-mini model, optimized for reasoning.",
+    },
+    order=22,
+    cost_data=ChatModelCostData(
+        input_token_cost_per_million=1.10,
+        output_token_cost_per_million=4.40,
+    ),
+)
+
 
 GPT41 = FoundationModel(
     model_name="gpt-4.1",
@@ -194,4 +214,4 @@ GPT41Nano = FoundationModel(
 )
 
 
-CHAT_MODELS = [GPT41, GPT41Mini, GPT41Nano, GPT4o, GPT4oMini, O1, O1Mini, O3, O3Mini]
+CHAT_MODELS = [GPT41, GPT41Mini, GPT41Nano, GPT4o, GPT4oMini, O1, O1Mini, O3, O3Mini, O4Mini]
