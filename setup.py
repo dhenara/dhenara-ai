@@ -18,7 +18,7 @@ this_directory = Path(__file__).parent
 long_description = (this_directory / "README.md").read_text()
 
 setup(
-    name="dhenara",
+    name="dhenara-ai",
     version=version,
     package_dir={"": "src"},
     packages=find_namespace_packages(where="src", include=["dhenara.*"]),
@@ -69,8 +69,8 @@ setup(
     project_urls={
         "Homepage": "https://dhenara.com",
         "Documentation": "https://docs.dhenara.com/",
-        "Bug Reports": "https://github.com/dhenara/dhenara/issues",
-        "Source Code": "https://github.com/dhenara/dhenara",
+        "Bug Reports": "https://github.com/dhenara/dhenara-ai/issues",
+        "Source Code": "https://github.com/dhenara/dhenara-ai",
     },
     classifiers=[
         "Development Status :: 4 - Beta",
