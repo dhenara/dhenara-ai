@@ -129,3 +129,25 @@ class ResourceConfigItem(BaseModel):
             )
             for index, model_name in enumerate(model_names)
         ]
+
+    @classmethod
+    def get_model_names(cls, resources: list["ResourceConfigItem"]) -> list[str]:
+        """
+        Extracts all model names from a list of ResourceConfigItem objects.
+        This is the reverse operation of `with_models`.
+
+        Args:
+            resources: List of ResourceConfigItem objects
+
+        Returns:
+            list[str]: List of model names
+        """
+        return [
+            resource.query[ResourceQueryFieldsEnum.model_name]
+            for resource in resources
+            if (
+                resource.item_type == ResourceConfigItemTypeEnum.ai_model_endpoint
+                and resource.query
+                and ResourceQueryFieldsEnum.model_name in resource.query
+            )
+        ]

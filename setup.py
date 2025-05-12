@@ -63,8 +63,8 @@ setup(
     long_description_content_type="text/markdown",
     author="Dhenara",
     author_email="support@dhenara.com",
-    url="https://github.com/dhenara/dhenara",
-    license="MIT",  # Replace with your actual license
+    url="https://github.com/dhenara/dhenara-ai",
+    license="MIT",
     keywords="ai, llm, machine learning, language models",
     project_urls={
         "Homepage": "https://dhenara.com",

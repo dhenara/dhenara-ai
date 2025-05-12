@@ -3,4 +3,4 @@
 from .types import *
 from .ai_client import *
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
