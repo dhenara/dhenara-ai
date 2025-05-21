@@ -15,6 +15,7 @@ class ApiResponseStatus(BaseEnum):
 
 
 # -----------------------------------------------------------------------------
+# Add the missing status codes to ApiResponseMessageStatusCode
 class ApiResponseMessageStatusCode(BaseEnum):
     SUCCESSFUL = "successful"
     PENDING = "pending"
@@ -26,6 +27,17 @@ class ApiResponseMessageStatusCode(BaseEnum):
     PERMISSION_DENIED_GENERAL = "permission_denied"
     PERMISSION_DENIED_BY_WORKSPACE = "permission_denied_by_workspace"
     USAGE_EXCEEDED_LIMIT = "usage_exceeded_limit"
+    # Auth-related status codes
+    AUTH_MISSING_CREDENTIALS = "auth_missing_credentials"
+    AUTH_INVALID_CREDENTIALS = "auth_invalid_credentials"
+    AUTH_ACCOUNT_INACTIVE = "auth_account_inactive"
+    AUTH_LOGIN_SUCCESS = "auth_login_success"
+    AUTH_INVALID_REQUEST = "auth_invalid_request"
+    AUTH_SERVER_ERROR = "auth_server_error"
+    AUTH_MISSING_REFRESH_TOKEN = "auth_missing_refresh_token"
+    AUTH_INVALID_REFRESH_TOKEN = "auth_invalid_refresh_token"
+    AUTH_TOKEN_REFRESHED = "auth_token_refreshed"
+    AUTH_LOGOUT_SUCCESS = "auth_logout_success"
 
 
 # -----------------------------------------------------------------------------
@@ -87,6 +99,7 @@ class ApiResponse(BaseModel, Generic[T]):
         if error_msg:
             raise DhenaraAPIError(
                 message="Unknown error occurred",
-                status_code=self.first_message.status_code or ApiResponseMessageStatusCode.FAIL_SERVER_ERROR,
+                status_code=self.first_message.status_code
+                or ApiResponseMessageStatusCode.FAIL_SERVER_ERROR,
                 response={},
             )

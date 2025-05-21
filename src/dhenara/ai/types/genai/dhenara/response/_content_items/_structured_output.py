@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import Field
@@ -13,6 +13,30 @@ from ._tool_call import ChatResponseToolCall
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=PydanticBaseModel)
+
+
+def _coerce_json_strings(obj: Any) -> Any:
+    """
+    Recursively process data structures and convert JSON strings to Python objects.
+
+    If a string looks like JSON (starts with { or [ and ends with } or ]),
+    attempt to parse it into a Python object.
+    """
+    if isinstance(obj, str):
+        s = obj.strip()
+        if (s.startswith("{") and s.endswith("}")) or (s.startswith("[") and s.endswith("]")):
+            try:
+                return _coerce_json_strings(json.loads(s))
+            except json.JSONDecodeError:
+                # Not valid JSON, return the original string
+                return obj
+        return obj
+    elif isinstance(obj, list):
+        return [_coerce_json_strings(v) for v in obj]
+    elif isinstance(obj, dict):
+        return {k: _coerce_json_strings(v) for k, v in obj.items()}
+    else:
+        return obj
 
 
 class ChatResponseStructuredOutput(BaseModel):
@@ -90,51 +114,49 @@ class ChatResponseStructuredOutput(BaseModel):
         raw_data: str | dict,
         config: StructuredOutputConfig,
     ) -> tuple[dict | None, str | None]:
-        """Private helper method to parse and validate data against a schema
-
-        Args:
-            raw_data: Raw data from the model (string or dict)
-            config: Configuration with schema information
-
-        Returns:
-            Tuple of (parsed_data, error_message)
-        """
+        """Parse and validate data against schema, handling nested JSON strings"""
         error = None
         parsed_data = None
 
-        # Get the model class from config
-        model_cls: type[PydanticBaseModel] = None
-        if isinstance(config.model_class_reference, type) and issubclass(
-            config.model_class_reference, PydanticBaseModel
-        ):
-            model_cls = config.model_class_reference
-        elif isinstance(config.model_class_reference, PydanticBaseModel):
-            model_cls = config.model_class_reference.__class__
-
-        # Process based on whether we have a model class and data type
-        if model_cls:
-            try:
-                # Handle string or dict input differently
-                if isinstance(raw_data, str):
-                    parsed_data_pyd = model_cls.model_validate_json(raw_data)
-                else:  # dict
-                    parsed_data_pyd = model_cls.model_validate(raw_data)
-                parsed_data = parsed_data_pyd.model_dump()
-            except Exception as e:
-                logger.exception(f"parse_response: Error: {e}")
-                error = str(e)
-        else:
-            # No model class, just try to parse if string or use as is if dict
-            if isinstance(raw_data, dict):
-                parsed_data = raw_data
-            elif isinstance(raw_data, str):
+        try:
+            # Step 1: Initial parsing if the input is a string
+            initial_data = raw_data
+            if isinstance(raw_data, str):
                 try:
-                    parsed_data = json.loads(raw_data)
+                    initial_data = json.loads(raw_data)
+                except json.JSONDecodeError:
+                    # Not valid JSON at top level, keep as string for model validation
+                    initial_data = raw_data
+
+            # Step 2: Recursively normalize all nested JSON strings
+            normalized_data = _coerce_json_strings(initial_data)
+
+            # Step 3: Get model class from config
+            model_cls: type[PydanticBaseModel] = None
+            if isinstance(config.model_class_reference, type) and issubclass(
+                config.model_class_reference, PydanticBaseModel
+            ):
+                model_cls = config.model_class_reference
+            elif isinstance(config.model_class_reference, PydanticBaseModel):
+                model_cls = config.model_class_reference.__class__
+
+            # Step 4: Validate with model class if available
+            if model_cls:
+                try:
+                    # Always use model_validate instead of model_validate_json since
+                    # we've already parsed any JSON strings
+                    parsed_data_pyd = model_cls.model_validate(normalized_data)
+                    parsed_data = parsed_data_pyd.model_dump()
                 except Exception as e:
-                    logger.exception(f"parse_response: Error: {e}")
+                    logger.exception(f"Model validation error: {e}")
                     error = str(e)
             else:
-                error = f"Failed to parse response of type {type(raw_data)}"
+                # No model class available, just return the normalized data
+                parsed_data = normalized_data
+
+        except Exception as e:
+            logger.exception(f"Unexpected error during parsing/validation: {e}")
+            error = str(e)
 
         return parsed_data, error
 
@@ -154,8 +176,8 @@ class ChatResponseStructuredOutput(BaseModel):
             ChatResponseStructuredOutput
         """
 
-        raw_response_ro_parse = raw_response or {}
-        parsed_data, error = cls._parse_and_validate(raw_response_ro_parse, config)
+        raw_response_to_parse = raw_response or {}
+        parsed_data, error = cls._parse_and_validate(raw_response_to_parse, config)
 
         return cls(
             config=config,
@@ -183,8 +205,8 @@ class ChatResponseStructuredOutput(BaseModel):
 
         if tool_call is not None:
             if tool_call.arguments:
-                raw_response_ro_parse = tool_call.arguments  # Get the dict directly
-                parsed_data, error = cls._parse_and_validate(raw_response_ro_parse, config)
+                raw_response_to_parse = tool_call.arguments  # Get the dict directly
+                parsed_data, error = cls._parse_and_validate(raw_response_to_parse, config)
                 # In case of error, keep the  orginal data
                 raw_data = raw_response if error is not None else None
             else:
