@@ -4,7 +4,7 @@ import random
 from dhenara.ai import AIModelClient
 from dhenara.ai.types import AIModelAPIProviderEnum, AIModelCallConfig, AIModelEndpoint, ResourceConfig
 from dhenara.ai.types.conversation._node import ConversationNode
-from dhenara.ai.types.genai.foundation_models.anthropic.chat import Claude35Haiku, Claude37Sonnet
+from dhenara.ai.types.genai.foundation_models.anthropic.chat import Claude35Haiku, Claude40Sonnet
 from dhenara.ai.types.genai.foundation_models.google.chat import Gemini20Flash, Gemini20FlashLite
 from dhenara.ai.types.genai.foundation_models.openai.chat import GPT41Nano, O3Mini
 
@@ -21,7 +21,7 @@ google_api = resource_config.get_api(AIModelAPIProviderEnum.GOOGLE_AI)
 
 # Create various model endpoints, and add them to resource config
 resource_config.model_endpoints = [
-    AIModelEndpoint(api=anthropic_api, ai_model=Claude37Sonnet),
+    AIModelEndpoint(api=anthropic_api, ai_model=Claude40Sonnet),
     AIModelEndpoint(api=anthropic_api, ai_model=Claude35Haiku),
     AIModelEndpoint(api=openai_api, ai_model=O3Mini),
     AIModelEndpoint(api=openai_api, ai_model=GPT41Nano),
