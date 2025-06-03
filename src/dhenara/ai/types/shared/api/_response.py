@@ -39,6 +39,9 @@ class ApiResponseMessageStatusCode(BaseEnum):
     AUTH_TOKEN_REFRESHED = "auth_token_refreshed"
     AUTH_LOGOUT_SUCCESS = "auth_logout_success"
 
+    # Opps
+    FAIL_NOT_FOUND = "fail_not_found"
+
 
 # -----------------------------------------------------------------------------
 class ApiResponseMessageType(BaseEnum):
@@ -99,7 +102,6 @@ class ApiResponse(BaseModel, Generic[T]):
         if error_msg:
             raise DhenaraAPIError(
                 message="Unknown error occurred",
-                status_code=self.first_message.status_code
-                or ApiResponseMessageStatusCode.FAIL_SERVER_ERROR,
+                status_code=self.first_message.status_code or ApiResponseMessageStatusCode.FAIL_SERVER_ERROR,
                 response={},
             )

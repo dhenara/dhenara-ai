@@ -1,5 +1,3 @@
-
-
 from dhenara.ai.types.shared.base import BaseModel
 
 
