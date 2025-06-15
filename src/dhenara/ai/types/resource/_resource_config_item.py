@@ -151,3 +151,18 @@ class ResourceConfigItem(BaseModel):
                 and ResourceQueryFieldsEnum.model_name in resource.query
             )
         ]
+
+    @classmethod
+    def has_model(cls, resources: list["ResourceConfigItem"], model_name: str) -> bool:
+        """
+        Check whether a given model name is present in the supplied
+        list of ResourceConfigItem objects.
+
+        Args:
+            resources: List of ResourceConfigItem objects
+            model_name: The model name to look for
+
+        Returns:
+            bool: True if the model name exists, False otherwise
+        """
+        return model_name in cls.get_model_names(resources)

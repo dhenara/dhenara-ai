@@ -104,8 +104,8 @@ O3 = FoundationModel(
     },
     order=20,
     cost_data=ChatModelCostData(
-        input_token_cost_per_million=10.0,
-        output_token_cost_per_million=40.0,
+        input_token_cost_per_million=2.0,
+        output_token_cost_per_million=8.0,
     ),
 )
 
