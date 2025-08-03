@@ -12,7 +12,7 @@ from dhenara.ai.types import (
 )
 from dhenara.ai.types.conversation import ConversationNode
 from dhenara.ai.types.genai.foundation_models.anthropic.chat import Claude35Haiku
-from dhenara.ai.types.genai.foundation_models.google.chat import Gemini20FlashLite
+from dhenara.ai.types.genai.foundation_models.google.chat import Gemini25FlashLite
 from dhenara.ai.types.genai.foundation_models.openai.chat import GPT4oMini
 from dhenara.ai.types.shared import SSEErrorResponse, SSEEventType, SSEResponse
 
@@ -31,7 +31,7 @@ google_api = resource_config.get_api(AIModelAPIProviderEnum.GOOGLE_AI)
 resource_config.model_endpoints = [
     AIModelEndpoint(api=anthropic_api, ai_model=Claude35Haiku),
     AIModelEndpoint(api=openai_api, ai_model=GPT4oMini),
-    AIModelEndpoint(api=google_api, ai_model=Gemini20FlashLite),
+    AIModelEndpoint(api=google_api, ai_model=Gemini25FlashLite),
 ]
 
 
@@ -112,7 +112,9 @@ def handle_streaming_conversation_turn(
         model_endpoint=endpoint,
         config=AIModelCallConfig(
             max_output_tokens=1000,
+            max_reasoning_tokens=512,  # 128,
             streaming=True,  # Enable streaming
+            # reasoning=True,
         ),
         is_async=False,
     )

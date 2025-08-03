@@ -5,6 +5,7 @@ from google.genai.types import (
     GenerateContentResponse,
     Part,
     SafetySetting,
+    ThinkingConfig,
     Tool,
     ToolConfig,
 )
@@ -187,6 +188,12 @@ class GoogleAIChat(GoogleAIClientBase):
         if max_output_tokens:
             config_params["max_output_tokens"] = max_output_tokens
 
+        if max_reasoning_tokens:
+            config_params["thinking_config"] = ThinkingConfig(
+                include_thoughts=True,
+                thinking_budget=max_reasoning_tokens,
+            )
+
         return config_params
 
     def parse_stream_chunk(
@@ -204,7 +211,7 @@ class GoogleAIChat(GoogleAIClientBase):
             choice_deltas = []
             for candidate_index, candidate in enumerate(chunk.candidates):
                 content_deltas = []
-                for part_index, part in enumerate(candidate.content.parts):
+                for part_index, part in enumerate(candidate.content.parts or []):
                     content_deltas.append(
                         self.process_content_item_delta(
                             index=part_index,
@@ -285,7 +292,7 @@ class GoogleAIChat(GoogleAIClientBase):
                             role=candidate.content.role,
                             content_item=part,
                         )
-                        for part_index, part in enumerate(candidate.content.parts)
+                        for part_index, part in enumerate(candidate.content.parts or [])
                     ],
                     metadata={},  # Choice metadata
                 )

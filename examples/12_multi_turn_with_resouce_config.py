@@ -5,7 +5,7 @@ from dhenara.ai import AIModelClient
 from dhenara.ai.types import AIModelAPIProviderEnum, AIModelCallConfig, AIModelEndpoint, ResourceConfig
 from dhenara.ai.types.conversation._node import ConversationNode
 from dhenara.ai.types.genai.foundation_models.anthropic.chat import Claude35Haiku, Claude40Sonnet
-from dhenara.ai.types.genai.foundation_models.google.chat import Gemini20Flash, Gemini20FlashLite
+from dhenara.ai.types.genai.foundation_models.google.chat import Gemini25Flash, Gemini25FlashLite
 from dhenara.ai.types.genai.foundation_models.openai.chat import GPT41Nano, O3Mini
 
 # Initialize all model enpoints and collect it into a ResourceConfig.
@@ -17,7 +17,7 @@ resource_config.load_from_file(
 
 anthropic_api = resource_config.get_api(AIModelAPIProviderEnum.ANTHROPIC)
 openai_api = resource_config.get_api(AIModelAPIProviderEnum.OPEN_AI)
-google_api = resource_config.get_api(AIModelAPIProviderEnum.GOOGLE_AI)
+google_api = resource_config.get_api(AIModelAPIProviderEnum.GOOGLE_VERTEX_AI)
 
 # Create various model endpoints, and add them to resource config
 resource_config.model_endpoints = [
@@ -25,8 +25,8 @@ resource_config.model_endpoints = [
     AIModelEndpoint(api=anthropic_api, ai_model=Claude35Haiku),
     AIModelEndpoint(api=openai_api, ai_model=O3Mini),
     AIModelEndpoint(api=openai_api, ai_model=GPT41Nano),
-    AIModelEndpoint(api=google_api, ai_model=Gemini20Flash),
-    AIModelEndpoint(api=google_api, ai_model=Gemini20FlashLite),
+    AIModelEndpoint(api=google_api, ai_model=Gemini25Flash),
+    AIModelEndpoint(api=google_api, ai_model=Gemini25FlashLite),
 ]
 
 
@@ -42,7 +42,9 @@ def handle_conversation_turn(
         model_endpoint=endpoint,
         config=AIModelCallConfig(
             max_output_tokens=1000,
+            max_reasoning_tokens=512,  # 128,
             streaming=False,
+            reasoning=True,
         ),
         is_async=False,
     )
@@ -106,8 +108,14 @@ def run_multi_turn_conversation():
         # Display the conversation
         print(f"User: {query}")
         print(f"Model: {model_endpoint.ai_model.model_name}\n")
+        print_success = False
         for content in node.response.choices[0].contents:
+            print_success = print_success or content.get_text()
             print(f"Model Response Content {content.index}:\n{content.get_text()}\n")
+
+        if not print_success:
+            print(f"No Content in model response. Response is  {node.response.model_dump()}\n")
+
         print("-" * 80)
 
         # Append to nodes, so that next turn will have the context generated
