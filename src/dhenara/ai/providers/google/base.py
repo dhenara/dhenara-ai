@@ -28,15 +28,23 @@ class GoogleAIClientBase(AIModelProviderClientBase):
 
         # _http_pars= self._get_client_http_params(api)
         _http_pars = {}
-        if self.config.timeout:
+        timeout = int(self.config.timeout) * 1000 if self.config.timeout else None  # In milli seconds
+
+        api_version = None  # Default in the SDK is `v1beta`
+        if self.config.api_version_override:
+            if self.config.api_version_override not in ["v1", "v1beta"]:
+                raise ValueError(f"Unknonw API version {self.config.api_version_override}. Supported only v1 or v1bata")
+            api_version = self.config.api_version_override
+
+        if timeout or api_version:
             _http_pars["http_options"] = GooogleHttpOptions(
-                timeout=int(self.config.timeout) * 1000,  # In milli seconds
+                timeout=timeout,
+                api_version=api_version,
             )
 
         if api.provider == AIModelAPIProviderEnum.GOOGLE_AI:
             params = {
                 "api_key": api.api_key,
-                # "http_options": {"api_version": "v1beta"},
                 **_http_pars,
             }
             return "google_ai", params
@@ -47,7 +55,6 @@ class GoogleAIClientBase(AIModelProviderClientBase):
                 "credentials": client_params["credentials"],
                 "project": client_params["project_id"],
                 "location": client_params["location"],
-                # "http_options": {"api_version": "v1beta"},
                 **_http_pars,
             }
             return "vertex_ai", params

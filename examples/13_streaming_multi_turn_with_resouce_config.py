@@ -114,7 +114,7 @@ def handle_streaming_conversation_turn(
             max_output_tokens=1000,
             max_reasoning_tokens=512,  # 128,
             streaming=True,  # Enable streaming
-            # reasoning=True,
+            reasoning=True,
         ),
         is_async=False,
     )

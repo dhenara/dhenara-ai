@@ -42,6 +42,7 @@ class AIModelCallConfig(BaseModel):
     retry_delay: float = 1.0
     max_retry_delay: float = 10.0
     test_mode: bool = False
+    api_version_override: str | None = None
 
     @model_validator(mode="after")
     def validate_structured_output(self) -> "AIModelCallConfig":
