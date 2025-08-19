@@ -1,7 +1,8 @@
 import logging
+from typing import Literal
 
 from pydantic import BaseModel as PydanticBaseModel
-from pydantic import model_validator
+from pydantic import Field, model_validator
 
 from dhenara.ai.types.genai.ai_model import AIModel
 from dhenara.ai.types.genai.dhenara.request import (
@@ -28,7 +29,15 @@ class AIModelCallConfig(BaseModel):
     streaming: bool = False
     max_output_tokens: int | None = None
     reasoning: bool = False
-    max_reasoning_tokens: int | None = None
+    max_reasoning_tokens: int | None = Field(
+        default=None,
+        help="Maximum reasoning tokens when reasoning is enabled. Ignored for OpenAI APIs",
+    )
+    reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = Field(
+        default=None,
+        help="OpenAI version to control thinking/reasoning tokens when reasoning is enabled. "
+        "Ignored for other providers",
+    )
     options: dict = {}
 
     tools: list[ToolDefinition] | None = None

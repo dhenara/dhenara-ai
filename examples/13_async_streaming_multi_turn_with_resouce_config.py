@@ -6,6 +6,7 @@ but uses `is_async=True` client and awaits `generate_async`.
 Usage:
   python examples/13_async_streaming_multi_turn_with_resouce_config.py
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -23,7 +24,7 @@ from dhenara.ai.types import (
 from dhenara.ai.types.conversation import ConversationNode
 from dhenara.ai.types.genai.foundation_models.anthropic.chat import Claude35Haiku
 from dhenara.ai.types.genai.foundation_models.google.chat import Gemini25FlashLite
-from dhenara.ai.types.genai.foundation_models.openai.chat import GPT4oMini
+from dhenara.ai.types.genai.foundation_models.openai.chat import GPT5Nano
 from dhenara.ai.types.shared import SSEErrorResponse, SSEEventType, SSEResponse
 
 
@@ -35,7 +36,7 @@ def build_resource_config() -> ResourceConfig:
     google_api = rc.get_api(AIModelAPIProviderEnum.GOOGLE_AI)
     rc.model_endpoints = [
         AIModelEndpoint(api=anthropic_api, ai_model=Claude35Haiku),
-        AIModelEndpoint(api=openai_api, ai_model=GPT4oMini),
+        AIModelEndpoint(api=openai_api, ai_model=GPT5Nano),
         AIModelEndpoint(api=google_api, ai_model=Gemini25FlashLite),
     ]
     return rc
@@ -52,6 +53,7 @@ async def stream_turn(
         config=AIModelCallConfig(
             max_output_tokens=1000,
             max_reasoning_tokens=512,
+            reasoning_effort="minimal",
             streaming=True,
             reasoning=True,
         ),

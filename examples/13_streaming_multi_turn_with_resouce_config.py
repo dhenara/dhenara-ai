@@ -13,7 +13,7 @@ from dhenara.ai.types import (
 from dhenara.ai.types.conversation import ConversationNode
 from dhenara.ai.types.genai.foundation_models.anthropic.chat import Claude35Haiku
 from dhenara.ai.types.genai.foundation_models.google.chat import Gemini25FlashLite
-from dhenara.ai.types.genai.foundation_models.openai.chat import GPT4oMini
+from dhenara.ai.types.genai.foundation_models.openai.chat import GPT5Nano
 from dhenara.ai.types.shared import SSEErrorResponse, SSEEventType, SSEResponse
 
 # Initialize all model endpoints and collect it into a ResourceConfig.
@@ -30,7 +30,7 @@ google_api = resource_config.get_api(AIModelAPIProviderEnum.GOOGLE_AI)
 # Create various model endpoints, and add them to resource config
 resource_config.model_endpoints = [
     AIModelEndpoint(api=anthropic_api, ai_model=Claude35Haiku),
-    AIModelEndpoint(api=openai_api, ai_model=GPT4oMini),
+    AIModelEndpoint(api=openai_api, ai_model=GPT5Nano),
     AIModelEndpoint(api=google_api, ai_model=Gemini25FlashLite),
 ]
 
@@ -113,6 +113,7 @@ def handle_streaming_conversation_turn(
         config=AIModelCallConfig(
             max_output_tokens=1000,
             max_reasoning_tokens=512,  # 128,
+            reasoning_effort="minimal",
             streaming=True,  # Enable streaming
             reasoning=True,
         ),

@@ -6,6 +6,69 @@ from dhenara.ai.types.genai.ai_model import (
     FoundationModel,
 )
 
+
+GPT5 = FoundationModel(
+    model_name="gpt-5",
+    display_name="GPT-5",
+    provider=AIModelProviderEnum.OPEN_AI,
+    functional_type=AIModelFunctionalTypeEnum.TEXT_GENERATION,
+    settings=ChatModelSettings(
+        max_context_window_tokens=400000,
+        max_output_tokens=128000,
+    ),
+    valid_options={},
+    metadata={
+        "details": "The best OpenAI model for coding and agentic tasks across domains.",
+    },
+    order=10,
+    cost_data=ChatModelCostData(
+        input_token_cost_per_million=1.25,
+        output_token_cost_per_million=10.0,
+    ),
+)
+
+
+GPT5Mini = FoundationModel(
+    model_name="gpt-5-mini",
+    display_name="GPT-5 Mini",
+    provider=AIModelProviderEnum.OPEN_AI,
+    functional_type=AIModelFunctionalTypeEnum.TEXT_GENERATION,
+    settings=ChatModelSettings(
+        max_context_window_tokens=400000,
+        max_output_tokens=128000,
+    ),
+    valid_options={},
+    metadata={
+        "details": "The best OpenAI model for coding and agentic tasks across domains.",
+    },
+    order=10,
+    cost_data=ChatModelCostData(
+        input_token_cost_per_million=0.25,
+        output_token_cost_per_million=2.0,
+    ),
+)
+
+
+GPT5Nano = FoundationModel(
+    model_name="gpt-5-nano",
+    display_name="GPT-5 Nano",
+    provider=AIModelProviderEnum.OPEN_AI,
+    functional_type=AIModelFunctionalTypeEnum.TEXT_GENERATION,
+    settings=ChatModelSettings(
+        max_context_window_tokens=400000,
+        max_output_tokens=128000,
+    ),
+    valid_options={},
+    metadata={
+        "details": "The best OpenAI model for coding and agentic tasks across domains.",
+    },
+    order=10,
+    cost_data=ChatModelCostData(
+        input_token_cost_per_million=0.05,
+        output_token_cost_per_million=0.40,
+    ),
+)
+
 GPT4o = FoundationModel(
     model_name="gpt-4o",
     display_name="GPT-4o",
@@ -214,4 +277,4 @@ GPT41Nano = FoundationModel(
 )
 
 
-CHAT_MODELS = [GPT41, GPT41Mini, GPT41Nano, GPT4o, GPT4oMini, O1, O1Mini, O3, O3Mini, O4Mini]
+CHAT_MODELS = [GPT5, GPT5Mini,GPT5Nano, GPT41, GPT41Mini, GPT41Nano, GPT4o, GPT4oMini, O1, O1Mini, O3, O3Mini, O4Mini]

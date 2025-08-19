@@ -31,9 +31,9 @@ setup(
         "pydantic>=2.10.0",
         "pyyaml>=6.0",
         "Pillow>=11.1.0",  # For images
-        "openai>=1.65.0",
-        "google-genai>=1.4.0",
-        "anthropic>=0.49.0",
+        "openai>=1.100.1",
+        "google-genai>=1.31.0",
+        "anthropic>=0.64.0",
         # Cloud dependecies in extra
         "azure-ai-inference>=1.0.0b9",
         "boto3>=1.37.7",  # AWS

@@ -67,7 +67,7 @@ class OpenAIChat(OpenAIClientBase):
 
         if user:
             if self.model_endpoint.api.provider != AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
-                chat_args["user"] = user
+                chat_args["safety_identifier"] = user
 
         max_output_tokens, max_reasoning_tokens = self.config.get_max_output_tokens(self.model_endpoint.ai_model)
 
@@ -78,6 +78,9 @@ class OpenAIChat(OpenAIClientBase):
 
             else:
                 chat_args["max_tokens"] = max_output_tokens
+
+        if self.config.reasoning and self.config.reasoning_effort is not None:
+            chat_args["reasoning_effort"] = self.config.reasoning_effort
 
         if self.config.streaming:
             if self.model_endpoint.api.provider != AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
