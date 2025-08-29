@@ -6,7 +6,6 @@ from dhenara.ai.types.genai.ai_model import (
     FoundationModel,
 )
 
-
 GPT5 = FoundationModel(
     model_name="gpt-5",
     display_name="GPT-5",

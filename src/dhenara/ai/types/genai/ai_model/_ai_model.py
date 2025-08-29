@@ -311,6 +311,11 @@ class BaseAIModel(BaseModel):
         description="Optional unique reference number",
     )
 
+    foundation_model: "FoundationModel | None" = Field(
+        default=None,
+        description="Matching foundation model for parameter preloading",
+    )
+
     @property
     def model_name_with_version_suffix(self):
         version_suffix = self.metadata.get("version_suffix", None)
