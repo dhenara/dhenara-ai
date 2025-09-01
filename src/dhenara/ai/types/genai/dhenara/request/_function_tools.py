@@ -15,6 +15,10 @@ class FunctionParameter(BaseModel, ToProviderMixin):
     required: bool = Field(default=False, description="Whether the parameter is required")
     allowed_values: list[Any] | None = Field(default=None, description="Allowed values")
     default: Any | None = Field(default=None, description="Default value for the parameter")
+    items: dict | None = Field(
+        default=None,
+        description="JSON schema for array items when type == 'array' (e.g., {'type':'string'})",
+    )
 
 
 class FunctionParameters(BaseModel, ToProviderMixin):
@@ -104,6 +108,7 @@ class ToolDefinition(BaseModel, ToProviderMixin):
                 required=prop_name in required_params,
                 default=None if prop_name in required_params else signature.parameters[prop_name].default,
                 allowed_values=prop_schema.get("enum"),
+                items=prop_schema.get("items"),
             )
 
         # Create function definition

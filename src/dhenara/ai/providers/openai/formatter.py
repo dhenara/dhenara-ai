@@ -188,8 +188,10 @@ class OpenAIFormatter(BaseFormatter):
         model_endpoint: AIModelEndpoint | None = None,
     ) -> dict[str, Any]:
         """Convert FunctionParameter to OpenAI format"""
+        # Drop None-valued fields (OpenAI rejects nulls for schema keys like description)
         result = param.model_dump(
             exclude={"required", "allowed_values", "default"},
+            exclude_none=True,
         )
         return result
 
@@ -201,10 +203,13 @@ class OpenAIFormatter(BaseFormatter):
     ) -> dict[str, Any]:
         """Convert FunctionParameters to OpenAI format"""
         # Create a new dictionary with transformed properties
-        result = {
+        result: dict[str, Any] = {
             "type": params.type,
             "properties": {name: cls.convert_function_parameter(param) for name, param in params.properties.items()},
         }
+
+        # Be explicit to avoid tool schemas being too permissive
+        result["additionalProperties"] = False
 
         # Auto-build the required list based on parameters marked as required
         required_params = [name for name, param in params.properties.items() if param.required]
@@ -224,11 +229,14 @@ class OpenAIFormatter(BaseFormatter):
         model_endpoint: AIModelEndpoint | None = None,
     ) -> dict[str, Any]:
         """Convert FunctionDefinition to OpenAI format"""
-        return {
+        res = {
             "name": func_def.name,
-            "description": func_def.description,
             "parameters": cls.convert_function_parameters(func_def.parameters),
         }
+        # Only include description if present and non-empty
+        if getattr(func_def, "description", None):
+            res["description"] = func_def.description
+        return res
 
     @classmethod
     def convert_tool(
