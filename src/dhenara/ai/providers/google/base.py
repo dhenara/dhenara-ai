@@ -66,11 +66,11 @@ class GoogleAIClientBase(AIModelProviderClientBase):
     def _setup_client_sync(self) -> genai.Client:
         """Get the appropriate sync Google AI client"""
         api = self.model_endpoint.api
-        client_type, params = self._get_client_params(api)
+        _client_type, params = self._get_client_params(api)
         return genai.Client(**params)
 
     async def _setup_client_async(self) -> genai.Client:
         """Get the appropriate async Google AI client"""
         api = self.model_endpoint.api
-        client_type, params = self._get_client_params(api)
+        _client_type, params = self._get_client_params(api)
         return genai.Client(**params).aio

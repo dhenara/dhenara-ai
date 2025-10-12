@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Any
 
@@ -7,12 +8,22 @@ from dhenara.ai.types.genai.dhenara.request import (
     FunctionDefinition,
     FunctionParameter,
     FunctionParameters,
+    MessageItem,
+    Prompt,
     PromptMessageRoleEnum,
     StructuredOutputConfig,
+    ToolCallResult,
     ToolChoice,
     ToolDefinition,
 )
 from dhenara.ai.types.genai.dhenara.request.data import FormattedPrompt
+from dhenara.ai.types.genai.dhenara.response import (
+    ChatResponseContentItem,
+    ChatResponseReasoningContentItem,
+    ChatResponseStructuredOutputContentItem,
+    ChatResponseTextContentItem,
+    ChatResponseToolCallContentItem,
+)
 from dhenara.ai.types.shared.file import FileFormatEnum, GenericFile
 
 logger = logging.getLogger(__name__)
@@ -129,6 +140,7 @@ class AnthropicFormatter(BaseFormatter):
     ) -> dict[str, Any]:
         result = param.model_dump(
             exclude={"required", "allowed_values", "default"},
+            exclude_none=True,  # Exclude None values to avoid invalid schema fields
         )
         if param.allowed_values is not None:
             result["enum"] = param.allowed_values
@@ -233,3 +245,97 @@ class AnthropicFormatter(BaseFormatter):
         }
 
         return tool
+
+    @classmethod
+    def convert_message_item(
+        cls,
+        message_item: MessageItem,
+        model_endpoint: AIModelEndpoint | None = None,
+        **kwargs,
+    ) -> dict[str, Any] | list[dict[str, Any]]:
+        """Convert a MessageItem to Anthropic message format.
+
+        Handles:
+        - Prompt: converts to user/assistant message via format_prompt (may return list)
+        - ChatResponseTextContentItem: assistant message with text
+        - ChatResponseReasoningContentItem: assistant message (reasoning not explicitly supported)
+        - ChatResponseToolCallContentItem: assistant message with tool_use content block
+        - ChatResponseStructuredOutputContentItem: assistant message with structured output
+        - ToolCallResult: user message with tool_result content block
+
+        Returns:
+            Single dict or list of dicts (Prompt can expand to multiple messages)
+        """
+        # Case 1: Prompt object (new user/assistant messages) - may return list
+        if isinstance(message_item, Prompt):
+            return cls.format_prompt(
+                prompt=message_item,
+                model_endpoint=model_endpoint,
+                **kwargs,
+            )
+
+        # Case 2: ToolCallResult (tool execution result)
+        if isinstance(message_item, ToolCallResult):
+            # Anthropic expects tool results in user messages:
+            # {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "...", "content": "..."}]}
+            return {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": message_item.call_id,
+                        "content": message_item.as_text(),
+                    }
+                ],
+            }
+
+        # Case 3: ChatResponseContentItem (assistant responses)
+        if isinstance(message_item, ChatResponseTextContentItem):
+            return {
+                "role": "assistant",
+                "content": message_item.text or "",
+            }
+
+        if isinstance(message_item, ChatResponseReasoningContentItem):
+            # Anthropic doesn't have explicit reasoning support like o1
+            # Treat as regular assistant message
+            return {
+                "role": "assistant",
+                "content": message_item.thinking_text or "",
+            }
+
+        if isinstance(message_item, ChatResponseToolCallContentItem):
+            # Anthropic tool use format:
+            # {"role": "assistant", "content": [{"type": "tool_use", "id": "...", "name": "...", "input": {...}}]}
+            tool_call = message_item.tool_call
+            return {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": tool_call.id,
+                        "name": tool_call.name,
+                        "input": tool_call.arguments,
+                    }
+                ],
+            }
+
+        if isinstance(message_item, ChatResponseStructuredOutputContentItem):
+            # Structured output as assistant message
+            output = message_item.structured_output
+            content = json.dumps(output.structured_data) if output.structured_data else ""
+            return {
+                "role": "assistant",
+                "content": content,
+            }
+
+        # Fallback for any other ChatResponseContentItem types
+        if isinstance(message_item, ChatResponseContentItem):
+            # Use generic text representation
+            return {
+                "role": "assistant",
+                "content": message_item.get_text(),
+            }
+
+        # Should not reach here due to MessageItem type constraint
+        raise ValueError(f"Unsupported message item type: {type(message_item)}")

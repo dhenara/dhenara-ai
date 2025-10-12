@@ -1,4 +1,3 @@
-# ruff: noqa: E501
 
 from dhenara.ai.types.genai.ai_model import (
     FoundationModel,

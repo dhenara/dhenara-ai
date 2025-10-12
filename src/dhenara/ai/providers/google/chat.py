@@ -45,9 +45,10 @@ models_not_supporting_system_instructions = ["gemini-1.0-pro"]
 class GoogleAIChat(GoogleAIClientBase):
     def get_api_call_params(
         self,
-        prompt: dict,
+        prompt: dict | None,
         context: list[dict] | None = None,
         instructions: dict | None = None,
+        messages: list[dict] | None = None,
     ) -> AIModelCallResponse:
         if not self._client:
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
@@ -79,13 +80,21 @@ class GoogleAIChat(GoogleAIClientBase):
                 instructions_str = instructions["parts"][0]["text"]
                 generate_config.system_instruction = instructions_str
 
-        messages = []
+        messages_list = []
 
         # Add previous messages and current prompt
-        if context:
-            messages.extend(context)
-
-        messages.append(prompt)
+        if messages is not None:
+            # Convert MessageItem objects to Google format
+            formatted_messages = self.formatter.format_messages(
+                messages=messages,
+                model_endpoint=self.model_endpoint,
+            )
+            messages_list = formatted_messages
+        else:
+            if context:
+                messages_list.extend(context)
+            if prompt is not None:
+                messages_list.append(prompt)
 
         # ---  Tools ---
         if self.config.tools:
@@ -123,7 +132,7 @@ class GoogleAIChat(GoogleAIClientBase):
             )
 
         return {
-            "contents": messages,
+            "contents": messages_list,
             "generate_config": generate_config,
         }
 

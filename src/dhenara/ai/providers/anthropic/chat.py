@@ -48,9 +48,10 @@ logger = logging.getLogger(__name__)
 class AnthropicChat(AnthropicClientBase):
     def get_api_call_params(
         self,
-        prompt: dict,
+        prompt: dict | None,
         context: list[dict] | None = None,
         instructions: dict | None = None,
+        messages: list[dict] | None = None,
     ) -> AIModelCallResponse:
         if not self._client:
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
@@ -58,7 +59,7 @@ class AnthropicChat(AnthropicClientBase):
         if self._input_validation_pending:
             raise ValueError("inputs must be validated with validate_inputs() before api calls")
 
-        messages = []
+        messages_list = []
         user = self.config.get_user()
 
         # Process system instructions
@@ -72,15 +73,23 @@ class AnthropicChat(AnthropicClientBase):
             system_prompt = instructions["content"]  # Extract text from system prompt
 
         # Add previous messages and current prompt
-        if context:
-            messages.extend(context)
-
-        messages.append(prompt)
+        if messages is not None:
+            # Convert MessageItem objects to Anthropic format
+            formatted_messages = self.formatter.format_messages(
+                messages=messages,
+                model_endpoint=self.model_endpoint,
+            )
+            messages_list = formatted_messages
+        else:
+            if context:
+                messages_list.extend(context)
+            if prompt is not None:
+                messages_list.append(prompt)
 
         # Prepare API call arguments
         chat_args = {
             "model": self.model_name_in_api_calls,
-            "messages": messages,
+            "messages": messages_list,
             "stream": self.config.streaming,
         }
 

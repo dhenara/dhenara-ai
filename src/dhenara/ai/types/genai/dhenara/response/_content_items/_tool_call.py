@@ -1,4 +1,5 @@
 import json
+import uuid
 from typing import Any
 
 from pydantic import Field
@@ -82,8 +83,14 @@ class ChatResponseToolCall(BaseModel):
         _args = props.get("args")
         _parse_result = cls._parse(_args)
 
+        # Google sometimes doesn't provide an ID (when using AFC or in certain scenarios)
+        # Generate a unique ID if not provided to ensure consistency across providers
+        tool_id = props.get("id")
+        if tool_id is None:
+            tool_id = f"call_{uuid.uuid4().hex[:24]}"
+
         return cls(
-            id=props.get("id"),
+            id=tool_id,
             name=props.get("name"),
             arguments=_parse_result.get("arguments_dict"),
             raw_data=_parse_result.get("raw_data"),

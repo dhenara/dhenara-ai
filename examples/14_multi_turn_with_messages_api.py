@@ -1,25 +1,34 @@
+"""Multi-turn conversation using the new messages API.
+
+This example demonstrates how to use the messages parameter instead of
+the traditional prompt/context approach. The messages API provides better
+type safety and follows LLM provider conventions more closely.
+
+Usage:
+  python examples/14_multi_turn_with_messages_api.py
+"""
+
 import datetime
 import random
 
 from dhenara.ai import AIModelClient
 from dhenara.ai.types import AIModelAPIProviderEnum, AIModelCallConfig, AIModelEndpoint, ResourceConfig
 from dhenara.ai.types.conversation._node import ConversationNode
+from dhenara.ai.types.genai.dhenara.request import MessageItem, Prompt
 from dhenara.ai.types.genai.foundation_models.anthropic.chat import Claude35Haiku, Claude40Sonnet
 from dhenara.ai.types.genai.foundation_models.google.chat import Gemini25Flash, Gemini25FlashLite
 from dhenara.ai.types.genai.foundation_models.openai.chat import GPT5Nano, O3Mini
 
-# Initialize all model enpoints and collect it into a ResourceConfig.
-# Ideally, you will do once in your application when it boots, and make it global
+# Initialize resource config
 resource_config = ResourceConfig()
 resource_config.load_from_file(
-    credentials_file="~/.env_keys/.dhenara_credentials.yaml",  # Path to your file
+    credentials_file="~/.env_keys/.dhenara_credentials.yaml",
 )
 
 anthropic_api = resource_config.get_api(AIModelAPIProviderEnum.ANTHROPIC)
 openai_api = resource_config.get_api(AIModelAPIProviderEnum.OPEN_AI)
 google_api = resource_config.get_api(AIModelAPIProviderEnum.GOOGLE_VERTEX_AI)
 
-# Create various model endpoints, and add them to resource config
 resource_config.model_endpoints = [
     AIModelEndpoint(api=anthropic_api, ai_model=Claude40Sonnet),
     AIModelEndpoint(api=anthropic_api, ai_model=Claude35Haiku),
@@ -30,35 +39,32 @@ resource_config.model_endpoints = [
 ]
 
 
-def handle_conversation_turn(
+def handle_conversation_turn_with_messages(
     user_query: str,
     instructions: list[str],
     endpoint: AIModelEndpoint,
-    conversation_nodes: list[ConversationNode],
+    messages: list[MessageItem],
 ) -> ConversationNode:
-    """Process a single conversation turn with the specified model and query."""
+    """Process a conversation turn using the messages API."""
 
     client = AIModelClient(
         model_endpoint=endpoint,
         config=AIModelCallConfig(
             max_output_tokens=1000,
-            max_reasoning_tokens=1024,  # 128,
-            reasoning_effort="low",
+            max_reasoning_tokens=512,
+            reasoning_effort="minimal",
             streaming=False,
             reasoning=True,
         ),
         is_async=False,
     )
 
-    prompt = user_query
-    context = []
-    for node in conversation_nodes:
-        context += node.get_context()
+    # Add the new user query to messages
+    new_messages = [*messages, Prompt(role="user", text=user_query)]
 
-    # Generate response
+    # Generate response using messages API
     response = client.generate(
-        prompt=prompt,
-        context=context,
+        messages=new_messages,
         instructions=instructions,
     )
 
@@ -73,55 +79,63 @@ def handle_conversation_turn(
     return node
 
 
-def run_multi_turn_conversation():
+def run_multi_turn_with_messages():
+    """Run a multi-turn conversation using the messages API."""
+
     multi_turn_queries = [
         "Tell me a short story about a robot learning to paint.",
         "Continue the story but add a twist where the robot discovers something unexpected.",
         "Conclude the story with an inspiring ending.",
     ]
 
-    # Instructions for each turn
     instructions_by_turn = [
         ["Be creative and engaging."],
         ["Build upon the previous story seamlessly."],
         ["Bring the story to a satisfying conclusion."],
     ]
 
-    # Store conversation history
-    conversation_nodes = []
+    # Store conversation history as MessageItem list
+    messages: list[MessageItem] = []
 
-    # Process each turn
+    print("=" * 80)
+    print("Multi-Turn Conversation with Messages API")
+    print("=" * 80)
+
     for i, query in enumerate(multi_turn_queries):
-        # Choose a random model endpoint
         model_endpoint = random.choice(resource_config.model_endpoints)
-        # OR choose if fixed order as
-        # model_endpoint = resource_config.get_model_endpoint(model_name=Claude35Haiku.model_name)
 
-        print(f"🔄 Turn {i + 1} with {model_endpoint.ai_model.model_name} from {model_endpoint.api.provider}\n")
+        print(f"\n🔄 Turn {i + 1} with {model_endpoint.ai_model.model_name} from {model_endpoint.api.provider}\n")
 
-        node = handle_conversation_turn(
+        node = handle_conversation_turn_with_messages(
             user_query=query,
-            instructions=instructions_by_turn[i],  # Only if you need to change instruction on each turn, else leave []
+            instructions=instructions_by_turn[i],
             endpoint=model_endpoint,
-            conversation_nodes=conversation_nodes,
+            messages=messages,
         )
 
-        # Display the conversation
         print(f"User: {query}")
         print(f"Model: {model_endpoint.ai_model.model_name}\n")
+
+        # Display response
         print_success = False
         for content in node.response.choices[0].contents:
-            print_success = print_success or content.get_text()
-            print(f"Model Response Content {content.index}:\n{content.get_text()}\n")
+            text = content.get_text()
+            if text:
+                print_success = True
+                print(f"Model Response Content {content.index}:\n{text}\n")
 
         if not print_success:
-            print(f"No Content in model response. Response is  {node.response.model_dump()}\n")
+            print(f"No content in model response. Response: {node.response.model_dump()}\n")
 
         print("-" * 80)
 
-        # Append to nodes, so that next turn will have the context generated
-        conversation_nodes.append(node)
+        # Build messages for next turn: user query + assistant response
+        messages.append(Prompt(role="user", text=query))
+
+        # Add assistant response contents to messages
+        for content in node.response.choices[0].contents:
+            messages.append(content)  # noqa: PERF402
 
 
 if __name__ == "__main__":
-    run_multi_turn_conversation()
+    run_multi_turn_with_messages()

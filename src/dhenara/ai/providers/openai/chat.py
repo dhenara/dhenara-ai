@@ -35,9 +35,10 @@ logger = logging.getLogger(__name__)
 class OpenAIChat(OpenAIClientBase):
     def get_api_call_params(
         self,
-        prompt: dict,
+        prompt: dict | None,
         context: list[dict] | None = None,
         instructions: dict | None = None,
+        messages: list | None = None,
     ) -> AIModelCallResponse:
         if not self._client:
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
@@ -45,23 +46,31 @@ class OpenAIChat(OpenAIClientBase):
         if self._input_validation_pending:
             raise ValueError("inputs must be validated with `self.validate_inputs()` before api calls")
 
-        messages = []
+        messages_list = []
         user = self.config.get_user()
 
         # Process instructions
         if instructions:
-            messages.append(instructions)
+            messages_list.append(instructions)
 
         # Add previous messages and current prompt
-        if context:
-            messages.extend(context)
-
-        messages.append(prompt)
+        if messages is not None:
+            # Convert MessageItem objects to OpenAI format
+            formatted_messages = self.formatter.format_messages(
+                messages=messages,
+                model_endpoint=self.model_endpoint,
+            )
+            messages_list.extend(formatted_messages)
+        else:
+            if context:
+                messages_list.extend(context)
+            if prompt is not None:
+                messages_list.append(prompt)
 
         # Prepare API call arguments
         chat_args: dict[str, Any] = {
             "model": self.model_name_in_api_calls,
-            "messages": messages,
+            "messages": messages_list,
             "stream": self.config.streaming,
         }
 
@@ -69,7 +78,7 @@ class OpenAIChat(OpenAIClientBase):
             if self.model_endpoint.api.provider != AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
                 chat_args["safety_identifier"] = user
 
-        max_output_tokens, max_reasoning_tokens = self.config.get_max_output_tokens(self.model_endpoint.ai_model)
+        max_output_tokens, _max_reasoning_tokens = self.config.get_max_output_tokens(self.model_endpoint.ai_model)
 
         if max_output_tokens is not None:
             if self.model_endpoint.api.provider != AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:

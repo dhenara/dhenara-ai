@@ -1,6 +1,6 @@
 import logging
 from abc import ABC, abstractmethod
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator, Generator, Sequence
 from typing import Any
 
 from dhenara.ai.config import settings
@@ -21,7 +21,7 @@ from dhenara.ai.types import (
     StreamingChatResponse,
     UsageCharge,
 )
-from dhenara.ai.types.genai.dhenara.request import Prompt, SystemInstruction
+from dhenara.ai.types.genai.dhenara.request import MessageItem, Prompt, SystemInstruction
 from dhenara.ai.types.shared.api import SSEErrorCode, SSEErrorData, SSEErrorResponse
 
 logger = logging.getLogger(__name__)
@@ -105,9 +105,10 @@ class AIModelProviderClientBase(ABC):
 
     def generate_response_sync(
         self,
-        prompt: str | dict | Prompt,
-        context: list[str | dict | Prompt] | None = None,
+        prompt: str | dict | Prompt | None,
+        context: Sequence[str | dict | Prompt] | None = None,
         instructions: list[str | dict | SystemInstruction] | None = None,
+        messages: Sequence[MessageItem] | None = None,
     ) -> AIModelCallResponse:
         parsed_response: ChatResponse | None = None
         api_call_status: ExternalApiCallStatus | None = None
@@ -118,6 +119,7 @@ class AIModelProviderClientBase(ABC):
             prompt=prompt,
             context=context,
             instructions=instructions,
+            messages=messages,
         )
 
         logger.debug(f"generate_response: api_call_params: {api_call_params}")
@@ -150,9 +152,10 @@ class AIModelProviderClientBase(ABC):
 
     async def generate_response_async(
         self,
-        prompt: str | dict | Prompt,
-        context: list[str | dict | Prompt] | None = None,
+        prompt: str | dict | Prompt | None,
+        context: Sequence[str | dict | Prompt] | None = None,
         instructions: list[str | dict | SystemInstruction] | None = None,
+        messages: Sequence[MessageItem] | None = None,
     ) -> AIModelCallResponse:
         parsed_response: ChatResponse | None = None
         api_call_status: ExternalApiCallStatus | None = None
@@ -163,6 +166,7 @@ class AIModelProviderClientBase(ABC):
             prompt=prompt,
             context=context,
             instructions=instructions,
+            messages=messages,
         )
 
         logger.debug(f"generate_response: api_call_params: {api_call_params}")
@@ -195,9 +199,10 @@ class AIModelProviderClientBase(ABC):
 
     def _format_and_generate_response_sync(
         self,
-        prompt: str | dict | Prompt,
-        context: list[str | dict | Prompt] | None = None,
+        prompt: str | dict | Prompt | None,
+        context: Sequence[str | dict | Prompt] | None = None,
         instructions: list[str | dict | SystemInstruction] | None = None,
+        messages: Sequence[MessageItem] | None = None,
     ) -> AIModelCallResponse:
         """Generate response from the model"""
 
@@ -206,6 +211,7 @@ class AIModelProviderClientBase(ABC):
                 prompt=prompt,
                 context=context,
                 instructions=instructions,
+                messages=messages,
             )
             if not formatted_inputs:
                 return AIModelCallResponse(
@@ -218,6 +224,7 @@ class AIModelProviderClientBase(ABC):
                 prompt=formatted_inputs["prompt"],
                 context=formatted_inputs["context"],
                 instructions=formatted_inputs["instructions"],
+                messages=formatted_inputs.get("messages"),
             )
         else:
             self._input_validation_pending = False
@@ -225,13 +232,15 @@ class AIModelProviderClientBase(ABC):
                 prompt=prompt,
                 context=context,
                 instructions=instructions,
+                messages=messages,
             )
 
     async def _format_and_generate_response_async(
         self,
-        prompt: str | dict | Prompt,
-        context: list[str | dict | Prompt] | None = None,
+        prompt: str | dict | Prompt | None,
+        context: Sequence[str | dict | Prompt] | None = None,
         instructions: list[str | dict | SystemInstruction] | None = None,
+        messages: Sequence[MessageItem] | None = None,
     ) -> AIModelCallResponse:
         """Generate response from the model"""
 
@@ -240,6 +249,7 @@ class AIModelProviderClientBase(ABC):
                 prompt=prompt,
                 context=context,
                 instructions=instructions,
+                messages=messages,
             )
             if not formatted_inputs:
                 return AIModelCallResponse(
@@ -252,6 +262,7 @@ class AIModelProviderClientBase(ABC):
                 prompt=formatted_inputs["prompt"],
                 context=formatted_inputs["context"],
                 instructions=formatted_inputs["instructions"],
+                messages=formatted_inputs.get("messages"),
             )
         else:
             self._input_validation_pending = False
@@ -259,6 +270,7 @@ class AIModelProviderClientBase(ABC):
                 prompt=prompt,
                 context=context,
                 instructions=instructions,
+                messages=messages,
             )
 
     def _get_ai_model_call_response(self, parsed_response, api_call_status):
@@ -353,9 +365,10 @@ class AIModelProviderClientBase(ABC):
     @abstractmethod
     def get_api_call_params(
         self,
-        prompt: dict,
+        prompt: dict | None,
         context: list[dict] | None = None,
         instructions: dict | None = None,
+        messages: Sequence[MessageItem] | None = None,
     ) -> AIModelCallResponse:
         pass
 
@@ -401,15 +414,54 @@ class AIModelProviderClientBase(ABC):
 
     def format_inputs(
         self,
-        prompt: str | dict | Prompt,
-        context: list[str | dict | Prompt] | None = None,
+        prompt: str | dict | Prompt | None,
+        context: Sequence[str | dict | Prompt] | None = None,
         instructions: list[str | dict | SystemInstruction] | None = None,
+        messages: Sequence[MessageItem] | None = None,
         **kwargs,
     ) -> tuple[dict, list[dict], list[str] | dict | None]:
         """Format inputs into provider-specific formats"""
         try:
-            # Get the appropriate formatter for this provider
+            # Validate mutual exclusivity: either (prompt+context) OR messages, not both
+            has_traditional_inputs = prompt is not None or (context is not None and len(context) > 0)
+            has_messages = messages is not None and len(messages) > 0
 
+            if has_traditional_inputs and has_messages:
+                raise ValueError(
+                    "Cannot use both 'messages' and 'prompt/context' parameters. "
+                    "Use either messages for multi-turn conversations or prompt/context for traditional inputs."
+                )
+
+            if not has_traditional_inputs and not has_messages:
+                raise ValueError("Either 'messages' or 'prompt/context' must be provided")
+
+            # If messages are provided, format them and instructions
+            # Provider-specific formatting will happen in get_api_call_params
+            if has_messages:
+                # Format instructions if provided
+                formatted_instructions = None
+                if instructions:
+                    formatted_instructions = self.formatter.format_instructions(
+                        instructions=instructions,
+                        model_endpoint=self.model_endpoint,
+                        **kwargs,
+                    )
+
+                # Validate Options
+                if not self.model_endpoint.ai_model.validate_options(self.config.options):
+                    raise ValueError("validate_inputs: ERROR: validate_options failed")
+
+                self.formatted_config = self.config
+                self._input_validation_pending = False
+
+                return {
+                    "prompt": None,
+                    "context": [],
+                    "instructions": formatted_instructions,
+                    "messages": messages,
+                }
+
+            # Traditional path: format prompt and context
             # Format prompt
             formatted_prompt = self.formatter.format_prompt(
                 prompt=prompt,

@@ -7,6 +7,7 @@ from dhenara.ai.types.genai.dhenara.request import (
     FunctionDefinition,
     FunctionParameter,
     FunctionParameters,
+    MessageItem,
     Prompt,
     PromptMessageRoleEnum,
     StructuredOutputConfig,
@@ -148,6 +149,64 @@ class BaseFormatter(ABC):
             formatted_prompt=formatted_prompt,
             model_endpoint=model_endpoint,
         )
+
+    @classmethod
+    def format_messages(
+        cls,
+        messages: list[MessageItem],
+        model_endpoint: AIModelEndpoint | None = None,
+        **kwargs,
+    ) -> list[dict[str, Any]]:
+        """Convert a list of MessageItem objects to provider-specific message format.
+
+        MessageItem can be:
+        - Prompt: New user/system messages (may expand to multiple messages)
+        - ChatResponseContentItem: Previous assistant responses (text, reasoning, tool calls, etc.)
+        - ToolCallResult: Tool execution results
+
+        This method delegates to provider-specific convert_message_item for each item.
+        Note: convert_message_item can return either a single dict or a list of dicts
+        (e.g., Prompt objects may expand to multiple messages like system + user).
+        """
+        if not messages:
+            return []
+
+        formatted_messages = []
+        for msg_item in messages:
+            formatted = cls.convert_message_item(
+                message_item=msg_item,
+                model_endpoint=model_endpoint,
+                **kwargs,
+            )
+            # Handle both single dict and list of dicts
+            if isinstance(formatted, list):
+                formatted_messages.extend(formatted)
+            else:
+                formatted_messages.append(formatted)
+
+        return formatted_messages
+
+    @classmethod
+    @abstractmethod
+    def convert_message_item(
+        cls,
+        message_item: MessageItem,
+        model_endpoint: AIModelEndpoint | None = None,
+        **kwargs,
+    ) -> dict[str, Any] | list[dict[str, Any]]:
+        """Convert a single MessageItem to provider-specific message format.
+
+        This method should handle:
+        - Prompt objects (via format_prompt internally) - may return list for system + user
+        - ChatResponseContentItem union types (text, reasoning, tool calls, structured output, generic)
+        - ToolCallResult objects
+
+        Each provider must implement this to match their specific message format.
+
+        Returns:
+            Single dict or list of dicts (Prompt can expand to multiple messages)
+        """
+        pass
 
     @classmethod
     def format_tools(

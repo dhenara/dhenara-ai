@@ -23,9 +23,10 @@ class GoogleAIImage(GoogleAIClientBase):
 
     def get_api_call_params(
         self,
-        prompt: dict,
+        prompt: dict | None,
         context: list[dict] | None = None,
         instructions: dict | None = None,
+        messages: list | None = None,
     ) -> AIModelCallResponse:
         if not self._client:
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
@@ -33,11 +34,16 @@ class GoogleAIImage(GoogleAIClientBase):
         if self._input_validation_pending:
             raise ValueError("Inputs must be validated before API calls")
 
+        if messages is not None:
+            raise ValueError("Image generation does not support 'messages' parameter")
+
         if instructions:
             instructions_str = instructions["parts"][0]["text"]
         else:
             instructions_str = ""
 
+        if prompt is None:
+            raise ValueError("Image generation requires a prompt; messages API not supported.")
         prompt_text = f"{instructions_str} {context} {prompt}"
 
         generate_config_args = self.get_default_generate_config_args()

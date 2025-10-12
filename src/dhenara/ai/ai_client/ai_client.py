@@ -1,13 +1,19 @@
 import asyncio
 import time
+from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from contextlib import AsyncExitStack, ExitStack, contextmanager
 
 from dhenara.ai.types import AIModelCallConfig, AIModelCallResponse, AIModelEndpoint
-from dhenara.ai.types.genai.dhenara.request import Prompt, SystemInstruction
+from dhenara.ai.types.genai.dhenara.request import MessageItem, Prompt, SystemInstruction
 
 from .factory import AIModelClientFactory
+
+PromptLike = str | dict | Prompt
+PromptInput = PromptLike | Sequence[PromptLike] | None
+ContextInput = Sequence[PromptLike] | None
+MessagesInput = Sequence[MessageItem] | None
 
 
 class AIModelClient:
@@ -163,9 +169,10 @@ class AIModelClient:
     # Genereate Response Fns
     def generate(
         self,
-        prompt: str | dict | Prompt,
-        context: list[str | dict | Prompt] | None = None,
+        prompt: PromptInput = None,
+        context: ContextInput = None,
         instructions: list[str | dict | SystemInstruction] | None = None,
+        messages: MessagesInput = None,
     ) -> AIModelCallResponse:
         """Synchronous generate method"""
         if self.is_async:
@@ -178,13 +185,15 @@ class AIModelClient:
                 prompt=prompt,
                 context=context,
                 instructions=instructions,
+                messages=messages,
             )
 
     async def generate_async(
         self,
-        prompt: str | dict | Prompt,
-        context: list[str | dict | Prompt] | None = None,
+        prompt: PromptInput = None,
+        context: ContextInput = None,
         instructions: list[str | dict | SystemInstruction] | None = None,
+        messages: MessagesInput = None,
     ) -> AIModelCallResponse:
         """Asynchronous generate method"""
         if not self.is_async:
@@ -195,13 +204,15 @@ class AIModelClient:
                 prompt=prompt,
                 context=context,
                 instructions=instructions,
+                messages=messages,
             )
 
     async def generate_with_existing_connection(
         self,
-        prompt: str | dict | Prompt,
-        context: list[str | dict | Prompt] | None = None,
+        prompt: PromptInput = None,
+        context: ContextInput = None,
         instructions: list[str | dict | SystemInstruction] | None = None,
+        messages: MessagesInput = None,
     ) -> AIModelCallResponse:
         """
         Generate a response using an existing connection or create a new one.
@@ -214,6 +225,7 @@ class AIModelClient:
             prompt: The primary input prompt for the AI model
             context: Optional list of previous conversation context
             instructions: Optional system instructions for the AI model
+            messages: Optional raw messages list (mutually exclusive with prompt/context)
 
         Returns:
             AIModelCallResponse: The generated response from the AI model
@@ -224,18 +236,25 @@ class AIModelClient:
         """
         if self.is_async:
             return self.generate_with_existing_connection_async(
-                prompt=prompt, context=context, instructions=instructions
+                prompt=prompt,
+                context=context,
+                instructions=instructions,
+                messages=messages,
             )
         else:
             return self.generate_with_existing_connection_sync(
-                prompt=prompt, context=context, instructions=instructions
+                prompt=prompt,
+                context=context,
+                instructions=instructions,
+                messages=messages,
             )
 
     def generate_with_existing_connection_sync(
         self,
-        prompt: str | dict | Prompt,
-        context: list[str | dict | Prompt] | None = None,
+        prompt: PromptInput = None,
+        context: ContextInput = None,
         instructions: list[str | dict | SystemInstruction] | None = None,
+        messages: MessagesInput = None,
     ) -> AIModelCallResponse:
         if not self._provider_client:
             self._provider_client = self._client_stack.enter_context(
@@ -249,6 +268,7 @@ class AIModelClient:
             prompt=prompt,
             context=context,
             instructions=instructions,
+            messages=messages,
         )
 
     def cleanup_sync(self) -> None:
@@ -263,9 +283,10 @@ class AIModelClient:
 
     async def generate_with_existing_connection_async(
         self,
-        prompt: str | dict | Prompt,
-        context: list[str | dict | Prompt] | None = None,
+        prompt: PromptInput = None,
+        context: ContextInput = None,
         instructions: list[str | dict | SystemInstruction] | None = None,
+        messages: MessagesInput = None,
     ) -> AIModelCallResponse:
         if not self._provider_client:
             self._provider_client = await self._client_stack.enter_async_context(
@@ -279,6 +300,7 @@ class AIModelClient:
             prompt=prompt,
             context=context,
             instructions=instructions,
+            messages=messages,
         )
 
     async def cleanup_async(self) -> None:
