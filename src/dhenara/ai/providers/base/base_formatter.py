@@ -163,10 +163,11 @@ class BaseFormatter(ABC):
         - Prompt: New user/system messages (may expand to multiple messages)
         - ChatResponseContentItem: Previous assistant responses (text, reasoning, tool calls, etc.)
         - ToolCallResult: Tool execution results
+        - ToolCallResultsMessage: Grouped tool execution results emitted together
 
-        This method delegates to provider-specific convert_message_item for each item.
-        Note: convert_message_item can return either a single dict or a list of dicts
-        (e.g., Prompt objects may expand to multiple messages like system + user).
+            This method delegates to provider-specific convert_message_item for each item.
+            Note: convert_message_item can return either a single dict or a list of dicts
+            (e.g., Prompt objects may expand to multiple messages like system + user).
         """
         if not messages:
             return []
@@ -196,15 +197,15 @@ class BaseFormatter(ABC):
     ) -> dict[str, Any] | list[dict[str, Any]]:
         """Convert a single MessageItem to provider-specific message format.
 
-        This method should handle:
-        - Prompt objects (via format_prompt internally) - may return list for system + user
-        - ChatResponseContentItem union types (text, reasoning, tool calls, structured output, generic)
-        - ToolCallResult objects
+            This method should handle:
+            - Prompt objects (via format_prompt internally) - may return list for system + user
+            - ChatResponseContentItem union types (text, reasoning, tool calls, structured output, generic)
+        - ToolCallResult objects (and grouped variants)
 
-        Each provider must implement this to match their specific message format.
+            Each provider must implement this to match their specific message format.
 
-        Returns:
-            Single dict or list of dicts (Prompt can expand to multiple messages)
+            Returns:
+                Single dict or list of dicts (Prompt can expand to multiple messages)
         """
         pass
 

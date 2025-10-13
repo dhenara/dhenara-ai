@@ -6,6 +6,7 @@ from pydantic import Field, model_validator
 
 from dhenara.ai.types.genai.ai_model import AIModel
 from dhenara.ai.types.genai.dhenara.request import (
+    ArtifactConfig,
     StructuredOutputConfig,
     ToolChoice,
     ToolDefinition,
@@ -52,6 +53,8 @@ class AIModelCallConfig(BaseModel):
     max_retry_delay: float = 10.0
     test_mode: bool = False
     api_version_override: str | None = None
+
+    artifact_config: ArtifactConfig | None = None
 
     @model_validator(mode="after")
     def validate_structured_output(self) -> "AIModelCallConfig":

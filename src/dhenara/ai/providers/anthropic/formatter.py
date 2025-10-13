@@ -13,6 +13,7 @@ from dhenara.ai.types.genai.dhenara.request import (
     PromptMessageRoleEnum,
     StructuredOutputConfig,
     ToolCallResult,
+    ToolCallResultsMessage,
     ToolChoice,
     ToolDefinition,
 )
@@ -258,13 +259,14 @@ class AnthropicFormatter(BaseFormatter):
     ) -> dict[str, Any] | list[dict[str, Any]]:
         """Convert a MessageItem to Anthropic message format.
 
-        Handles:
+            Handles:
         - Prompt: converts to user/assistant message via format_prompt (may return list)
         - ChatResponseChoice: assistant message with all content items (text, tool_use blocks, etc.)
         - ToolCallResult: user message with tool_result content block
+        - ToolCallResultsMessage: user message containing multiple tool_result blocks
 
-        Returns:
-            Single dict or list of dicts (Prompt can expand to multiple messages)
+            Returns:
+                Single dict or list of dicts (Prompt can expand to multiple messages)
         """
         # Case 1: Prompt object (new user/assistant messages) - may return list
         if isinstance(message_item, Prompt):
@@ -286,6 +288,20 @@ class AnthropicFormatter(BaseFormatter):
                         "tool_use_id": message_item.call_id,
                         "content": message_item.as_text(),
                     }
+                ],
+            }
+
+        # Case 2b: ToolCallResultsMessage (grouped tool execution results)
+        if isinstance(message_item, ToolCallResultsMessage):
+            return {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": result.call_id,
+                        "content": result.as_text(),
+                    }
+                    for result in message_item.results
                 ],
             }
 

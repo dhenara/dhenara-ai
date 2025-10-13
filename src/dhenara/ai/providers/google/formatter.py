@@ -13,6 +13,7 @@ from dhenara.ai.types.genai.dhenara.request import (
     PromptMessageRoleEnum,
     StructuredOutputConfig,
     ToolCallResult,
+    ToolCallResultsMessage,
     ToolChoice,
     ToolDefinition,
 )
@@ -272,13 +273,14 @@ class GoogleFormatter(BaseFormatter):
     ) -> dict[str, Any] | list[dict[str, Any]]:
         """Convert a MessageItem to Google/Gemini message format.
 
-        Handles:
+            Handles:
         - Prompt: converts to user/model message via format_prompt (may return list)
         - ChatResponseChoice: model message with all content items (text, function_call parts, etc.)
         - ToolCallResult: user message with function_response part
+        - ToolCallResultsMessage: user message with multiple function_response parts
 
-        Returns:
-            Single dict or list of dicts (Prompt can expand to multiple messages)
+            Returns:
+                Single dict or list of dicts (Prompt can expand to multiple messages)
         """
         # Case 1: Prompt object (new user/model messages) - may return list
         if isinstance(message_item, Prompt):
@@ -301,6 +303,21 @@ class GoogleFormatter(BaseFormatter):
                             "response": message_item.as_json(),
                         }
                     }
+                ],
+            }
+
+        # Case 2b: ToolCallResultsMessage (grouped tool execution results)
+        if isinstance(message_item, ToolCallResultsMessage):
+            return {
+                "role": "user",
+                "parts": [
+                    {
+                        "function_response": {
+                            "name": result.name or "unknown_function",
+                            "response": result.as_json(),
+                        }
+                    }
+                    for result in message_item.results
                 ],
             }
 

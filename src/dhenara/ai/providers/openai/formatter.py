@@ -13,6 +13,7 @@ from dhenara.ai.types.genai.dhenara.request import (
     PromptMessageRoleEnum,
     StructuredOutputConfig,
     ToolCallResult,
+    ToolCallResultsMessage,
     ToolChoice,
     ToolDefinition,
 )
@@ -330,13 +331,14 @@ class OpenAIFormatter(BaseFormatter):
     ) -> dict[str, Any] | list[dict[str, Any]]:
         """Convert a MessageItem to OpenAI message format.
 
-        Handles:
+            Handles:
         - Prompt: converts to user/system/assistant message via format_prompt (may return list)
         - ChatResponseChoice: assistant message with all content items (text, tool calls, reasoning, etc.)
         - ToolCallResult: tool message with function output
+        - ToolCallResultsMessage: expands grouped tool results into provider messages
 
-        Returns:
-            Single dict or list of dicts (Prompt can expand to multiple messages)
+            Returns:
+                Single dict or list of dicts (Prompt can expand to multiple messages)
         """
         # Case 1: Prompt object (new user/system messages) - may return list
         if isinstance(message_item, Prompt):
@@ -354,6 +356,17 @@ class OpenAIFormatter(BaseFormatter):
                 "tool_call_id": message_item.call_id,
                 "content": message_item.as_text(),
             }
+
+        # Case 2b: ToolCallResultsMessage (grouped tool execution results)
+        if isinstance(message_item, ToolCallResultsMessage):
+            return [
+                {
+                    "role": "tool",
+                    "tool_call_id": result.call_id,
+                    "content": result.as_text(),
+                }
+                for result in message_item.results
+            ]
 
         # Case 3: ChatResponseChoice (assistant response with all content items)
         if isinstance(message_item, ChatResponseChoice):

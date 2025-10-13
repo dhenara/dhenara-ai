@@ -23,6 +23,7 @@ from dhenara.ai.types import (
 )
 from dhenara.ai.types.genai.dhenara.request import MessageItem, Prompt, SystemInstruction
 from dhenara.ai.types.shared.api import SSEErrorCode, SSEErrorData, SSEErrorResponse
+from dhenara.ai.utils.artifacts import ArtifactWriter
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +104,57 @@ class AIModelProviderClientBase(ABC):
 
         return params
 
+    def _serialize_dhenara_request(
+        self,
+        prompt: str | dict | Prompt | None,
+        context: Sequence[str | dict | Prompt] | None,
+        instructions: list[str | dict | SystemInstruction] | None,
+        messages: Sequence[MessageItem] | None,
+    ) -> dict:
+        """Serialize dhenara request format for artifact capture."""
+        return {
+            "prompt": prompt.model_dump() if isinstance(prompt, Prompt) else prompt,
+            "context": [c.model_dump() if isinstance(c, Prompt) else c for c in (context or [])],
+            "instructions": [i.model_dump() if isinstance(i, SystemInstruction) else i for i in (instructions or [])],
+            "messages": [m.model_dump() if isinstance(m, MessageItem) else m for m in (messages or [])],
+            "config": self.config.model_dump() if self.config else {},
+        }
+
+    def _capture_artifacts(
+        self,
+        stage: str,
+        data: Any,
+        filename: str,
+    ) -> None:
+        """Capture artifacts if enabled in config.
+
+        Artifacts are written to <artifact_root>/<prefix>/dai/ subdirectory.
+        """
+        if not self.config.artifact_config or not self.config.artifact_config.enabled:
+            return
+
+        artifact_config = self.config.artifact_config
+
+        # Check if this stage should be captured
+        if stage == "dhenara_request" and not artifact_config.capture_dhenara_request:
+            return
+        if stage == "provider_request" and not artifact_config.capture_provider_request:
+            return
+        if stage == "provider_response" and not artifact_config.capture_provider_response:
+            return
+        if stage == "dhenara_response" and not artifact_config.capture_dhenara_response:
+            return
+
+        # Build prefix: combine user prefix with 'dai' subdirectory
+        combined_prefix = f"{artifact_config.prefix}/dai" if artifact_config.prefix else "dai"
+
+        ArtifactWriter.write_json(
+            artifact_root=artifact_config.artifact_root,
+            filename=filename,
+            data=data,
+            prefix=combined_prefix,
+        )
+
     def generate_response_sync(
         self,
         prompt: str | dict | Prompt | None,
@@ -115,6 +167,13 @@ class AIModelProviderClientBase(ABC):
 
         logger.debug(f"generate_response: prompt={prompt}, context={context}")
 
+        # Capture dhenara request format
+        self._capture_artifacts(
+            stage="dhenara_request",
+            data=self._serialize_dhenara_request(prompt, context, instructions, messages),
+            filename="dai_request.json",
+        )
+
         api_call_params = self.get_api_call_params(
             prompt=prompt,
             context=context,
@@ -123,6 +182,13 @@ class AIModelProviderClientBase(ABC):
         )
 
         logger.debug(f"generate_response: api_call_params: {api_call_params}")
+
+        # Capture provider request format (already in provider-specific format)
+        self._capture_artifacts(
+            stage="provider_request",
+            data=api_call_params,
+            filename="dai_provider_request.json",
+        )
 
         if self.config.test_mode:
             from dhenara.ai.providers.common.dummy import DummyAIModelResponseFns
@@ -139,12 +205,30 @@ class AIModelProviderClientBase(ABC):
             if self.config.streaming:
                 stream = self.do_streaming_api_call_sync(api_call_params)
                 stream_generator = self._handle_streaming_response_sync(stream=stream)
+                # Note: Streaming responses are not captured as artifacts (too large/dynamic)
                 return AIModelCallResponse(sync_stream_generator=stream_generator)
 
             response = self.do_api_call_sync(api_call_params)
+
+            # Capture provider response
+            self._capture_artifacts(
+                stage="provider_response",
+                data=response if isinstance(response, dict) else str(response),
+                filename="dai_provider_response.json",
+            )
+
             parsed_response = self.parse_response(response)
             api_call_status = self._create_success_status()
-            return self._get_ai_model_call_response(parsed_response, api_call_status)
+            ai_response = self._get_ai_model_call_response(parsed_response, api_call_status)
+
+            # Capture dhenara response format
+            self._capture_artifacts(
+                stage="dhenara_response",
+                data=ai_response.model_dump() if hasattr(ai_response, "model_dump") else str(ai_response),
+                filename="dai_response.json",
+            )
+
+            return ai_response
 
         except Exception as e:
             logger.exception(f"Error in generate_response_sync: {e}")
@@ -162,6 +246,13 @@ class AIModelProviderClientBase(ABC):
 
         logger.debug(f"generate_response: prompt={prompt}, context={context}")
 
+        # Capture dhenara request format
+        self._capture_artifacts(
+            stage="dhenara_request",
+            data=self._serialize_dhenara_request(prompt, context, instructions, messages),
+            filename="dai_request.json",
+        )
+
         api_call_params = self.get_api_call_params(
             prompt=prompt,
             context=context,
@@ -170,6 +261,13 @@ class AIModelProviderClientBase(ABC):
         )
 
         logger.debug(f"generate_response: api_call_params: {api_call_params}")
+
+        # Capture provider request format (already in provider-specific format)
+        self._capture_artifacts(
+            stage="provider_request",
+            data=api_call_params,
+            filename="dai_provider_request.json",
+        )
 
         if self.config.test_mode:
             from dhenara.ai.providers.common.dummy import DummyAIModelResponseFns
@@ -186,12 +284,30 @@ class AIModelProviderClientBase(ABC):
             if self.config.streaming:
                 stream = await self.do_streaming_api_call_async(api_call_params)
                 stream_generator = self._handle_streaming_response_async(stream=stream)
+                # Note: Streaming responses are not captured as artifacts (too large/dynamic)
                 return AIModelCallResponse(async_stream_generator=stream_generator)
 
             response = await self.do_api_call_async(api_call_params)
+
+            # Capture provider response
+            self._capture_artifacts(
+                stage="provider_response",
+                data=response if isinstance(response, dict) else str(response),
+                filename="dai_provider_response.json",
+            )
+
             parsed_response = self.parse_response(response)
             api_call_status = self._create_success_status()
-            return self._get_ai_model_call_response(parsed_response, api_call_status)
+            ai_response = self._get_ai_model_call_response(parsed_response, api_call_status)
+
+            # Capture dhenara response format
+            self._capture_artifacts(
+                stage="dhenara_response",
+                data=ai_response.model_dump() if hasattr(ai_response, "model_dump") else str(ai_response),
+                filename="dai_response.json",
+            )
+
+            return ai_response
 
         except Exception as e:
             logger.exception(f"Error in generate_response_async: {e}")

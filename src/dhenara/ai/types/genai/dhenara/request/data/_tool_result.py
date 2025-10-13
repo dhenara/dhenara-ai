@@ -56,3 +56,35 @@ class ToolCallResult(BaseModel):
         if isinstance(self.output, str):
             return {"result": self.output}
         return {"result": self.output}
+
+
+class ToolCallResultsMessage(BaseModel):
+    """Container that groups multiple tool results into a single conversation message."""
+
+    type: str = Field(
+        default="tool_results",
+        description="Discriminator identifying a grouped tool results message.",
+    )
+    results: list[ToolCallResult] = Field(
+        default_factory=list,
+        description="Ordered list of tool call results that originated from the same assistant turn.",
+    )
+
+    @field_validator("type")
+    @classmethod
+    def _validate_type(cls, value: str) -> str:
+        if value != "tool_results":
+            raise ValueError("ToolCallResultsMessage.type must be 'tool_results'")
+        return value
+
+    @field_validator("results")
+    @classmethod
+    def _validate_results(cls, value: list[ToolCallResult]) -> list[ToolCallResult]:
+        if not value:
+            raise ValueError("ToolCallResultsMessage.results must contain at least one ToolCallResult")
+        return value
+
+    def as_list(self) -> list[ToolCallResult]:
+        """Return the underlying list of tool call results."""
+
+        return list(self.results)
