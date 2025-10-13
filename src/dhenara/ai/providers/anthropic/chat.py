@@ -10,16 +10,13 @@ from anthropic.types import (
     RawMessageDeltaEvent,
     RawMessageStartEvent,
     RawMessageStopEvent,
-    RedactedThinkingBlock,
     SignatureDelta,
-    TextBlock,
     TextDelta,
-    ThinkingBlock,
     ThinkingDelta,
-    ToolUseBlock,
 )
 
 from dhenara.ai.providers.anthropic import AnthropicClientBase
+from dhenara.ai.providers.anthropic.message_converter import AnthropicMessageConverter
 from dhenara.ai.types.genai import (
     AIModelCallResponse,
     AIModelCallResponseMetaData,
@@ -30,15 +27,10 @@ from dhenara.ai.types.genai import (
     ChatResponseContentItemDelta,
     ChatResponseReasoningContentItem,
     ChatResponseReasoningContentItemDelta,
-    ChatResponseStructuredOutput,
-    ChatResponseStructuredOutputContentItem,
-    ChatResponseTextContentItem,
     ChatResponseTextContentItemDelta,
-    ChatResponseToolCallContentItem,
     ChatResponseUsage,
     StreamingChatResponse,
 )
-from dhenara.ai.types.genai.dhenara import ChatResponseToolCall
 from dhenara.ai.types.shared.api import SSEErrorResponse
 
 logger = logging.getLogger(__name__)
@@ -335,7 +327,7 @@ class AnthropicChat(AnthropicClientBase):
                     stop_sequence=response.stop_sequence,
                     contents=[
                         self.process_content_item(
-                            index=content_index,  # enumerate as Anthropic APIs doesn't provide index for non-streaming
+                            index=content_index,
                             role=response.role,
                             content_item=content_item,
                         )
@@ -360,74 +352,23 @@ class AnthropicChat(AnthropicClientBase):
         role: str,
         content_item: ContentBlock,
     ) -> ChatResponseContentItem:
-        if isinstance(content_item, TextBlock):
-            return ChatResponseTextContentItem(
-                index=index,
-                role=role,
-                text=content_item.text,
-            )
-        elif isinstance(content_item, ThinkingBlock):
-            return ChatResponseReasoningContentItem(
-                index=index,
-                role=role,
-                thinking_text=content_item.thinking,
-                metadata={
-                    "signature": content_item.signature,
-                },
-            )
+        converted_items = AnthropicMessageConverter.content_block_to_items(
+            content_block=content_item,
+            index=index,
+            role=role,
+            structured_output_config=self.config.structured_output,
+        )
 
-        elif isinstance(content_item, RedactedThinkingBlock):
-            return ChatResponseReasoningContentItem(
-                index=index,
-                role=role,
-                metadata={
-                    "redacted_thinking_data": content_item.data,
-                },
-            )
+        if converted_items:
+            # Anthropic content blocks typically map to a single item; return the first.
+            return converted_items[0]
 
-        elif isinstance(content_item, ToolUseBlock):
-            raw_response = content_item.model_dump()
-            try:
-                tool_call = ChatResponseToolCall.from_anthropic_format(raw_response)
-            except Exception as e:
-                logger.exception(f"Error parsing tool call: {e}")
-                tool_call = None
-
-            # For anthropic, structed output reqs are send as tool_call
-            if self.config.structured_output is not None:
-                structured_output = ChatResponseStructuredOutput.from_tool_call(
-                    raw_response=raw_response,
-                    tool_call=tool_call,
-                    config=self.config.structured_output,
-                )
-                return ChatResponseStructuredOutputContentItem(
-                    index=index,
-                    role=role,
-                    structured_output=structured_output,
-                )
-            else:
-                if tool_call:
-                    return ChatResponseToolCallContentItem(
-                        index=index,
-                        role=role,
-                        tool_call=tool_call,
-                        metadata={},
-                    )
-                else:
-                    return self.get_unknown_content_type_item(
-                        index=index,
-                        role=role,
-                        unknown_item=content_item,
-                        streaming=False,
-                    )
-
-        else:
-            return self.get_unknown_content_type_item(
-                index=index,
-                role=role,
-                unknown_item=content_item,
-                streaming=False,
-            )
+        return self.get_unknown_content_type_item(
+            index=index,
+            role=role,
+            unknown_item=content_item,
+            streaming=False,
+        )
 
     def process_content_item_delta(
         self,

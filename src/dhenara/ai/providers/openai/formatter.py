@@ -1,8 +1,8 @@
-import json
 import logging
 from typing import Any
 
 from dhenara.ai.providers.base import BaseFormatter
+from dhenara.ai.providers.openai.message_converter import OpenAIMessageConverter
 from dhenara.ai.types.genai.ai_model import AIModelEndpoint, AIModelFunctionalTypeEnum
 from dhenara.ai.types.genai.dhenara.request import (
     FunctionDefinition,
@@ -17,13 +17,7 @@ from dhenara.ai.types.genai.dhenara.request import (
     ToolDefinition,
 )
 from dhenara.ai.types.genai.dhenara.request.data import FormattedPrompt
-from dhenara.ai.types.genai.dhenara.response import (
-    ChatResponseContentItem,
-    ChatResponseReasoningContentItem,
-    ChatResponseStructuredOutputContentItem,
-    ChatResponseTextContentItem,
-    ChatResponseToolCallContentItem,
-)
+from dhenara.ai.types.genai.dhenara.response import ChatResponseChoice
 from dhenara.ai.types.shared.file import FileFormatEnum, GenericFile
 
 logger = logging.getLogger(__name__)
@@ -319,6 +313,15 @@ class OpenAIFormatter(BaseFormatter):
         }
 
     @classmethod
+    def _format_response_choice(cls, choice: ChatResponseChoice) -> dict[str, Any]:
+        """Format a ChatResponseChoice into OpenAI message format.
+
+        Combines all content items from the choice into a single assistant message.
+        This preserves the proper message structure (e.g., tool calls stay with their text).
+        """
+        return OpenAIMessageConverter.choice_to_provider_message(choice)
+
+    @classmethod
     def convert_message_item(
         cls,
         message_item: MessageItem,
@@ -329,10 +332,7 @@ class OpenAIFormatter(BaseFormatter):
 
         Handles:
         - Prompt: converts to user/system/assistant message via format_prompt (may return list)
-        - ChatResponseTextContentItem: assistant message with text
-        - ChatResponseReasoningContentItem: assistant message with reasoning (o1 models)
-        - ChatResponseToolCallContentItem: assistant message with tool_calls
-        - ChatResponseStructuredOutputContentItem: assistant message with structured output
+        - ChatResponseChoice: assistant message with all content items (text, tool calls, reasoning, etc.)
         - ToolCallResult: tool message with function output
 
         Returns:
@@ -355,54 +355,9 @@ class OpenAIFormatter(BaseFormatter):
                 "content": message_item.as_text(),
             }
 
-        # Case 3: ChatResponseContentItem (assistant responses)
-        if isinstance(message_item, ChatResponseTextContentItem):
-            return {
-                "role": "assistant",
-                "content": message_item.text or "",
-            }
-
-        if isinstance(message_item, ChatResponseReasoningContentItem):
-            # o1 models use "reasoning" field (internal thinking)
-            return {
-                "role": "assistant",
-                "content": message_item.thinking_text or "",
-            }
-
-        if isinstance(message_item, ChatResponseToolCallContentItem):
-            # OpenAI tool call format
-            tool_call = message_item.tool_call
-            return {
-                "role": "assistant",
-                "content": None,
-                "tool_calls": [
-                    {
-                        "id": tool_call.id,
-                        "type": "function",
-                        "function": {
-                            "name": tool_call.name,
-                            "arguments": json.dumps(tool_call.arguments),
-                        },
-                    }
-                ],
-            }
-
-        if isinstance(message_item, ChatResponseStructuredOutputContentItem):
-            # Structured output as assistant message
-            output = message_item.structured_output
-            content = json.dumps(output.structured_data) if output.structured_data else ""
-            return {
-                "role": "assistant",
-                "content": content,
-            }
-
-        # Fallback for any other ChatResponseContentItem types
-        if isinstance(message_item, ChatResponseContentItem):
-            # Use generic text representation
-            return {
-                "role": "assistant",
-                "content": message_item.get_text(),
-            }
+        # Case 3: ChatResponseChoice (assistant response with all content items)
+        if isinstance(message_item, ChatResponseChoice):
+            return cls._format_response_choice(choice=message_item)
 
         # Should not reach here due to MessageItem type constraint
         raise ValueError(f"Unsupported message item type: {type(message_item)}")

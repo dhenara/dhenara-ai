@@ -1,8 +1,8 @@
-import json
 import logging
 from typing import Any
 
 from dhenara.ai.providers.base import BaseFormatter
+from dhenara.ai.providers.google.message_converter import GoogleMessageConverter
 from dhenara.ai.types.genai.ai_model import AIModelEndpoint
 from dhenara.ai.types.genai.dhenara.request import (
     FunctionDefinition,
@@ -17,13 +17,7 @@ from dhenara.ai.types.genai.dhenara.request import (
     ToolDefinition,
 )
 from dhenara.ai.types.genai.dhenara.request.data import FormattedPrompt
-from dhenara.ai.types.genai.dhenara.response import (
-    ChatResponseContentItem,
-    ChatResponseReasoningContentItem,
-    ChatResponseStructuredOutputContentItem,
-    ChatResponseTextContentItem,
-    ChatResponseToolCallContentItem,
-)
+from dhenara.ai.types.genai.dhenara.response import ChatResponseChoice
 from dhenara.ai.types.shared.file import FileFormatEnum, GenericFile
 
 logger = logging.getLogger(__name__)
@@ -261,6 +255,15 @@ class GoogleFormatter(BaseFormatter):
         return _clean_schema_for_api(_schema)
 
     @classmethod
+    def _format_response_choice(cls, choice: ChatResponseChoice) -> dict[str, Any]:
+        """Format a ChatResponseChoice into Google/Gemini message format.
+
+        Combines all content items from the choice into a single model message.
+        Google supports multiple parts (text, function_call) in a single message.
+        """
+        return GoogleMessageConverter.choice_to_provider_message(choice)
+
+    @classmethod
     def convert_message_item(
         cls,
         message_item: MessageItem,
@@ -271,10 +274,7 @@ class GoogleFormatter(BaseFormatter):
 
         Handles:
         - Prompt: converts to user/model message via format_prompt (may return list)
-        - ChatResponseTextContentItem: model message with text part
-        - ChatResponseReasoningContentItem: model message (reasoning not explicitly supported)
-        - ChatResponseToolCallContentItem: model message with function_call part
-        - ChatResponseStructuredOutputContentItem: model message with structured output
+        - ChatResponseChoice: model message with all content items (text, function_call parts, etc.)
         - ToolCallResult: user message with function_response part
 
         Returns:
@@ -304,53 +304,9 @@ class GoogleFormatter(BaseFormatter):
                 ],
             }
 
-        # Case 3: ChatResponseContentItem (model responses)
-        if isinstance(message_item, ChatResponseTextContentItem):
-            return {
-                "role": "model",
-                "parts": [{"text": message_item.text or ""}],
-            }
-
-        if isinstance(message_item, ChatResponseReasoningContentItem):
-            # Google doesn't have explicit reasoning support like o1
-            # Treat as regular model message
-            return {
-                "role": "model",
-                "parts": [{"text": message_item.thinking_text or ""}],
-            }
-
-        if isinstance(message_item, ChatResponseToolCallContentItem):
-            # Google/Gemini function call format:
-            # {"role": "model", "parts": [{"function_call": {"name": "...", "args": {...}}}]}
-            tool_call = message_item.tool_call
-            return {
-                "role": "model",
-                "parts": [
-                    {
-                        "function_call": {
-                            "name": tool_call.name,
-                            "args": tool_call.arguments,
-                        }
-                    }
-                ],
-            }
-
-        if isinstance(message_item, ChatResponseStructuredOutputContentItem):
-            # Structured output as model message
-            output = message_item.structured_output
-            content = json.dumps(output.structured_data) if output.structured_data else ""
-            return {
-                "role": "model",
-                "parts": [{"text": content}],
-            }
-
-        # Fallback for any other ChatResponseContentItem types
-        if isinstance(message_item, ChatResponseContentItem):
-            # Use generic text representation
-            return {
-                "role": "model",
-                "parts": [{"text": message_item.get_text()}],
-            }
+        # Case 3: ChatResponseChoice (model response with all content items)
+        if isinstance(message_item, ChatResponseChoice):
+            return cls._format_response_choice(choice=message_item)
 
         # Should not reach here due to MessageItem type constraint
         raise ValueError(f"Unsupported message item type: {type(message_item)}")

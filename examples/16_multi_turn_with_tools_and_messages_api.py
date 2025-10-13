@@ -170,11 +170,14 @@ def handle_turn_with_tools(
         has_tool_calls = False
         text_response = None
 
-        # Process response contents
-        for content in choice.contents:
-            # Add content to messages
-            current_messages.append(content)
+        # Add the complete assistant response as a single message item
+        # This keeps all content (text + tool calls) together as required by LLM APIs
+        assistant_message = response.chat_response.to_message_item()
+        if assistant_message:
+            current_messages.append(assistant_message)
 
+        # Process response contents to check for tool calls and execute them
+        for content in choice.contents:
             # Check if it's a tool call
             if hasattr(content, "tool_call") and content.tool_call:
                 has_tool_calls = True

@@ -152,6 +152,24 @@ class ChatResponse(BaseModel):
         structured_item = self.first(ChatResponseContentItemType.STRUCTURED_OUTPUT)
         return structured_item.structured_output.as_pydantic() if structured_item else None
 
+    def to_message_item(self, choice_index: int = 0) -> "ChatResponseChoice | None":
+        """Get the response choice to use as a message item in multi-turn conversations.
+
+        This method returns the complete ChatResponseChoice which contains all content items
+        (text, tool calls, etc.) from the assistant's response. This preserves the proper
+        message structure required by LLM providers (e.g., OpenAI requires tool calls and
+        their results to be kept together).
+
+        Args:
+            choice_index: Index of the choice to return (default: 0)
+
+        Returns:
+            ChatResponseChoice if available, None otherwise
+        """
+        if not self.choices or choice_index >= len(self.choices):
+            return None
+        return self.choices[choice_index]
+
     def preview_dict(self):
         """
         Returns a preview version of the response excluding the full content of choices

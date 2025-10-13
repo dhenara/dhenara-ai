@@ -132,9 +132,11 @@ def run_multi_turn_with_messages():
         # Build messages for next turn: user query + assistant response
         messages.append(Prompt(role="user", text=query))
 
-        # Add assistant response contents to messages
-        for content in node.response.choices[0].contents:
-            messages.append(content)  # noqa: PERF402
+        # Add the complete assistant response as a single message item
+        # This keeps all content (text, tool calls, etc.) together as required by LLM APIs
+        assistant_message = node.response.to_message_item()
+        if assistant_message:
+            messages.append(assistant_message)
 
 
 if __name__ == "__main__":

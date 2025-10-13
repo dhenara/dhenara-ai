@@ -12,22 +12,16 @@ from google.genai.types import (
 
 # Copyright 2024-2025 Dhenara Inc. All rights reserved.
 from dhenara.ai.providers.google import GoogleAIClientBase
+from dhenara.ai.providers.google.message_converter import GoogleMessageConverter
 from dhenara.ai.types.genai import (
     AIModelCallResponse,
     AIModelCallResponseMetaData,
     ChatResponse,
     ChatResponseChoice,
     ChatResponseChoiceDelta,
-    ChatResponseContentItem,
     ChatResponseContentItemDelta,
-    ChatResponseGenericContentItem,
     ChatResponseGenericContentItemDelta,
-    ChatResponseStructuredOutput,
-    ChatResponseStructuredOutputContentItem,
-    ChatResponseTextContentItem,
     ChatResponseTextContentItemDelta,
-    ChatResponseToolCall,
-    ChatResponseToolCallContentItem,
     ChatResponseUsage,
     StreamingChatResponse,
 )
@@ -295,14 +289,10 @@ class GoogleAIChat(GoogleAIClientBase):
                     index=choice_index,
                     finish_reason=candidate.finish_reason,
                     stop_sequence=None,
-                    contents=[
-                        self.process_content_item(
-                            index=part_index,
-                            role=candidate.content.role,
-                            content_item=part,
-                        )
-                        for part_index, part in enumerate(candidate.content.parts or [])
-                    ],
+                    contents=GoogleMessageConverter.provider_message_to_content_items(
+                        message=candidate.content,
+                        structured_output_config=self.config.structured_output,
+                    ),
                     metadata={},  # Choice metadata
                 )
                 for choice_index, candidate in enumerate(response.candidates)
@@ -313,57 +303,6 @@ class GoogleAIChat(GoogleAIClientBase):
                 provider_metadata={},
             ),
         )
-
-    def process_content_item(
-        self,
-        index: int,
-        role: str,
-        content_item: Part,
-    ) -> ChatResponseContentItem:
-        if isinstance(content_item, Part):
-            if hasattr(content_item, "text") and content_item.text is not None:
-                _content = content_item.text
-
-                if self.config.structured_output is not None:
-                    structured_output = ChatResponseStructuredOutput.from_model_output(
-                        raw_response=_content,
-                        config=self.config.structured_output,
-                    )
-                    return ChatResponseStructuredOutputContentItem(
-                        index=index,
-                        role=role,
-                        structured_output=structured_output,
-                    )
-                else:
-                    return ChatResponseTextContentItem(
-                        index=index,
-                        role=role,
-                        text=_content,
-                    )
-
-            elif hasattr(content_item, "function_call") and content_item.function_call is not None:
-                content_item_dict = content_item.function_call.model_dump()
-
-                return ChatResponseToolCallContentItem(
-                    index=index,
-                    role=role,
-                    tool_call=ChatResponseToolCall.from_google_format(content_item_dict),
-                    metadata={},
-                )
-
-            else:
-                return ChatResponseGenericContentItem(
-                    index=index,
-                    role=role,
-                    metadata={"part": content_item.model_dump()},
-                )
-        else:
-            return self.get_unknown_content_type_item(
-                index=index,
-                role=role,
-                unknown_item=content_item,
-                streaming=False,
-            )
 
     # Streaming
     def process_content_item_delta(

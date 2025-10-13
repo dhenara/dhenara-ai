@@ -8,7 +8,6 @@ Usage:
 """
 
 import json
-import logging
 import random
 from typing import Literal
 
@@ -17,13 +16,11 @@ from pydantic import BaseModel, Field
 from dhenara.ai import AIModelClient
 from dhenara.ai.types import AIModelAPIProviderEnum, AIModelCallConfig, AIModelEndpoint, ResourceConfig
 from dhenara.ai.types.genai.dhenara.request import MessageItem, Prompt
-from dhenara.ai.types.genai.dhenara.response import ChatResponseStructuredOutputContentItem, ChatResponseTextContentItem
+
+# Imports no longer needed after refactoring to use response.to_message_item()
 from dhenara.ai.types.genai.foundation_models.anthropic.chat import Claude35Haiku
 from dhenara.ai.types.genai.foundation_models.google.chat import Gemini25Flash
 from dhenara.ai.types.genai.foundation_models.openai.chat import GPT5Nano
-
-# Enable debug logging to see detailed OpenAI response parsing
-logging.basicConfig(level=logging.DEBUG, format="%(name)s - %(levelname)s - %(message)s")
 
 
 # Define structured output schemas
@@ -101,28 +98,16 @@ def handle_turn_with_structured_output(
     if not response.chat_response or not response.chat_response.choices:
         raise RuntimeError("No response received")
 
-    choice = response.chat_response.choices[0]
+    # Add the complete assistant response to messages
+    # This keeps all content together as required by LLM APIs
+    assistant_message = response.chat_response.to_message_item()
+    if assistant_message:
+        current_messages.append(assistant_message)
 
-    # Find structured output content
-    structured_data = None
-
-    for content in choice.contents:
-        if isinstance(content, ChatResponseStructuredOutputContentItem):
-            if content.structured_output and content.structured_output.structured_data:
-                current_messages.append(content)
-        elif isinstance(content, ChatResponseTextContentItem):
-            current_messages.append(content)
+    # Extract structured output from response
+    structured_data = response.chat_response.structured()
 
     if not structured_data:
-        # Debug: print what we got
-        print(f"DEBUG: Response contents: {choice.contents}")
-        for i, content in enumerate(choice.contents):
-            print(
-                f"DEBUG: Content {i}: type={type(content)}, "
-                f"has_structured_output={hasattr(content, 'structured_output')}"
-            )
-            if hasattr(content, "text"):
-                print(f"DEBUG: Content {i} text: {content.text[:200] if content.text else None}")
         raise RuntimeError("No structured output in response")
 
     # Convert to Pydantic model
@@ -195,11 +180,14 @@ def run_multi_turn_with_structured_output():
     )
 
     story_response = client.generate(messages=story_messages)
-    story_text = ""
-    for content in story_response.chat_response.choices[0].contents:
-        messages.append(content)
-        if hasattr(content, "text") and content.text:
-            story_text = content.text
+
+    # Add the complete assistant response to messages
+    assistant_message = story_response.chat_response.to_message_item()
+    if assistant_message:
+        messages.append(assistant_message)
+
+    # Extract story text
+    story_text = story_response.chat_response.text() or ""
 
     print(f"Story: {story_text}\n")
 

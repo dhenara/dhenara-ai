@@ -1,11 +1,11 @@
 import logging
-import re
 from typing import Any
 
 from openai.types.chat import ChatCompletion, ChatCompletionMessage
 from openai.types.chat.chat_completion_chunk import ChatCompletionChunk, ChoiceDelta
 
 from dhenara.ai.providers.openai import OpenAIClientBase
+from dhenara.ai.providers.openai.message_converter import OpenAIMessageConverter
 from dhenara.ai.types.genai import (
     AIModelCallResponse,
     AIModelCallResponseMetaData,
@@ -14,14 +14,8 @@ from dhenara.ai.types.genai import (
     ChatResponseChoiceDelta,
     ChatResponseContentItem,
     ChatResponseContentItemDelta,
-    ChatResponseReasoningContentItem,
     ChatResponseReasoningContentItemDelta,
-    ChatResponseStructuredOutput,
-    ChatResponseStructuredOutputContentItem,
-    ChatResponseTextContentItem,
     ChatResponseTextContentItemDelta,
-    ChatResponseToolCall,
-    ChatResponseToolCallContentItem,
     ChatResponseUsage,
     StreamingChatResponse,
 )
@@ -304,78 +298,26 @@ class OpenAIChat(OpenAIClientBase):
         # INFO: response type will vary with API/Model providers.
         # if isinstance(content_item, (ChatCompletionMessage, AzureChatResponseMessage)):
 
-        if hasattr(content_item, "content") and content_item.content:
-            all_items = []
-            _content = content_item.content
-            _index = index
+        converted_items = OpenAIMessageConverter.provider_message_to_content_items(
+            message=content_item,
+            role=role,
+            index_start=index,
+            ai_model_provider=self.model_endpoint.ai_model.provider,
+            structured_output_config=self.config.structured_output,
+        )
 
-            if self.model_endpoint.ai_model.provider == AIModelProviderEnum.DEEPSEEK:
-                answer_content = None
-                reasoning_content = None
-                # Extract reasoning and answer content
-                think_match = re.search(r"<think>(.*?)</think>", _content, re.DOTALL)
-                if think_match:
-                    reasoning_content = think_match.group(1).strip()
-                    answer_content = re.sub(r"<think>.*?</think>", "", _content, flags=re.DOTALL).strip()
-
-                if reasoning_content:
-                    _index = index + 1
-                    _content = answer_content
-                    all_items.append(
-                        ChatResponseReasoningContentItem(
-                            index=index,
-                            role=role,
-                            thinking_text=reasoning_content,
-                        )
-                    )
-
-            if self.config.structured_output is not None:
-                structured_output = ChatResponseStructuredOutput.from_model_output(
-                    raw_response=_content,
-                    config=self.config.structured_output,
-                )
-                all_items.append(
-                    ChatResponseStructuredOutputContentItem(
-                        index=_index,
-                        role=role,
-                        structured_output=structured_output,
-                    )
-                )
-            else:
-                all_items.append(
-                    ChatResponseTextContentItem(
-                        index=_index,
-                        role=role,
-                        text=_content,
-                    )
-                )
-
-            return all_items
-
-        elif hasattr(content_item, "tool_calls") and content_item.tool_calls:
-            tool_call_items = []
-            for tool_call in content_item.tool_calls:
-                if isinstance(tool_call, dict):
-                    content_item_dict = tool_call
-                else:
-                    content_item_dict = tool_call.model_dump()
-
-                tool_call_items.append(
-                    ChatResponseToolCallContentItem(
-                        index=index,
-                        role=role,
-                        tool_call=ChatResponseToolCall.from_openai_format(content_item_dict),
-                        metadata={},
-                    )
-                )
-            return tool_call_items
-        else:
+        if not converted_items:
             return self.get_unknown_content_type_item(
                 index=index,
                 role=role,
                 unknown_item=content_item,
                 streaming=False,
             )
+
+        if len(converted_items) == 1:
+            return converted_items[0]
+
+        return converted_items
 
     # Streaming
     def process_content_item_delta(

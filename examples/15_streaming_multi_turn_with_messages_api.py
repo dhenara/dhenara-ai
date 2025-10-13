@@ -181,8 +181,10 @@ def run_streaming_multi_turn_with_messages():
 
         # Build messages for next turn
         messages.append(Prompt(role="user", text=query))
-        # Append all response contents at once (use list() to create a copy)
-        messages.extend(list(node.response.choices[0].contents))
+        # Add the complete assistant response as a single message item
+        assistant_message = node.response.to_message_item()
+        if assistant_message:
+            messages.append(assistant_message)
 
 
 if __name__ == "__main__":
