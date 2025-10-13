@@ -205,7 +205,8 @@ class AIModelProviderClientBase(ABC):
             if self.config.streaming:
                 stream = self.do_streaming_api_call_sync(api_call_params)
                 stream_generator = self._handle_streaming_response_sync(stream=stream)
-                # Note: Streaming responses are not captured as artifacts (too large/dynamic)
+                # Return the provider streaming generator; artifacts will be captured
+                # inside the streaming handler when the final aggregated response is produced.
                 return AIModelCallResponse(sync_stream_generator=stream_generator)
 
             response = self.do_api_call_sync(api_call_params)
@@ -284,7 +285,8 @@ class AIModelProviderClientBase(ABC):
             if self.config.streaming:
                 stream = await self.do_streaming_api_call_async(api_call_params)
                 stream_generator = self._handle_streaming_response_async(stream=stream)
-                # Note: Streaming responses are not captured as artifacts (too large/dynamic)
+                # Return the provider streaming generator; artifacts will be captured
+                # inside the streaming handler when the final aggregated response is produced.
                 return AIModelCallResponse(async_stream_generator=stream_generator)
 
             response = await self.do_api_call_async(api_call_params)
@@ -427,7 +429,35 @@ class AIModelProviderClientBase(ABC):
             yield done_chunk, None
 
             final_response = self.streaming_manager.complete()
-            logger.debug(f"API has stopped streaming, final_response={final_response}")
+            logger.debug("API has stopped streaming; capturing artifacts and yielding final response")
+
+            # Capture provider-level streaming summary as provider_response
+            try:
+                # Persist a compact provider_response built from consolidated choices and metadata
+                chat = final_response.chat_response
+                provider_payload = {
+                    "usage": (chat.usage.model_dump() if chat and chat.usage else None),
+                    "usage_charge": (chat.usage_charge.model_dump() if chat and chat.usage_charge else None),
+                    "choices": ([c.model_dump() for c in (chat.choices or [])] if chat else []),
+                    "metadata": (chat.metadata.model_dump() if chat and chat.metadata else {}),
+                }
+                self._capture_artifacts(
+                    stage="provider_response",
+                    data=provider_payload,
+                    filename="dai_provider_response.json",
+                )
+            except Exception as e:
+                logger.debug(f"Streaming artifact capture (provider_response) failed: {e}")
+
+            # Capture the final Dhenara response wrapper
+            try:
+                self._capture_artifacts(
+                    stage="dhenara_response",
+                    data=final_response.model_dump() if hasattr(final_response, "model_dump") else str(final_response),
+                    filename="dai_response.json",
+                )
+            except Exception as e:
+                logger.debug(f"Streaming artifact capture (dhenara_response) failed: {e}")
 
             yield None, final_response
             return  # Stop the generator
@@ -458,8 +488,35 @@ class AIModelProviderClientBase(ABC):
             done_chunk = self.streaming_manager.get_streaming_done_chunk()
             yield done_chunk, None
 
-            logger.debug("API has stopped streaming, processsing final response")
+            logger.debug("API has stopped streaming; capturing artifacts and yielding final response")
             final_response = self.streaming_manager.complete()
+
+            # Capture provider-level streaming summary as provider_response
+            try:
+                chat = final_response.chat_response
+                provider_payload = {
+                    "usage": (chat.usage.model_dump() if chat and chat.usage else None),
+                    "usage_charge": (chat.usage_charge.model_dump() if chat and chat.usage_charge else None),
+                    "choices": ([c.model_dump() for c in (chat.choices or [])] if chat else []),
+                    "metadata": (chat.metadata.model_dump() if chat and chat.metadata else {}),
+                }
+                self._capture_artifacts(
+                    stage="provider_response",
+                    data=provider_payload,
+                    filename="dai_provider_response.json",
+                )
+            except Exception as e:
+                logger.debug(f"Streaming artifact capture (provider_response) failed: {e}")
+
+            # Capture the final Dhenara response wrapper
+            try:
+                self._capture_artifacts(
+                    stage="dhenara_response",
+                    data=final_response.model_dump() if hasattr(final_response, "model_dump") else str(final_response),
+                    filename="dai_response.json",
+                )
+            except Exception as e:
+                logger.debug(f"Streaming artifact capture (dhenara_response) failed: {e}")
 
             yield None, final_response
             return  # Stop the generator
