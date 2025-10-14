@@ -13,32 +13,17 @@ import asyncio
 import datetime
 import random
 
+from include.shared_config import all_endpoints, load_resource_config
+
 from dhenara.ai import AIModelClient
-from dhenara.ai.types import (
-    AIModelAPIProviderEnum,
-    AIModelCallConfig,
-    AIModelEndpoint,
-    ChatResponseChunk,
-    ResourceConfig,
-)
+from dhenara.ai.types import AIModelCallConfig, AIModelEndpoint, ChatResponseChunk, ResourceConfig
 from dhenara.ai.types.conversation import ConversationNode
-from dhenara.ai.types.genai.foundation_models.anthropic.chat import Claude35Haiku
-from dhenara.ai.types.genai.foundation_models.google.chat import Gemini25FlashLite
-from dhenara.ai.types.genai.foundation_models.openai.chat import GPT5Nano
 from dhenara.ai.types.shared import SSEErrorResponse, SSEEventType, SSEResponse
 
 
 def build_resource_config() -> ResourceConfig:
-    rc = ResourceConfig()
-    rc.load_from_file(credentials_file="~/.env_keys/.dhenara_credentials.yaml")
-    anthropic_api = rc.get_api(AIModelAPIProviderEnum.ANTHROPIC)
-    openai_api = rc.get_api(AIModelAPIProviderEnum.OPEN_AI)
-    google_api = rc.get_api(AIModelAPIProviderEnum.GOOGLE_AI)
-    rc.model_endpoints = [
-        AIModelEndpoint(api=anthropic_api, ai_model=Claude35Haiku),
-        AIModelEndpoint(api=openai_api, ai_model=GPT5Nano),
-        AIModelEndpoint(api=google_api, ai_model=Gemini25FlashLite),
-    ]
+    rc = load_resource_config()
+    rc.model_endpoints = all_endpoints(rc)
     return rc
 
 
@@ -53,7 +38,7 @@ async def stream_turn(
         config=AIModelCallConfig(
             max_output_tokens=1000,
             max_reasoning_tokens=512,
-            reasoning_effort="minimal",
+            reasoning_effort="low",
             streaming=True,
             reasoning=True,
         ),
@@ -121,7 +106,7 @@ async def main():  # pragma: no cover - example script
     ]
     for i, q in enumerate(queries):
         ep = random.choice(rc.model_endpoints)
-        print(f"\n🔄 (Async) Turn {i+1} with {ep.ai_model.model_name} from {ep.api.provider}\n")
+        print(f"\n🔄 (Async) Turn {i + 1} with {ep.ai_model.model_name} from {ep.api.provider}\n")
         print(f"User: {q}")
         node = await stream_turn(q, instructions_by_turn[i], ep, history)
         history.append(node)

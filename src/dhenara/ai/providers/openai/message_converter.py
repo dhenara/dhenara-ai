@@ -152,3 +152,7 @@ class OpenAIMessageConverter:
     @staticmethod
     def choices_to_provider_messages(choices: Iterable[ChatResponseChoice]) -> list[dict[str, object]]:
         return [OpenAIMessageConverter.choice_to_provider_message(choice) for choice in choices]
+
+    # NOTE: For Responses API output, initial implementation extracts text via Responses client.
+    # If we later need richer conversion (tool calls or structured outputs surfaced in `output` items),
+    # add a `responses_output_to_content_items(...)` method here and call from OpenAIResponses.parse_response.

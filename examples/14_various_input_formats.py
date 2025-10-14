@@ -1,29 +1,15 @@
 import random
 
+from include.shared_config import all_endpoints, load_resource_config
+
 from dhenara.ai import AIModelClient
-from dhenara.ai.types import AIModelAPIProviderEnum, AIModelCallConfig, AIModelEndpoint, ResourceConfig
+from dhenara.ai.types import AIModelCallConfig
 from dhenara.ai.types.genai.dhenara import PromptMessageRoleEnum
 from dhenara.ai.types.genai.dhenara.request.data import Content, Prompt, PromptText, SystemInstruction
-from dhenara.ai.types.genai.foundation_models.anthropic.chat import Claude35Haiku
-from dhenara.ai.types.genai.foundation_models.google.chat import Gemini20FlashLite
-from dhenara.ai.types.genai.foundation_models.openai.chat import GPT4oMini
 
-# Initialize ResourceConfig
-resource_config = ResourceConfig()
-resource_config.load_from_file(
-    credentials_file="~/.env_keys/.dhenara_credentials.yaml",
-)
-
-anthropic_api = resource_config.get_api(AIModelAPIProviderEnum.ANTHROPIC)
-openai_api = resource_config.get_api(AIModelAPIProviderEnum.OPEN_AI)
-google_api = resource_config.get_api(AIModelAPIProviderEnum.GOOGLE_AI)
-
-# Create model endpoints
-resource_config.model_endpoints = [
-    AIModelEndpoint(api=anthropic_api, ai_model=Claude35Haiku),
-    AIModelEndpoint(api=openai_api, ai_model=GPT4oMini),
-    AIModelEndpoint(api=google_api, ai_model=Gemini20FlashLite),
-]
+# Initialize shared ResourceConfig and restrict to OpenAI endpoints
+resource_config = load_resource_config()
+resource_config.model_endpoints = all_endpoints(resource_config)
 
 
 def demonstrate_multiple_formats():

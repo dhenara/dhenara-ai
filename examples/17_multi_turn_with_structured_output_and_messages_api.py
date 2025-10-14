@@ -11,16 +11,12 @@ import json
 import random
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from include.shared_config import all_endpoints, load_resource_config
+from pydantic import BaseModel, Field  # Optional dependency for examples
 
 from dhenara.ai import AIModelClient
-from dhenara.ai.types import AIModelAPIProviderEnum, AIModelCallConfig, AIModelEndpoint, ResourceConfig
+from dhenara.ai.types import AIModelCallConfig, AIModelEndpoint
 from dhenara.ai.types.genai.dhenara.request import MessageItem, Prompt
-
-# Imports no longer needed after refactoring to use response.to_message_item()
-from dhenara.ai.types.genai.foundation_models.anthropic.chat import Claude35Haiku
-from dhenara.ai.types.genai.foundation_models.google.chat import Gemini25Flash
-from dhenara.ai.types.genai.foundation_models.openai.chat import GPT5Nano
 
 
 # Define structured output schemas
@@ -53,20 +49,8 @@ class StoryAnalysis(BaseModel):
 
 
 # Setup resource config
-resource_config = ResourceConfig()
-resource_config.load_from_file(
-    credentials_file="~/.env_keys/.dhenara_credentials.yaml",
-)
-
-anthropic_api = resource_config.get_api(AIModelAPIProviderEnum.ANTHROPIC)
-openai_api = resource_config.get_api(AIModelAPIProviderEnum.OPEN_AI)
-google_api = resource_config.get_api(AIModelAPIProviderEnum.GOOGLE_VERTEX_AI)
-
-resource_config.model_endpoints = [
-    AIModelEndpoint(api=anthropic_api, ai_model=Claude35Haiku),
-    AIModelEndpoint(api=openai_api, ai_model=GPT5Nano),
-    AIModelEndpoint(api=google_api, ai_model=Gemini25Flash),
-]
+resource_config = load_resource_config()
+resource_config.model_endpoints = all_endpoints(resource_config)
 
 
 def handle_turn_with_structured_output(
@@ -85,7 +69,7 @@ def handle_turn_with_structured_output(
     client = AIModelClient(
         model_endpoint=endpoint,
         config=AIModelCallConfig(
-            max_output_tokens=1000,
+            max_output_tokens=2000,
             streaming=False,
             # Pass Pydantic model directly, not wrapped in StructuredOutputConfig
             structured_output=output_schema,
@@ -175,7 +159,13 @@ def run_multi_turn_with_structured_output():
 
     client = AIModelClient(
         model_endpoint=model_endpoint,
-        config=AIModelCallConfig(max_output_tokens=200, streaming=False),
+        config=AIModelCallConfig(
+            max_output_tokens=2000,
+            max_reasoning_tokens=512,
+            reasoning_effort="low",
+            reasoning=True,
+            streaming=False,
+        ),
         is_async=False,
     )
 
@@ -188,7 +178,12 @@ def run_multi_turn_with_structured_output():
 
     # Extract story text
     story_text = story_response.chat_response.text() or ""
+    thinking = story_response.chat_response.reasoning()
 
+    if thinking:
+        print("----------------------")
+        print(f"Thinking: {thinking}\n")
+        print("----------------------")
     print(f"Story: {story_text}\n")
 
     # Now analyze it with structured output

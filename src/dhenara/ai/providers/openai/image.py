@@ -178,3 +178,7 @@ class OpenAIImage(OpenAIClientBase):
             usage=usage,
             usage_charge=usage_charge,
         )
+
+
+# TODO(phase-2): Support image generation via Responses API (modalities) once we adopt
+# text+vision/image unification for OpenAI. For Phase 1, keep Images endpoint path intact.

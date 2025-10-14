@@ -9,6 +9,13 @@ from .formatter import OpenAIFormatter
 
 logger = logging.getLogger(__name__)
 
+"""
+Hardcoded switch for adopting OpenAI Responses API.
+Phase 1: keep legacy Chat/Image as default. Toggle to True to route OpenAI to Responses
+path (implemented in a dedicated client class; Azure providers remain on legacy chat).
+"""
+OPENAI_USE_RESPONSES_DEFAULT = True
+
 
 # -----------------------------------------------------------------------------
 class OpenAIClientBase(AIModelProviderClientBase):
@@ -54,7 +61,7 @@ class OpenAIClientBase(AIModelProviderClientBase):
         logger.error(error_msg)
         raise ValueError(error_msg)
 
-    def _setup_client_sync(self) -> OpenAI | AzureOpenAI:
+    def _setup_client_sync(self):
         """Get the appropriate sync OpenAI client"""
         api = self.model_endpoint.api
         client_type, params = self._get_client_params(api)
@@ -64,15 +71,21 @@ class OpenAIClientBase(AIModelProviderClientBase):
         elif client_type == "azure_openai":
             return AzureOpenAI(**params)
         else:  # azure_ai
-            from azure.ai.inference import ChatCompletionsClient
-            from azure.core.credentials import AzureKeyCredential
+            import importlib
 
-            return ChatCompletionsClient(
-                endpoint=params["endpoint"],
-                credential=AzureKeyCredential(key=params["credential"]),
-            )
+            try:
+                ai_inference = importlib.import_module("azure.ai.inference")
+                azure_core = importlib.import_module("azure.core.credentials")
+                return ai_inference.ChatCompletionsClient(
+                    endpoint=params["endpoint"],
+                    credential=azure_core.AzureKeyCredential(key=params["credential"]),
+                )
+            except Exception as e:
+                raise ImportError(
+                    "Azure AI Inference client not available. Install azure-ai-inference and azure-core."
+                ) from e
 
-    async def _setup_client_async(self) -> AsyncOpenAI | AsyncAzureOpenAI:
+    async def _setup_client_async(self):
         """Get the appropriate async OpenAI client"""
         api = self.model_endpoint.api
         client_type, params = self._get_client_params(api)
@@ -82,10 +95,16 @@ class OpenAIClientBase(AIModelProviderClientBase):
         elif client_type == "azure_openai":
             return AsyncAzureOpenAI(**params)
         else:  # azure_ai
-            from azure.ai.inference.aio import ChatCompletionsClient
-            from azure.core.credentials import AzureKeyCredential
+            import importlib
 
-            return ChatCompletionsClient(
-                endpoint=params["endpoint"],
-                credential=AzureKeyCredential(key=params["credential"]),
-            )
+            try:
+                ai_inference_aio = importlib.import_module("azure.ai.inference.aio")
+                azure_core = importlib.import_module("azure.core.credentials")
+                return ai_inference_aio.ChatCompletionsClient(
+                    endpoint=params["endpoint"],
+                    credential=azure_core.AzureKeyCredential(key=params["credential"]),
+                )
+            except Exception as e:
+                raise ImportError(
+                    "Azure AI Inference async client not available. Install azure-ai-inference and azure-core."
+                ) from e

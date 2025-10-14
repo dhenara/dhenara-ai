@@ -2,20 +2,16 @@ import datetime
 import logging
 import random
 
-from pydantic import BaseModel, Field
+from include.shared_config import all_endpoints, load_resource_config
+from pydantic import BaseModel, Field  # Optional dependency for examples
 
 from dhenara.ai import AIModelClient
 from dhenara.ai.types import (
-    AIModelAPIProviderEnum,
     AIModelCallConfig,
     AIModelEndpoint,
-    ResourceConfig,
     # StructuredOutputConfig,
 )
 from dhenara.ai.types.conversation import ConversationNode
-from dhenara.ai.types.genai.foundation_models.anthropic.chat import Claude35Haiku
-from dhenara.ai.types.genai.foundation_models.google.chat import Gemini20FlashLite
-from dhenara.ai.types.genai.foundation_models.openai.chat import GPT4oMini
 
 # Configure logging
 logging.basicConfig(
@@ -28,21 +24,8 @@ logger.setLevel(logging.INFO)
 
 # Initialize all model enpoints and collect it into a ResourceConfig.
 # Ideally, you will do once in your application when it boots, and make it global
-resource_config = ResourceConfig()
-resource_config.load_from_file(
-    credentials_file="~/.env_keys/.dhenara_credentials.yaml",  # Path to your file
-)
-
-anthropic_api = resource_config.get_api(AIModelAPIProviderEnum.ANTHROPIC)
-openai_api = resource_config.get_api(AIModelAPIProviderEnum.OPEN_AI)
-google_api = resource_config.get_api(AIModelAPIProviderEnum.GOOGLE_AI)
-
-# Create various model endpoints, and add them to resource config
-resource_config.model_endpoints = [
-    AIModelEndpoint(api=anthropic_api, ai_model=Claude35Haiku),
-    AIModelEndpoint(api=openai_api, ai_model=GPT4oMini),
-    AIModelEndpoint(api=google_api, ai_model=Gemini20FlashLite),
-]
+resource_config = load_resource_config()
+resource_config.model_endpoints = all_endpoints(resource_config)
 
 
 class ProductRatings(BaseModel):

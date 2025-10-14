@@ -1,33 +1,15 @@
 import datetime
 import random
 
+from include.shared_config import all_endpoints, load_resource_config
+
 from dhenara.ai import AIModelClient
-from dhenara.ai.types import AIModelAPIProviderEnum, AIModelCallConfig, AIModelEndpoint, ResourceConfig
+from dhenara.ai.types import AIModelCallConfig, AIModelEndpoint
 from dhenara.ai.types.conversation._node import ConversationNode
-from dhenara.ai.types.genai.foundation_models.anthropic.chat import Claude35Haiku, Claude40Sonnet
-from dhenara.ai.types.genai.foundation_models.google.chat import Gemini25Flash, Gemini25FlashLite
-from dhenara.ai.types.genai.foundation_models.openai.chat import GPT5Nano, O3Mini
 
-# Initialize all model enpoints and collect it into a ResourceConfig.
-# Ideally, you will do once in your application when it boots, and make it global
-resource_config = ResourceConfig()
-resource_config.load_from_file(
-    credentials_file="~/.env_keys/.dhenara_credentials.yaml",  # Path to your file
-)
-
-anthropic_api = resource_config.get_api(AIModelAPIProviderEnum.ANTHROPIC)
-openai_api = resource_config.get_api(AIModelAPIProviderEnum.OPEN_AI)
-google_api = resource_config.get_api(AIModelAPIProviderEnum.GOOGLE_VERTEX_AI)
-
-# Create various model endpoints, and add them to resource config
-resource_config.model_endpoints = [
-    AIModelEndpoint(api=anthropic_api, ai_model=Claude40Sonnet),
-    AIModelEndpoint(api=anthropic_api, ai_model=Claude35Haiku),
-    AIModelEndpoint(api=openai_api, ai_model=O3Mini),
-    AIModelEndpoint(api=openai_api, ai_model=GPT5Nano),
-    AIModelEndpoint(api=google_api, ai_model=Gemini25Flash),
-    AIModelEndpoint(api=google_api, ai_model=Gemini25FlashLite),
-]
+# Initialize a shared ResourceConfig and limit to OpenAI endpoints for this run
+resource_config = load_resource_config()
+resource_config.model_endpoints = all_endpoints(resource_config)
 
 
 def handle_conversation_turn(
@@ -41,7 +23,7 @@ def handle_conversation_turn(
     client = AIModelClient(
         model_endpoint=endpoint,
         config=AIModelCallConfig(
-            max_output_tokens=1000,
+            max_output_tokens=2000,
             max_reasoning_tokens=1024,  # 128,
             reasoning_effort="low",
             streaming=False,

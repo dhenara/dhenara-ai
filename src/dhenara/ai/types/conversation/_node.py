@@ -44,8 +44,11 @@ class ConversationNode(BaseModel):
                 max_words_file=max_words_file,
             ),
         )
-        response_prompt = self.response.to_prompt(
-            max_words_text=max_words_response,
-        )
+        response_prompt = None
+        if self.response:
+            response_prompt = self.response.to_prompt(
+                max_words_text=max_words_response,
+            )
 
-        return [question_prompt, response_prompt]
+        # Filter out None entries to avoid downstream formatting errors
+        return [p for p in [question_prompt, response_prompt] if p is not None]

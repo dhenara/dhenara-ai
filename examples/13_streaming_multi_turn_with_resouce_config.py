@@ -1,38 +1,16 @@
-# streaming_multi_turn_eg.py
 import datetime
 import random
 
+from include.shared_config import all_endpoints, load_resource_config
+
 from dhenara.ai import AIModelClient
-from dhenara.ai.types import (
-    AIModelAPIProviderEnum,
-    AIModelCallConfig,
-    AIModelEndpoint,
-    ChatResponseChunk,
-    ResourceConfig,
-)
+from dhenara.ai.types import AIModelCallConfig, AIModelEndpoint, ChatResponseChunk
 from dhenara.ai.types.conversation import ConversationNode
-from dhenara.ai.types.genai.foundation_models.anthropic.chat import Claude35Haiku
-from dhenara.ai.types.genai.foundation_models.google.chat import Gemini25FlashLite
-from dhenara.ai.types.genai.foundation_models.openai.chat import GPT5Nano
 from dhenara.ai.types.shared import SSEErrorResponse, SSEEventType, SSEResponse
 
-# Initialize all model endpoints and collect it into a ResourceConfig.
-# Ideally, you will do once in your application when it boots, and make it global
-resource_config = ResourceConfig()
-resource_config.load_from_file(
-    credentials_file="~/.env_keys/.dhenara_credentials.yaml",  # Path to your file
-)
-
-anthropic_api = resource_config.get_api(AIModelAPIProviderEnum.ANTHROPIC)
-openai_api = resource_config.get_api(AIModelAPIProviderEnum.OPEN_AI)
-google_api = resource_config.get_api(AIModelAPIProviderEnum.GOOGLE_AI)
-
-# Create various model endpoints, and add them to resource config
-resource_config.model_endpoints = [
-    AIModelEndpoint(api=anthropic_api, ai_model=Claude35Haiku),
-    AIModelEndpoint(api=openai_api, ai_model=GPT5Nano),
-    AIModelEndpoint(api=google_api, ai_model=Gemini25FlashLite),
-]
+# Initialize shared resource config and restrict to OpenAI endpoints
+resource_config = load_resource_config()
+resource_config.model_endpoints = all_endpoints(resource_config)
 
 
 class StreamProcessor:
@@ -113,7 +91,7 @@ def handle_streaming_conversation_turn(
         config=AIModelCallConfig(
             max_output_tokens=1000,
             max_reasoning_tokens=512,  # 128,
-            reasoning_effort="minimal",
+            reasoning_effort="low",
             streaming=True,  # Enable streaming
             reasoning=True,
         ),

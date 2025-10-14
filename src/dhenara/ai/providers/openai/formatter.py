@@ -18,7 +18,13 @@ from dhenara.ai.types.genai.dhenara.request import (
     ToolDefinition,
 )
 from dhenara.ai.types.genai.dhenara.request.data import FormattedPrompt
-from dhenara.ai.types.genai.dhenara.response import ChatResponseChoice
+from dhenara.ai.types.genai.dhenara.response import (
+    ChatResponseChoice,
+    ChatResponseReasoningContentItem,
+    ChatResponseStructuredOutputContentItem,
+    ChatResponseTextContentItem,
+    ChatResponseToolCallContentItem,
+)
 from dhenara.ai.types.shared.file import FileFormatEnum, GenericFile
 
 logger = logging.getLogger(__name__)
@@ -87,6 +93,152 @@ class OpenAIFormatter(BaseFormatter):
             role = cls.role_map.get(formatted_prompt.role)
 
         return {"role": role, "content": formatted_prompt.text}
+
+    # ---------------- Responses-specific helpers ----------------
+    @classmethod
+    def convert_prompt_responses(
+        cls,
+        formatted_or_provider_prompt: dict,
+        model_endpoint: AIModelEndpoint | None = None,
+    ) -> dict[str, Any]:
+        """Convert a formatted provider prompt dict (as our convert_prompt returns) into Responses input message.
+
+        Accepts provider-formatted dict with keys like {role, content}, where content can be string or list with
+        {type: 'text'|'image_url', ...}. Produces Responses message:
+        { role, content: [{ type: 'input_text'|'input_image', ... }] }
+        """
+        role = formatted_or_provider_prompt.get("role")
+        content = formatted_or_provider_prompt.get("content")
+
+        # Normalize to a list of items; assistant role expects output_* types per Responses API
+        items: list[dict[str, Any]] = []
+        is_assistant = role == "assistant"
+        text_type = "output_text" if is_assistant else "input_text"
+        image_type = "input_image"  # assistant historical images are uncommon; keep as input image for now
+        if isinstance(content, list):
+            for c in content:
+                ctype = c.get("type")
+                if ctype == "text":
+                    items.append({"type": text_type, "text": c.get("text", "")})
+                elif ctype == "image_url":
+                    iurl = c.get("image_url", {})
+                    url = iurl.get("url")
+                    if url:
+                        items.append({"type": image_type, "image_url": url})
+                else:
+                    # Unknown; coerce to text
+                    txt = c.get("text") or str(c)
+                    items.append({"type": text_type, "text": txt})
+        else:
+            # Simple string content
+            items.append({"type": text_type, "text": str(content) if content is not None else ""})
+
+        return {"role": role, "content": items}
+
+    @classmethod
+    def convert_instruction_prompt_responses(
+        cls,
+        provider_instruction_prompt: dict,
+        model_endpoint: AIModelEndpoint | None = None,
+    ) -> dict[str, Any]:
+        # provider_instruction_prompt: {role, content: string}
+        role = provider_instruction_prompt.get("role", "system")
+        content = provider_instruction_prompt.get("content", "")
+        # Always input_text for system/user
+        return {"role": role, "content": [{"type": "input_text", "text": content}]}
+
+    @classmethod
+    def convert_message_item_responses(
+        cls,
+        message_item: MessageItem,
+        model_endpoint: AIModelEndpoint | None = None,
+        **kwargs,
+    ) -> dict[str, Any] | list[dict[str, Any]]:
+        """Responses equivalent of convert_message_item.
+
+        - Prompt -> convert via format_prompt then convert_prompt_responses
+        - ToolCallResult / ToolCallResultsMessage -> map to {role: 'tool', content: [{input_text}]}
+        - ChatResponseChoice (assistant prior) -> flatten to {role: 'assistant', content: [{input_text}]}
+        """
+        if isinstance(message_item, Prompt):
+            provider_msg = cls.format_prompt(
+                prompt=message_item,
+                model_endpoint=model_endpoint,
+                **kwargs,
+            )
+            return cls.convert_prompt_responses(provider_msg, model_endpoint)
+
+        if isinstance(message_item, ToolCallResult):
+            # Responses API uses function_call_output, not role='tool'
+            return {
+                "type": "function_call_output",
+                "call_id": message_item.call_id,
+                "output": message_item.as_text(),
+            }
+
+        if isinstance(message_item, ToolCallResultsMessage):
+            # Return list of function_call_output items
+            return [
+                {
+                    "type": "function_call_output",
+                    "call_id": result.call_id,
+                    "output": result.as_text(),
+                }
+                for result in message_item.results
+            ]
+
+        if isinstance(message_item, ChatResponseChoice):
+            # Convert assistant choice: map all content types to appropriate Responses input items
+            # Responses API expects function_call items and message items separately
+            import json as _json
+
+            result_items: list[dict] = []
+
+            # Collect text/reasoning for message
+            texts: list[str] = []
+            for c in message_item.contents:
+                if isinstance(c, ChatResponseTextContentItem) and c.text:
+                    texts.append(c.text)
+                elif isinstance(c, ChatResponseReasoningContentItem) and c.thinking_text:
+                    texts.append(c.thinking_text)
+                elif isinstance(c, ChatResponseStructuredOutputContentItem) and c.structured_output:
+                    try:
+                        if c.structured_output.structured_data:
+                            texts.append(_json.dumps(c.structured_output.structured_data))
+                    except Exception:
+                        pass
+                elif isinstance(c, ChatResponseToolCallContentItem):
+                    # Add function_call items for Responses API
+                    tc = c.tool_call
+                    result_items.append(
+                        {
+                            "type": "function_call",
+                            "call_id": tc.id,
+                            "name": tc.name,
+                            "arguments": _json.dumps(tc.arguments)
+                            if isinstance(tc.arguments, dict)
+                            else str(tc.arguments),
+                        }
+                    )
+
+            # Add message if there's any text content
+            if texts:
+                result_items.insert(
+                    0,
+                    {
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": "\n".join(texts)}],
+                    },
+                )
+
+            # Return list if multiple items, single dict if one
+            if len(result_items) == 1:
+                return result_items[0]
+            if result_items:
+                return result_items
+            return {"role": "assistant", "content": [{"type": "output_text", "text": ""}]}
+
+        raise ValueError(f"Unsupported message item type for Responses formatting: {type(message_item)}")
 
     @classmethod
     def convert_files_to_provider_content(
@@ -256,6 +408,39 @@ class OpenAIFormatter(BaseFormatter):
             "function": cls.convert_function_definition(tool.function),
         }
 
+    # Responses-specific tool conversion: name is top-level alongside type
+    @classmethod
+    def convert_tool_responses(
+        cls,
+        tool: ToolDefinition,
+        model_endpoint: AIModelEndpoint | None = None,
+    ) -> Any:
+        """Convert ToolDefinition to OpenAI Responses format.
+
+        In Responses API, tools expect function name at the top-level next to type.
+        Example:
+        {"type": "function", "name": "foo", "parameters": {...}, "description": "..."}
+        """
+        func_def = tool.function
+        res: dict[str, Any] = {
+            "type": "function",
+            "name": func_def.name,
+            "parameters": cls.convert_function_parameters(func_def.parameters),
+        }
+        if getattr(func_def, "description", None):
+            res["description"] = func_def.description
+        return res
+
+    @classmethod
+    def format_tools_responses(
+        cls,
+        tools: list[ToolDefinition] | None,
+        model_endpoint: AIModelEndpoint | None = None,
+    ) -> list[dict] | None:
+        if tools:
+            return [cls.convert_tool_responses(tool=tool, model_endpoint=model_endpoint) for tool in tools]
+        return None
+
     @classmethod
     def convert_tool_choice(
         cls,
@@ -276,6 +461,57 @@ class OpenAIFormatter(BaseFormatter):
             return {"type": "function", "name": tool_choice.specific_tool_name}
 
     @classmethod
+    def _clean_schema_for_openai_strict_mode(cls, schema: dict[str, Any]) -> dict[str, Any]:
+        """Clean JSON schema to comply with OpenAI's strict mode requirements.
+
+        - Remove additional keywords from $ref locations (OpenAI doesn't allow description/title with $ref)
+        - Remove numeric constraints (minimum/maximum from Pydantic ge/le)
+        - Add additionalProperties: false everywhere
+        """
+        import copy
+
+        schema = copy.deepcopy(schema)
+
+        def clean_object(obj: dict[str, Any]) -> None:
+            """Recursively clean a schema object."""
+            if isinstance(obj, dict):
+                # If this has a $ref, remove all other keys except $ref
+                if "$ref" in obj:
+                    ref_value = obj["$ref"]
+                    obj.clear()
+                    obj["$ref"] = ref_value
+                    return
+
+                # Set additionalProperties to false for object types
+                if obj.get("type") == "object" and "additionalProperties" not in obj:
+                    obj["additionalProperties"] = False
+
+                # Remove numeric constraints
+                obj.pop("minimum", None)
+                obj.pop("maximum", None)
+                obj.pop("exclusiveMinimum", None)
+                obj.pop("exclusiveMaximum", None)
+
+                # Recursively process nested objects
+                for _key, value in list(obj.items()):
+                    if isinstance(value, dict):
+                        clean_object(value)
+                    elif isinstance(value, list):
+                        for item in value:
+                            if isinstance(item, dict):
+                                clean_object(item)
+
+        # Clean root schema
+        clean_object(schema)
+
+        # Clean $defs if present
+        if "$defs" in schema:
+            for def_schema in schema["$defs"].values():
+                clean_object(def_schema)
+
+        return schema
+
+    @classmethod
     def convert_structured_output(
         cls,
         structured_output: StructuredOutputConfig,
@@ -285,23 +521,11 @@ class OpenAIFormatter(BaseFormatter):
         # Get the original JSON schema from Pydantic or dict
         schema = structured_output.get_schema()
 
-        # Ensure additionalProperties is set in the root schema and all nested definitions
-        schema["additionalProperties"] = False
-
-        # Also set additionalProperties for nested schemas
-        if "$defs" in schema:
-            for def_schema in schema["$defs"].values():
-                def_schema["additionalProperties"] = False
+        # Clean schema for OpenAI's strict mode
+        schema = cls._clean_schema_for_openai_strict_mode(schema)
 
         # Extract the name from the title and use it for schema name
         schema_name = schema.get("title", "output")
-
-        # Clean up JSON Schema keywords that OpenAI doesn't permit
-        if "properties" in schema:
-            for prop in schema["properties"].values():
-                # Remove numeric constraints that are not permitted. (from pydantic ge, le)
-                prop.pop("minimum", None)
-                prop.pop("maximum", None)
 
         # Return formatted response format
         return {

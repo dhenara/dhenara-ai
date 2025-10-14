@@ -12,7 +12,6 @@ from dhenara.ai.types import (
     ImageContentFormat,
     ResourceConfig,
 )
-from dhenara.ai.types.genai.foundation_models.google.image import Imagen3Fast
 from dhenara.ai.types.genai.foundation_models.openai.image import DallE3, GPTImage1
 
 # Configure logging
@@ -32,12 +31,10 @@ resource_config.load_from_file(
 )
 
 openai_api = resource_config.get_api(AIModelAPIProviderEnum.OPEN_AI)
-vertext_api = resource_config.get_api(AIModelAPIProviderEnum.GOOGLE_VERTEX_AI)
 
-# Create various model endpoints, and add them to resource config
+# Create OpenAI image model endpoints
 gpt_ep = AIModelEndpoint(api=openai_api, ai_model=GPTImage1)
 dalle_ep = AIModelEndpoint(api=openai_api, ai_model=DallE3)
-imagen_ep = AIModelEndpoint(api=vertext_api, ai_model=Imagen3Fast)
 
 
 def print_response(response):
@@ -118,24 +115,4 @@ response = client.generate(
 )
 print_response(response)
 
-# Google
-# Create the client
-client = AIModelClient(
-    model_endpoint=imagen_ep,
-    config=AIModelCallConfig(
-        options={
-            "aspect_ratio": "1:1",
-            "number_of_images": 1,
-            "person_generation": "dont_allow",
-        },
-    ),
-    is_async=False,  # Sync mode
-)
-
-
-response = client.generate(
-    prompt=user_query,
-    context=[],
-    instructions=[],
-)
-print_response(response)
+## Google Imagen example removed for now (OpenAI only in this turn)
