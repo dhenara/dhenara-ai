@@ -9,69 +9,16 @@ Usage:
 import datetime
 import random
 
+from include.console_renderer import StreamingRenderer, render_usage
 from include.shared_config import all_endpoints, load_resource_config
 
 from dhenara.ai import AIModelClient
-from dhenara.ai.types import AIModelCallConfig, AIModelEndpoint, ChatResponseChunk
+from dhenara.ai.types import AIModelCallConfig, AIModelEndpoint
 from dhenara.ai.types.conversation import ConversationNode
 from dhenara.ai.types.genai.dhenara.request import MessageItem, Prompt
-from dhenara.ai.types.shared import SSEErrorResponse, SSEEventType, SSEResponse
 
 resource_config = load_resource_config()
 resource_config.model_endpoints = all_endpoints(resource_config)
-
-
-class StreamProcessor:
-    def __init__(self):
-        self.full_response_text = ""
-
-    def process_stream_response(self, response):
-        print("\nModel Response: ", end="", flush=True)
-        self.full_response_text = ""
-
-        try:
-            for chunk, final_response in response.stream_generator:
-                if chunk:
-                    if isinstance(chunk, SSEErrorResponse):
-                        print(f"\nError: {chunk.data.error_code}: {chunk.data.message}")
-                        break
-
-                    if not isinstance(chunk, SSEResponse):
-                        print(f"\nError: Unknown type {type(chunk)}")
-                        continue
-
-                    if chunk.event == SSEEventType.ERROR:
-                        print(f"\nStream Error: {chunk}")
-                        break
-
-                    if chunk.event == SSEEventType.TOKEN_STREAM:
-                        text = self.process_stream_chunk(chunk.data)
-                        if text:
-                            self.full_response_text += text
-
-                if final_response:
-                    return final_response
-        except KeyboardInterrupt:
-            print("\nWarning: Stream interrupted by user")
-        except Exception as e:
-            print(f"\nError processing stream: {e!s}")
-        finally:
-            print("\n")
-        return None
-
-    def process_stream_chunk(self, chunk: ChatResponseChunk):
-        """Process the content from a stream chunk and return extracted text"""
-        text_delta = ""
-        for choice_delta in chunk.choice_deltas:
-            if not choice_delta.content_deltas:
-                continue
-
-            for content_delta in choice_delta.content_deltas:
-                text = content_delta.get_text_delta()
-                if text:
-                    print(f"{text}", end="", flush=True)
-                    text_delta += text
-        return text_delta
 
 
 def handle_streaming_turn_with_messages(
@@ -79,18 +26,18 @@ def handle_streaming_turn_with_messages(
     instructions: list[str],
     endpoint: AIModelEndpoint,
     messages: list[MessageItem],
-    stream_processor: StreamProcessor,
+    streaming_renderer: StreamingRenderer,
 ) -> ConversationNode:
     """Process a streaming conversation turn using messages API."""
 
     client = AIModelClient(
         model_endpoint=endpoint,
         config=AIModelCallConfig(
-            max_output_tokens=1000,
-            max_reasoning_tokens=512,
+            max_output_tokens=2000,
+            max_reasoning_tokens=1024,
             reasoning_effort="low",
-            streaming=True,
             reasoning=True,
+            streaming=True,
         ),
         is_async=False,
     )
@@ -105,7 +52,7 @@ def handle_streaming_turn_with_messages(
     )
 
     # Process the streaming response
-    final_response = stream_processor.process_stream_response(response)
+    final_response = streaming_renderer.process_stream(response)
 
     if not final_response:
         raise RuntimeError("Failed to get final response from stream")
@@ -114,7 +61,7 @@ def handle_streaming_turn_with_messages(
     node = ConversationNode(
         user_query=user_query,
         input_files=[],
-        response=final_response.chat_response,
+        response=final_response,
         timestamp=datetime.datetime.now().isoformat(),
     )
 
@@ -136,7 +83,7 @@ def run_streaming_multi_turn_with_messages():
         ["Bring the story to a satisfying conclusion."],
     ]
 
-    stream_processor = StreamProcessor()
+    streaming_renderer = StreamingRenderer()
     messages: list[MessageItem] = []
 
     print("=" * 80)
@@ -148,15 +95,18 @@ def run_streaming_multi_turn_with_messages():
 
         print(f"\n🔄 Turn {i + 1} with {model_endpoint.ai_model.model_name} from {model_endpoint.api.provider}\n")
         print(f"User: {query}")
-        print(f"Model: {model_endpoint.ai_model.model_name}")
+        print(f"Model: {model_endpoint.ai_model.model_name}\n")
 
         node = handle_streaming_turn_with_messages(
             user_query=query,
             instructions=instructions_by_turn[i],
             endpoint=model_endpoint,
             messages=messages,
-            stream_processor=stream_processor,
+            streaming_renderer=streaming_renderer,
         )
+
+        # Display usage
+        render_usage(node.response)
 
         print("-" * 80)
 

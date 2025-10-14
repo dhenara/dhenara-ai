@@ -2,6 +2,7 @@ import datetime
 import logging
 import random
 
+from include.console_renderer import render_response, render_usage
 from include.shared_config import all_endpoints, load_resource_config
 from pydantic import BaseModel, Field  # Optional dependency for examples
 
@@ -55,7 +56,10 @@ def handle_conversation_turn(
     client = AIModelClient(
         model_endpoint=endpoint,
         config=AIModelCallConfig(
-            max_output_tokens=1000,
+            max_output_tokens=2000,
+            max_reasoning_tokens=1024,
+            reasoning_effort="low",
+            reasoning=True,
             streaming=False,
             tools=None,
             tool_choice=None,
@@ -121,8 +125,11 @@ def run_multi_turn_conversation():
         # Display the conversation
         print(f"User: {query}")
         print(f"Model: {model_endpoint.ai_model.model_name}\n")
-        for content in node.response.choices[0].contents:
-            print(f"Model Response Content {content.index}:\n{content.get_text()}\n")
+
+        # Render response and usage
+        render_response(node.response)
+        render_usage(node.response)
+
         print("-" * 80)
 
         # Append to nodes, so that next turn will have the context generated

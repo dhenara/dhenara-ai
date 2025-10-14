@@ -1,6 +1,7 @@
 import datetime
 import random
 
+from include.console_renderer import render_response, render_usage
 from include.shared_config import all_endpoints, load_resource_config
 
 from dhenara.ai import AIModelClient
@@ -24,10 +25,10 @@ def handle_conversation_turn(
         model_endpoint=endpoint,
         config=AIModelCallConfig(
             max_output_tokens=2000,
-            max_reasoning_tokens=1024,  # 128,
+            max_reasoning_tokens=1024,
             reasoning_effort="low",
-            streaming=False,
             reasoning=True,
+            streaming=False,
         ),
         is_async=False,
     )
@@ -91,13 +92,10 @@ def run_multi_turn_conversation():
         # Display the conversation
         print(f"User: {query}")
         print(f"Model: {model_endpoint.ai_model.model_name}\n")
-        print_success = False
-        for content in node.response.choices[0].contents:
-            print_success = print_success or content.get_text()
-            print(f"Model Response Content {content.index}:\n{content.get_text()}\n")
 
-        if not print_success:
-            print(f"No Content in model response. Response is  {node.response.model_dump()}\n")
+        # Render response and usage
+        render_response(node.response)
+        render_usage(node.response)
 
         print("-" * 80)
 

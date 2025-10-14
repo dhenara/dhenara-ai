@@ -3,6 +3,7 @@ import logging
 import random
 from typing import Any
 
+from include.console_renderer import render_response, render_usage
 from include.shared_config import all_endpoints, load_resource_config
 
 from dhenara.ai import AIModelClient
@@ -133,7 +134,10 @@ def handle_conversation_turn(
     client = AIModelClient(
         model_endpoint=endpoint,
         config=AIModelCallConfig(
-            max_output_tokens=1000,
+            max_output_tokens=2000,
+            max_reasoning_tokens=1024,
+            reasoning_effort="low",
+            reasoning=False,  # Thinking may not be enabled when tool_choice forces tool use.
             streaming=False,
             tools=[get_weather_tool, schedule_meeting_tool],  # Add both tools
             tool_choice=ToolChoice(type="one_or_more"),
@@ -195,16 +199,17 @@ def run_multi_turn_conversation():
         # Display the conversation
         print(f"User: {query}")
         print(f"Model: {model_endpoint.ai_model.model_name}\n")
-        for content in node.response.choices[0].contents:
-            print(f"Model Response Content {content.index}:\n{content.get_text()}\n")
 
+        # Use renderer to display response
+        render_response(node.response)
+        render_usage(node.response)
+
+        # Also show tool call execution details
+        for content in node.response.choices[0].contents:
             if content.type == "tool_call" and content.tool_call:
                 tool_call = content.tool_call
                 function_name = tool_call.name
                 arguments = tool_call.arguments
-                print("\n📞 Function call detected!")
-                print(f"Function: {function_name}")
-                print(f"Arguments: {arguments}")
 
                 # Call the fns
                 if function_name == "get_weather":
@@ -212,12 +217,10 @@ def run_multi_turn_conversation():
                 elif function_name == "schedule_meeting":
                     result = schedule_meeting(**arguments)
                 else:
-                    print(f"Unknown function: {function_name}")
+                    result = {"error": f"Unknown function: {function_name}"}
 
-                # Add a debug message to know the fn was called
-                print(f"function result: {result}")
-                # In a real implementation, you would process this result
-                # and potentially send it back to the model
+                print(f"\n  ▶️  Function executed: {function_name}")
+                print(f"     Result: {result}")
 
         print("-" * 80)
         # Append to nodes, so that next turn will have the context generated

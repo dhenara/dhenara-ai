@@ -24,7 +24,7 @@ def demonstrate_multiple_formats():
     client = AIModelClient(
         model_endpoint=model_endpoint,
         config=AIModelCallConfig(
-            max_output_tokens=1000,
+            max_output_tokens=2000,
             streaming=False,
         ),
         is_async=False,

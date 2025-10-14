@@ -13,10 +13,11 @@ import asyncio
 import datetime
 import random
 
+from include.console_renderer import StreamingRenderer, render_usage
 from include.shared_config import all_endpoints, load_resource_config
 
 from dhenara.ai import AIModelClient
-from dhenara.ai.types import AIModelCallConfig, AIModelEndpoint, ChatResponseChunk, ResourceConfig
+from dhenara.ai.types import AIModelCallConfig, AIModelEndpoint, ChatResponse, ResourceConfig
 from dhenara.ai.types.conversation import ConversationNode
 from dhenara.ai.types.shared import SSEErrorResponse, SSEEventType, SSEResponse
 
@@ -27,23 +28,71 @@ def build_resource_config() -> ResourceConfig:
     return rc
 
 
+async def _async_process_stream(streaming_renderer: StreamingRenderer, response) -> ChatResponse | None:
+    """Async wrapper that drives the shared StreamingRenderer over an async stream.
+
+    Returns the final ChatResponse when available, or None on error/interrupt.
+    """
+    try:
+        async for pair in response.stream_generator:
+            try:
+                chunk, final_resp = pair
+            except Exception:
+                chunk, final_resp = pair, None
+
+            if chunk:
+                if isinstance(chunk, SSEErrorResponse):
+                    streaming_renderer._render_error(f"{chunk.data.error_code}: {chunk.data.message}")
+                    break
+
+                if not isinstance(chunk, SSEResponse):
+                    streaming_renderer._render_error(f"Unknown chunk type: {type(chunk)}")
+                    continue
+
+                if chunk.event == SSEEventType.ERROR:
+                    streaming_renderer._render_error(f"Stream error: {chunk}")
+                    break
+
+                if chunk.event == SSEEventType.TOKEN_STREAM:
+                    # Delegate delta processing to the shared renderer
+                    streaming_renderer._process_chunk(chunk.data)
+
+            if final_resp:
+                if streaming_renderer.content_started:
+                    print()
+                return final_resp.chat_response
+
+    except KeyboardInterrupt:
+        streaming_renderer._render_warning("Stream interrupted by user")
+    except Exception as e:
+        streaming_renderer._render_error(f"Error processing stream: {e!s}")
+
+    return None
+
+
 async def stream_turn(
     user_query: str,
     instructions: list[str],
     endpoint: AIModelEndpoint,
     history: list[ConversationNode],
+    streaming_renderer: StreamingRenderer,
 ) -> ConversationNode:
+    """Run a single async streaming turn using the shared StreamingRenderer.
+
+    The renderer is passed in so it can be reused across turns (keeps nicer console UX).
+    """
     client = AIModelClient(
         model_endpoint=endpoint,
         config=AIModelCallConfig(
-            max_output_tokens=1000,
-            max_reasoning_tokens=512,
+            max_output_tokens=2000,
+            max_reasoning_tokens=1024,
             reasoning_effort="low",
-            streaming=True,
             reasoning=True,
+            streaming=True,
         ),
         is_async=True,
     )
+
     context: list[str] = []
     for node in history:
         context += node.get_context()
@@ -54,40 +103,19 @@ async def stream_turn(
         instructions=instructions,
     )
 
-    print("\nModel Response: ", end="", flush=True)
-    final = None
-    async for pair in response.stream_generator:  # pair expected (chunk, final_resp)
-        try:
-            chunk, final_resp = pair
-        except Exception:
-            # Defensive: some implementations may yield already-unpacked
-            chunk, final_resp = pair, None
-        if chunk:
-            if isinstance(chunk, SSEErrorResponse):
-                print(f"\n[Error] {chunk.data.error_code}: {chunk.data.message}")
-                break
-            if isinstance(chunk, SSEResponse):
-                if chunk.event == SSEEventType.ERROR:
-                    print(f"\n[Error] {chunk}")
-                    break
-                if chunk.event == SSEEventType.TOKEN_STREAM and isinstance(chunk.data, ChatResponseChunk):
-                    for choice_delta in chunk.data.choice_deltas:
-                        for content_delta in choice_delta.content_deltas or []:
-                            text = content_delta.get_text_delta() or ""
-                            if text:
-                                print(text, end="", flush=True)
-        if final_resp:
-            final = final_resp
-            break
-    print("\n")
+    # Use the shared renderer via the async wrapper
+    final = await _async_process_stream(streaming_renderer, response)
+
     if final is None:
         raise RuntimeError("Final response missing")
+
     node = ConversationNode(
         user_query=user_query,
         input_files=[],
-        response=final.chat_response,
+        response=final,
         timestamp=datetime.datetime.now().isoformat(),
     )
+
     return node
 
 
@@ -104,12 +132,23 @@ async def main():  # pragma: no cover - example script
         ["Build upon the previous story seamlessly."],
         ["Bring the story to a satisfying conclusion."],
     ]
+    # Reuse a single StreamingRenderer across turns for consistent console output
+    streaming_renderer = StreamingRenderer()
+
     for i, q in enumerate(queries):
         ep = random.choice(rc.model_endpoints)
         print(f"\n🔄 (Async) Turn {i + 1} with {ep.ai_model.model_name} from {ep.api.provider}\n")
         print(f"User: {q}")
-        node = await stream_turn(q, instructions_by_turn[i], ep, history)
+        node = await stream_turn(q, instructions_by_turn[i], ep, history, streaming_renderer)
         history.append(node)
+
+        # Display usage stats similar to the synchronous example
+        try:
+            render_usage(node.response)
+        except Exception:
+            # Don't fail the example if usage info is missing
+            pass
+
         print("-" * 80)
 
 

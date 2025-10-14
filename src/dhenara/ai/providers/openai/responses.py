@@ -107,17 +107,43 @@ class OpenAIResponses(OpenAIClientBase):
         }
 
         # Max tokens (Responses uses max_output_tokens)
-        max_output_tokens, _max_reasoning_tokens = self.config.get_max_output_tokens(self.model_endpoint.ai_model)
+        # Note: Responses API doesn't have a separate max_reasoning_tokens parameter.
+        # Reasoning tokens come out of max_output_tokens budget.
+        max_output_tokens, max_reasoning_tokens = self.config.get_max_output_tokens(self.model_endpoint.ai_model)
         if max_output_tokens is not None:
             args["max_output_tokens"] = max_output_tokens
 
-        # Reasoning effort (Responses: reasoning: {effort})
-        if self.config.reasoning and self.config.reasoning_effort is not None:
-            effort = self.config.reasoning_effort
-            # Normalize "minimal" -> "low" for Responses models like o3-mini
-            if isinstance(effort, str) and effort.lower() == "minimal":
-                effort = "low"
-            args["reasoning"] = {"effort": effort}
+        # Reasoning configuration
+        # Responses API: reasoning = {effort: "low"|"medium"|"high",
+        #                             generate_summary: "auto"|"concise"|"detailed"}
+        # Note: Unlike Anthropic's budget_tokens, OpenAI uses max_output_tokens for
+        # total (text + reasoning)
+        if self.config.reasoning:
+            reasoning_config: dict[str, Any] = {}
+
+            # Effort level
+            if self.config.reasoning_effort is not None:
+                effort = self.config.reasoning_effort
+                # Normalize Dhenara "minimal" -> OpenAI "low"
+                if isinstance(effort, str) and effort.lower() == "minimal":
+                    effort = "low"
+                reasoning_config["effort"] = effort
+
+            # Summary generation (optional)
+            # OpenAI can generate summaries of reasoning: "auto", "concise", "detailed"
+            # This is different from the full reasoning traces which are encrypted
+            if hasattr(self.config, "reasoning_summary") and self.config.reasoning_summary:
+                reasoning_config["generate_summary"] = self.config.reasoning_summary
+
+            if reasoning_config:
+                args["reasoning"] = reasoning_config
+
+        # Log warning about reasoning token budget (informational)
+        if max_reasoning_tokens is not None:
+            logger.debug(
+                f"Responses API: max_reasoning_tokens ({max_reasoning_tokens}) is advisory only. "
+                f"Reasoning tokens come from max_output_tokens budget ({max_output_tokens})."
+            )
 
         # Tools and tool choice
         if self.config.tools:
@@ -238,12 +264,21 @@ class OpenAIResponses(OpenAIClientBase):
             total = getattr(usage, "total_tokens", None)
             prompt = getattr(usage, "prompt_tokens", None) or getattr(usage, "input_tokens", None)
             completion = getattr(usage, "completion_tokens", None) or getattr(usage, "output_tokens", None)
+
+            # Extract reasoning tokens from output_tokens_details
+            reasoning_tokens = None
+            output_details = getattr(usage, "output_tokens_details", None)
+            if output_details:
+                reasoning_tokens = getattr(output_details, "reasoning_tokens", None)
+
             if total is None and prompt is not None and completion is not None:
                 total = int(prompt) + int(completion)
+
             return ChatResponseUsage(
                 total_tokens=total,
                 prompt_tokens=prompt,
                 completion_tokens=completion,
+                reasoning_tokens=reasoning_tokens,
             )
         except Exception as e:
             logger.debug(f"_get_usage_from_provider_response (Responses): {e}")
@@ -415,15 +450,29 @@ class OpenAIResponses(OpenAIClientBase):
                 "system_fingerprint": getattr(chunk, "system_fingerprint", None),
             }
 
-        # Handle usage if present (typically in 'done' event)
+        # Handle usage if present (typically in 'done' or 'completed' event)
+        # Check both chunk.usage and chunk.response.usage
         usage = getattr(chunk, "usage", None)
+        if not usage:
+            # For events like response.completed, usage is in chunk.response.usage
+            response_obj = getattr(chunk, "response", None)
+            if response_obj:
+                usage = getattr(response_obj, "usage", None)
+
         if usage:
             try:
+                # Extract reasoning tokens from output_tokens_details
+                reasoning_tokens = None
+                output_details = getattr(usage, "output_tokens_details", None)
+                if output_details:
+                    reasoning_tokens = getattr(output_details, "reasoning_tokens", None)
+
                 usage_obj = ChatResponseUsage(
                     total_tokens=getattr(usage, "total_tokens", None),
                     prompt_tokens=getattr(usage, "prompt_tokens", None) or getattr(usage, "input_tokens", None),
                     completion_tokens=getattr(usage, "completion_tokens", None)
                     or getattr(usage, "output_tokens", None),
+                    reasoning_tokens=reasoning_tokens,
                 )
                 self.streaming_manager.update_usage(usage_obj)
             except Exception:

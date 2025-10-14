@@ -21,6 +21,11 @@ class ChatResponseUsage(BaseModel):
     total_tokens: int
     prompt_tokens: int
     completion_tokens: int
+    reasoning_tokens: int | None = Field(
+        default=None,
+        description="Number of tokens used for reasoning/thinking (o3-mini, o1, etc.). "
+        "These are included in completion_tokens count.",
+    )
 
     class Config:
         json_schema_extra = {
@@ -28,6 +33,7 @@ class ChatResponseUsage(BaseModel):
                 "total_tokens": 100,
                 "prompt_tokens": 50,
                 "completion_tokens": 50,
+                "reasoning_tokens": 20,
             }
         }
 

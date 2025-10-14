@@ -6,6 +6,30 @@ from dhenara.ai.types.genai.ai_model import (
     FoundationModel,
 )
 
+Claude45Sonnet = FoundationModel(
+    model_name="claude-sonnet-4-5",
+    display_name="Claude Sonnet 4.5",
+    provider=AIModelProviderEnum.ANTHROPIC,
+    functional_type=AIModelFunctionalTypeEnum.TEXT_GENERATION,
+    settings=ChatModelSettings(
+        max_context_window_tokens=200000,
+        max_output_tokens=8192,
+        supports_reasoning=True,
+        max_reasoning_tokens=32000,
+        max_output_tokens_reasoning_mode=64000,
+    ),
+    valid_options={},
+    metadata={
+        # "version_suffix": "-latest",
+    },
+    order=70,
+    cost_data=ChatModelCostData(
+        input_token_cost_per_million=3.0,
+        output_token_cost_per_million=15.0,
+    ),
+)
+
+
 Claude40Sonnet = FoundationModel(
     model_name="claude-sonnet-4-0",
     display_name="Claude Sonnet 4",
@@ -142,6 +166,7 @@ Claude3Opus = FoundationModel(
 )
 
 CHAT_MODELS = [
+    Claude45Sonnet,
     Claude40Opus,
     Claude40Sonnet,
     Claude37Sonnet,

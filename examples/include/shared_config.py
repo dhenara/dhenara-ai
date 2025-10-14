@@ -34,13 +34,13 @@ def openai_endpoints(rc):
 
 def anthropic_endpoints(rc):
     from dhenara.ai.types import AIModelAPIProviderEnum, AIModelEndpoint
-    from dhenara.ai.types.genai.foundation_models.anthropic.chat import Claude35Haiku, Claude40Sonnet
+    from dhenara.ai.types.genai.foundation_models.anthropic.chat import Claude35Haiku, Claude45Sonnet
 
     anthropic_api = rc.get_api(AIModelAPIProviderEnum.ANTHROPIC)
     # Single source of truth: pick the models you want to use across examples here
     return [
         AIModelEndpoint(api=anthropic_api, ai_model=Claude35Haiku),
-        AIModelEndpoint(api=anthropic_api, ai_model=Claude40Sonnet),
+        AIModelEndpoint(api=anthropic_api, ai_model=Claude45Sonnet),
     ]
 
 
@@ -57,5 +57,4 @@ def google_endpoints(rc):
 
 
 def all_endpoints(rc):
-    # return openai_endpoints(rc) + anthropic_endpoints(rc) + google_endpoints(rc) TODO
-    return openai_endpoints(rc)
+    return openai_endpoints(rc) + anthropic_endpoints(rc) + google_endpoints(rc)

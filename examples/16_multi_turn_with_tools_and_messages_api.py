@@ -137,10 +137,19 @@ def handle_turn_with_tools(
     while iteration < max_iterations:
         iteration += 1
 
+        # Note: For Anthropic, when using thinking/reasoning with tools in multi-turn conversations,
+        # the assistant messages must include thinking blocks in the conversation history.
+        # To simplify this example, we disable reasoning when tools are present.
+        # See Anthropic docs: https://docs.claude.com/en/docs/build-with-claude/extended-thinking
+
         client = AIModelClient(
             model_endpoint=endpoint,
             config=AIModelCallConfig(
-                max_output_tokens=1000,
+                max_output_tokens=2000,
+                # Disable reasoning to avoid the Anthropic thinking block requirement in tool conversations
+                # max_reasoning_tokens=1024,
+                # reasoning_effort="low",
+                # reasoning=True,
                 streaming=False,
                 tools=[weather_tool, calculator_tool],
                 tool_choice={"type": "zero_or_more"},

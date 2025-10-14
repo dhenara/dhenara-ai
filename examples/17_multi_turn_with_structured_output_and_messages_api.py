@@ -11,6 +11,7 @@ import json
 import random
 from typing import Literal
 
+from include.console_renderer import render_response, render_usage
 from include.shared_config import all_endpoints, load_resource_config
 from pydantic import BaseModel, Field  # Optional dependency for examples
 
@@ -121,7 +122,7 @@ def run_multi_turn_with_structured_output():
         output_schema=WeatherInfo,
     )
 
-    print("Assistant (Structured Output):")
+    print("📋 Structured Output:")
     print(json.dumps(weather_info.model_dump(), indent=2))
     print("-" * 80)
 
@@ -138,7 +139,7 @@ def run_multi_turn_with_structured_output():
         output_schema=PersonInfo,
     )
 
-    print("Assistant (Structured Output):")
+    print("📋 Structured Output:")
     print(json.dumps(person_info.model_dump(), indent=2))
     print("-" * 80)
 
@@ -161,7 +162,7 @@ def run_multi_turn_with_structured_output():
         model_endpoint=model_endpoint,
         config=AIModelCallConfig(
             max_output_tokens=2000,
-            max_reasoning_tokens=512,
+            max_reasoning_tokens=1024,
             reasoning_effort="low",
             reasoning=True,
             streaming=False,
@@ -176,15 +177,12 @@ def run_multi_turn_with_structured_output():
     if assistant_message:
         messages.append(assistant_message)
 
-    # Extract story text
-    story_text = story_response.chat_response.text() or ""
-    thinking = story_response.chat_response.reasoning()
+    # Extract story text and display with renderer
+    print()
+    render_response(story_response.chat_response)
+    render_usage(story_response.chat_response)
 
-    if thinking:
-        print("----------------------")
-        print(f"Thinking: {thinking}\n")
-        print("----------------------")
-    print(f"Story: {story_text}\n")
+    story_text = story_response.chat_response.text() or ""
 
     # Now analyze it with structured output
     story_analysis, messages = handle_turn_with_structured_output(
@@ -194,7 +192,7 @@ def run_multi_turn_with_structured_output():
         output_schema=StoryAnalysis,
     )
 
-    print("Story Analysis (Structured Output):")
+    print("\n📋 Story Analysis (Structured Output):")
     print(json.dumps(story_analysis.model_dump(), indent=2))
     print("-" * 80)
 
