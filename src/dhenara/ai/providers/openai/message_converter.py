@@ -153,6 +153,127 @@ class OpenAIMessageConverter:
     def choices_to_provider_messages(choices: Iterable[ChatResponseChoice]) -> list[dict[str, object]]:
         return [OpenAIMessageConverter.choice_to_provider_message(choice) for choice in choices]
 
-    # NOTE: For Responses API output, initial implementation extracts text via Responses client.
-    # If we later need richer conversion (tool calls or structured outputs surfaced in `output` items),
-    # add a `responses_output_to_content_items(...)` method here and call from OpenAIResponses.parse_response.
+    # Responses API output conversion
+    @staticmethod
+    def provider_message_to_content_items_responses_api(
+        *,
+        output_item: object,
+        role: str,
+        index_start: int,
+        ai_model_provider: AIModelProviderEnum,
+        structured_output_config: StructuredOutputConfig | None = None,
+    ) -> list[ChatResponseContentItem]:
+        """Convert a single Responses API output item into ChatResponseContentItems.
+
+        Handles item types like 'message' (with output_text items), 'reasoning', and 'function_call'.
+        For 'message' content, this will also parse structured output when a schema is provided.
+        """
+        items: list[ChatResponseContentItem] = []
+
+        # Helper to coerce dict-like access from SDK objects
+        def _get(obj: object, attr: str, default=None):
+            if isinstance(obj, dict):
+                return obj.get(attr, default)
+            return getattr(obj, attr, default)
+
+        item_type = _get(output_item, "type", None)
+
+        # Reasoning/thinking blocks
+        if item_type in ("reasoning", "reasoning_content", "reasoning_summary"):
+            thinking_text = _get(output_item, "content", None)
+            # Some providers (OpenAI) return encrypted/no content; include item regardless for parity
+            items.append(
+                ChatResponseReasoningContentItem(
+                    index=index_start,
+                    role=role,
+                    thinking_text=thinking_text,
+                    metadata={},
+                )
+            )
+            return items
+
+        # Function/tool calls
+        if item_type in ("function_call", "tool_call", "function.tool_call"):
+            call_id = _get(output_item, "id", None) or _get(output_item, "call_id", None)
+            # Name can be at top-level or nested under function.name
+            name = _get(output_item, "name", None)
+            if not name:
+                fn_obj = _get(output_item, "function", None)
+                if isinstance(fn_obj, dict):
+                    name = fn_obj.get("name")
+            arguments = _get(output_item, "arguments", None)
+            if isinstance(arguments, str):
+                try:
+                    import json as _json
+
+                    arguments = _json.loads(arguments)
+                except Exception:
+                    # Keep as raw string if not JSON
+                    pass
+
+            items.append(
+                ChatResponseToolCallContentItem(
+                    index=index_start,
+                    role=role,
+                    tool_call=ChatResponseToolCall(
+                        id=call_id,
+                        name=name,
+                        arguments=arguments if isinstance(arguments, dict) else {"raw": arguments},
+                    ),
+                    metadata={},
+                )
+            )
+            return items
+
+        # Assistant message with text/structured output content
+        if item_type in ("message", "output_message"):
+            contents = _get(output_item, "content", None) or []
+
+            # Build a single concatenated text from output_text parts
+            text_parts: list[str] = []
+            for part in contents or []:
+                # Responses SDK objects: part.type == 'output_text', field 'text'
+                part_type = _get(part, "type", None)
+                if part_type in ("output_text", "text"):
+                    part_text = _get(part, "text", None)
+                    if part_text:
+                        text_parts.append(part_text)
+
+            text_combined = "".join(text_parts).strip() if text_parts else None
+
+            if structured_output_config is not None and text_combined:
+                structured_output = ChatResponseStructuredOutput.from_model_output(
+                    raw_response=text_combined,
+                    config=structured_output_config,
+                )
+                items.append(
+                    ChatResponseStructuredOutputContentItem(
+                        index=index_start,
+                        role=role,
+                        structured_output=structured_output,
+                    )
+                )
+            elif text_combined is not None:
+                items.append(
+                    ChatResponseTextContentItem(
+                        index=index_start,
+                        role=role,
+                        text=text_combined,
+                    )
+                )
+
+            return items
+
+        # Fallback: unknown item => try to coerce text if any
+        maybe_text = _get(output_item, "text", None)
+        if maybe_text:
+            items.append(
+                ChatResponseTextContentItem(
+                    index=index_start,
+                    role=role,
+                    text=str(maybe_text),
+                )
+            )
+            return items
+
+        return items

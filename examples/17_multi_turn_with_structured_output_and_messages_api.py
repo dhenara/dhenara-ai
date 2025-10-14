@@ -70,7 +70,10 @@ def handle_turn_with_structured_output(
     client = AIModelClient(
         model_endpoint=endpoint,
         config=AIModelCallConfig(
-            max_output_tokens=2000,
+            max_output_tokens=3000,
+            max_reasoning_tokens=1024,
+            reasoning_effort="low",
+            reasoning=True,
             streaming=False,
             # Pass Pydantic model directly, not wrapped in StructuredOutputConfig
             structured_output=output_schema,

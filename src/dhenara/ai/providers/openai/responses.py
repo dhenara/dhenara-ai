@@ -4,6 +4,7 @@ from typing import Any
 
 from dhenara.ai.providers.openai import OpenAIClientBase
 from dhenara.ai.providers.openai.formatter import OpenAIFormatter
+from dhenara.ai.providers.openai.message_converter import OpenAIMessageConverter
 from dhenara.ai.types.genai import (
     AIModelCallResponse,
     AIModelCallResponseMetaData,
@@ -11,14 +12,8 @@ from dhenara.ai.types.genai import (
     ChatResponseChoice,
     ChatResponseChoiceDelta,
     ChatResponseContentItem,
-    ChatResponseReasoningContentItem,
     ChatResponseReasoningContentItemDelta,
-    ChatResponseStructuredOutput,
-    ChatResponseStructuredOutputContentItem,
-    ChatResponseTextContentItem,
     ChatResponseTextContentItemDelta,
-    ChatResponseToolCall,
-    ChatResponseToolCallContentItem,
     ChatResponseUsage,
     StreamingChatResponse,
 )
@@ -324,81 +319,19 @@ class OpenAIResponses(OpenAIClientBase):
             logger.warning(f"Incomplete response: reason={reason}")
 
         for item in output:
-            item_type = getattr(item, "type", None)
-
-            if item_type == "reasoning":
-                # Reasoning block from reasoning models (o3-mini, etc.)
-                # Note: encrypted_content may exist but we can't access it
-                summary = getattr(item, "summary", None)
-                if summary:
-                    # Summary is typically a list of summary objects
-                    thinking_text = " ".join(str(s) for s in summary if s)
-                    if thinking_text:
-                        contents.append(
-                            ChatResponseReasoningContentItem(
-                                index=content_index,
-                                role="assistant",
-                                thinking_text=thinking_text,
-                            )
-                        )
-                        content_index += 1
-
-            elif item_type == "message":
-                # Regular message with content array
-                message_content = getattr(item, "content", None) or []
-                for msg_item in message_content:
-                    msg_type = getattr(msg_item, "type", None)
-                    if msg_type == "output_text":
-                        text = getattr(msg_item, "text", None)
-                        if text:
-                            # Check if this is structured output
-                            structured_cfg = getattr(self.config, "structured_output", None)
-                            added_as_structured = False
-                            if structured_cfg is not None:
-                                try:
-                                    structured = ChatResponseStructuredOutput.from_model_output(
-                                        raw_response=text,
-                                        config=structured_cfg,
-                                    )
-                                    if structured and getattr(structured, "structured_data", None):
-                                        contents.append(
-                                            ChatResponseStructuredOutputContentItem(
-                                                index=content_index,
-                                                role="assistant",
-                                                structured_output=structured,
-                                            )
-                                        )
-                                        content_index += 1
-                                        added_as_structured = True
-                                except Exception as e:
-                                    logger.debug(f"Failed to parse structured output: {e}")
-
-                            # If not added as structured output, add as plain text
-                            if not added_as_structured:
-                                contents.append(
-                                    ChatResponseTextContentItem(
-                                        index=content_index,
-                                        role="assistant",
-                                        text=text,
-                                    )
-                                )
-                                content_index += 1
-
-            elif item_type == "function_call":
-                # Tool call
-                tool_call = ChatResponseToolCall(
-                    id=getattr(item, "call_id", None),
-                    name=getattr(item, "name", ""),
-                    arguments=self._parse_tool_arguments(getattr(item, "arguments", "{}")),
-                )
-                contents.append(
-                    ChatResponseToolCallContentItem(
-                        index=content_index,
-                        role="assistant",
-                        tool_call=tool_call,
-                        metadata={},
-                    )
-                )
+            converted = OpenAIMessageConverter.provider_message_to_content_items_responses_api(
+                output_item=item,
+                role="assistant",
+                index_start=content_index,
+                ai_model_provider=self.model_endpoint.ai_model.provider,
+                structured_output_config=self.config.structured_output,
+            )
+            if not converted:
+                continue
+            for ci in converted:
+                # Normalize incremental indices
+                ci.index = content_index
+                contents.append(ci)
                 content_index += 1
 
         usage, usage_charge = self.get_usage_and_charge(response)
