@@ -43,6 +43,8 @@ class AIModelProviderClientBase(ABC):
         self._input_validation_pending = True
         self.streaming_manager = None
         self.formatted_config = None
+        # State for python log capture lifecycle (start -> stop)
+        self._pylog_cap = None
 
         if self.formatter is None:
             raise ValueError("Formatter is not set")
@@ -113,10 +115,10 @@ class AIModelProviderClientBase(ABC):
     ) -> dict:
         """Serialize dhenara request format for artifact capture."""
         return {
-            "prompt": prompt.model_dump() if isinstance(prompt, Prompt) else prompt,
-            "context": [c.model_dump() if isinstance(c, Prompt) else c for c in (context or [])],
-            "instructions": [i.model_dump() if isinstance(i, SystemInstruction) else i for i in (instructions or [])],
-            "messages": [m.model_dump() if isinstance(m, MessageItem) else m for m in (messages or [])],
+            "prompt": prompt.model_dump() if hasattr(prompt, "model_dump") else prompt,
+            "context": [c.model_dump() if hasattr(c, "model_dump") else c for c in (context or [])],
+            "instructions": [i.model_dump() if hasattr(i, "model_dump") else i for i in (instructions or [])],
+            "messages": [m.model_dump() if hasattr(m, "model_dump") else m for m in (messages or [])],
             "config": self.config.model_dump() if self.config else {},
         }
 
@@ -155,6 +157,165 @@ class AIModelProviderClientBase(ABC):
             prefix=combined_prefix,
         )
 
+    def _capture_python_logs(self, when: str) -> None:
+        """Start/stop capturing Python logs for this call into dai artifacts as JSONL.
+
+        Usage:
+            - Call with when in {"after_provider_request", "start"} to attach handler
+            - Call with when in {"after_response", "after_stream_complete", "error",
+              "stream_error", "stop"} to detach and persist
+        Each record: {"ts", "level", "name", "message"}
+        """
+        artifact_config = self.config.artifact_config if self.config else None
+        if not artifact_config or not artifact_config.enabled or not artifact_config.enable_python_logs:
+            return
+
+        start_events = {"after_provider_request", "start"}
+        stop_events = {"after_response", "after_stream_complete", "error", "stream_error", "stop"}
+
+        # Build prefix (dai subfolder under loop prefix)
+        combined_prefix = f"{artifact_config.prefix}/dai" if artifact_config.prefix else "dai"
+
+        if when in start_events:
+            # If already started, do nothing
+            if self._pylog_cap is not None:
+                return
+            import time
+
+            class _JSONLineHandler(logging.Handler):
+                def __init__(self, buffer_list: list[dict]):
+                    super().__init__()
+                    self._buf = buffer_list
+
+                def emit(self, record: logging.LogRecord) -> None:
+                    try:
+                        self._buf.append(
+                            {
+                                "ts": getattr(record, "created", time.time()),
+                                "level": record.levelname,
+                                "name": record.name,
+                                "message": record.getMessage(),
+                            }
+                        )
+                    except Exception:  # pragma: no cover - logging should not break flow
+                        pass
+
+            buf: list[dict] = []
+            handler = _JSONLineHandler(buf)
+            level = artifact_config.python_log_level
+            if isinstance(level, str):
+                level_value = getattr(logging, level.upper(), logging.INFO)
+            else:
+                level_value = int(level)
+            handler.setLevel(level_value)
+
+            root_logger = logging.getLogger()
+            root_prev_level = root_logger.level
+            root_logger.addHandler(handler)
+            # Set root to the more verbose of the two (lower numeric value)
+            try:
+                root_logger.setLevel(min(root_prev_level if root_prev_level is not None else logging.INFO, level_value))
+            except Exception:
+                root_logger.setLevel(level_value)
+
+            # Apply per-logger overrides (e.g., suppress noisy packages)
+            overrides_prev: dict[str, dict[str, int | bool]] = {}
+            overrides = artifact_config.python_logger_levels or {}
+            for logger_name, target in overrides.items():
+                logger_obj = logging.getLogger(logger_name)
+                overrides_prev[logger_name] = {
+                    "level": logger_obj.level,
+                    "disabled": getattr(logger_obj, "disabled", False),
+                }
+                if isinstance(target, str) and target.lower() in {"off", "disabled", "none"}:
+                    logger_obj.disabled = True
+                    continue
+
+                override_level = level_value
+                if isinstance(target, str):
+                    level_name = target.upper()
+                    if hasattr(logging, level_name):
+                        override_level = getattr(logging, level_name)
+                    else:
+                        try:
+                            override_level = int(target)
+                        except (TypeError, ValueError):
+                            override_level = level_value
+                else:
+                    try:
+                        override_level = int(target)
+                    except (TypeError, ValueError):
+                        override_level = level_value
+
+                logger_obj.disabled = False
+                logger_obj.setLevel(override_level)
+
+            # Stash capture state
+            self._pylog_cap = {
+                "handler": handler,
+                "buf": buf,
+                "root_prev_level": root_prev_level,
+                "level_value": level_value,
+                "artifact_root": artifact_config.artifact_root,
+                "combined_prefix": combined_prefix,
+                "logger_overrides_prev": overrides_prev,
+            }
+            try:
+                logging.getLogger().log(
+                    level_value,
+                    "Python log capture started for prefix '%s'",
+                    combined_prefix,
+                )
+            except Exception:
+                pass
+            return
+
+        if when in stop_events:
+            state = self._pylog_cap
+            # If not started, nothing to do
+            if not state:
+                return
+            self._pylog_cap = None
+            try:
+                root_logger = logging.getLogger()
+                handler = state.get("handler")
+                try:
+                    root_logger.log(
+                        state.get("level_value", logging.INFO),
+                        "Python log capture stopped for prefix '%s'",
+                        state.get("combined_prefix"),
+                    )
+                except Exception:
+                    pass
+                if handler:
+                    root_logger.removeHandler(handler)
+                # Restore previous root level
+                prev = state.get("root_prev_level")
+                if prev is not None:
+                    root_logger.setLevel(prev)
+                overrides_prev = state.get("logger_overrides_prev") or {}
+                for logger_name, prev_state in overrides_prev.items():
+                    logger_obj = logging.getLogger(logger_name)
+                    prev_level = prev_state.get("level")
+                    if prev_level is None:
+                        logger_obj.setLevel(logging.NOTSET)
+                    else:
+                        logger_obj.setLevel(prev_level)
+                    logger_obj.disabled = bool(prev_state.get("disabled", False))
+            except Exception:
+                pass
+            # Persist JSONL rows
+            try:
+                ArtifactWriter.write_jsonl(
+                    artifact_root=state.get("artifact_root"),
+                    filename="dai_python_logs.jsonl",
+                    rows=state.get("buf") or [],
+                    prefix=state.get("combined_prefix"),
+                )
+            except Exception:
+                pass
+            return
+
     def generate_response_sync(
         self,
         prompt: str | dict | Prompt | None,
@@ -189,6 +350,8 @@ class AIModelProviderClientBase(ABC):
             data=api_call_params,
             filename="dai_provider_request.json",
         )
+        # Start capturing Python logs for this call (if enabled)
+        self._capture_python_logs(when="after_provider_request")
 
         if self.config.test_mode:
             from dhenara.ai.providers.common.dummy import DummyAIModelResponseFns
@@ -228,12 +391,16 @@ class AIModelProviderClientBase(ABC):
                 data=ai_response.model_dump() if hasattr(ai_response, "model_dump") else str(ai_response),
                 filename="dai_response.json",
             )
+            # Flush Python logs for this call
+            self._capture_python_logs(when="after_response")
 
             return ai_response
 
         except Exception as e:
             logger.exception(f"Error in generate_response_sync: {e}")
             api_call_status = self._create_error_status(str(e))
+            # Flush Python logs on error
+            self._capture_python_logs(when="error")
 
     async def generate_response_async(
         self,
@@ -269,6 +436,8 @@ class AIModelProviderClientBase(ABC):
             data=api_call_params,
             filename="dai_provider_request.json",
         )
+        # Start capturing Python logs for this call (if enabled)
+        self._capture_python_logs(when="after_provider_request")
 
         if self.config.test_mode:
             from dhenara.ai.providers.common.dummy import DummyAIModelResponseFns
@@ -308,12 +477,16 @@ class AIModelProviderClientBase(ABC):
                 data=ai_response.model_dump() if hasattr(ai_response, "model_dump") else str(ai_response),
                 filename="dai_response.json",
             )
+            # Flush Python logs for this call
+            self._capture_python_logs(when="after_response")
 
             return ai_response
 
         except Exception as e:
             logger.exception(f"Error in generate_response_async: {e}")
             api_call_status = self._create_error_status(str(e))
+            # Flush Python logs on error
+            self._capture_python_logs(when="error")
 
     def _format_and_generate_response_sync(
         self,
@@ -459,12 +632,16 @@ class AIModelProviderClientBase(ABC):
             except Exception as e:
                 logger.debug(f"Streaming artifact capture (dhenara_response) failed: {e}")
 
+            # Flush Python logs for this call
+            self._capture_python_logs(when="after_stream_complete")
             yield None, final_response
             return  # Stop the generator
         except Exception as e:
             logger.exception(f"_handle_streaming_response_sync: Error: {e}")
             error_response = self._create_streaming_error_response(exc=e)
             yield error_response, None
+            # Flush Python logs on error
+            self._capture_python_logs(when="stream_error")
 
     async def _handle_streaming_response_async(
         self,
@@ -518,12 +695,16 @@ class AIModelProviderClientBase(ABC):
             except Exception as e:
                 logger.debug(f"Streaming artifact capture (dhenara_response) failed: {e}")
 
+            # Flush Python logs for this call
+            self._capture_python_logs(when="after_stream_complete")
             yield None, final_response
             return  # Stop the generator
         except Exception as e:
             logger.exception(f"_handle_streaming_response_async: Error: {e}")
             error_response = self._create_streaming_error_response(exc=e)
             yield error_response, None
+            # Flush Python logs on error
+            self._capture_python_logs(when="stream_error")
 
     @abstractmethod
     async def initialize(self) -> None:

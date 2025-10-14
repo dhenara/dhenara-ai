@@ -58,10 +58,15 @@ class AIModelCallConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_structured_output(self) -> "AIModelCallConfig":
-        if isinstance(self.structured_output, type) and issubclass(self.structured_output, PydanticBaseModel):
-            self.structured_output = StructuredOutputConfig.from_model(
-                model_class=self.structured_output,
-            )
+        if isinstance(self.structured_output, type):
+            try:
+                if issubclass(self.structured_output, PydanticBaseModel):
+                    self.structured_output = StructuredOutputConfig.from_model(
+                        model_class=self.structured_output,
+                    )
+            except TypeError:
+                # If PydanticBaseModel isn't a proper class in this environment, skip conversion
+                pass
         return self
 
     def get_user(self):

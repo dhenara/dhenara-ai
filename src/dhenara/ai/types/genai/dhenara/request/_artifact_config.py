@@ -51,6 +51,18 @@ class ArtifactConfig(BaseModel):
         default=None,
         description="Optional prefix for artifact filenames",
     )
+    enable_python_logs: bool = Field(
+        default=False,
+        description="Capture Python logging records for this call",
+    )
+    python_log_level: str | int = Field(
+        default="INFO",
+        description="Logging level for captured Python logs (e.g., DEBUG, INFO, WARNING)",
+    )
+    python_logger_levels: dict[str, str | int] | None = Field(
+        default=None,
+        description="Optional overrides for specific loggers (name -> level or 'OFF')",
+    )
 
     def model_post_init(self, __context) -> None:
         """Validate configuration after initialization."""

@@ -133,10 +133,13 @@ class ChatResponseStructuredOutput(BaseModel):
 
             # Step 3: Get model class from config
             model_cls: type[PydanticBaseModel] = None
-            if isinstance(config.model_class_reference, type) and issubclass(
-                config.model_class_reference, PydanticBaseModel
-            ):
-                model_cls = config.model_class_reference
+            if isinstance(config.model_class_reference, type):
+                try:
+                    if issubclass(config.model_class_reference, PydanticBaseModel):
+                        model_cls = config.model_class_reference
+                except TypeError:
+                    # Guard against environments where the second arg isn't a class
+                    model_cls = None
             elif isinstance(config.model_class_reference, PydanticBaseModel):
                 model_cls = config.model_class_reference.__class__
 

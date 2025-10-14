@@ -181,12 +181,24 @@ class AIModelClient:
             )
 
         with self as client:  # noqa: F841
-            return self._execute_with_retry_sync(
-                prompt=prompt,
-                context=context,
-                instructions=instructions,
-                messages=messages,
-            )
+            capture_cb = None
+            provider = getattr(self, "_provider_client", None)
+            if provider is not None:
+                capture_cb = getattr(provider, "_capture_python_logs", None)
+            if callable(capture_cb):
+                capture_cb("start")
+            try:
+                return self._execute_with_retry_sync(
+                    prompt=prompt,
+                    context=context,
+                    instructions=instructions,
+                    messages=messages,
+                )
+            except Exception:
+                raise
+            finally:
+                if callable(capture_cb):
+                    capture_cb("stop")
 
     async def generate_async(
         self,
@@ -200,12 +212,24 @@ class AIModelClient:
             raise RuntimeError(f"This client is created with is_async={self.is_async}. Use generate for sync client")
 
         async with self as client:  # noqa: F841
-            return await self._execute_with_retry_async(
-                prompt=prompt,
-                context=context,
-                instructions=instructions,
-                messages=messages,
-            )
+            capture_cb = None
+            provider = getattr(self, "_provider_client", None)
+            if provider is not None:
+                capture_cb = getattr(provider, "_capture_python_logs", None)
+            if callable(capture_cb):
+                capture_cb("start")
+            try:
+                return await self._execute_with_retry_async(
+                    prompt=prompt,
+                    context=context,
+                    instructions=instructions,
+                    messages=messages,
+                )
+            except Exception:
+                raise
+            finally:
+                if callable(capture_cb):
+                    capture_cb("stop")
 
     async def generate_with_existing_connection(
         self,
@@ -264,12 +288,21 @@ class AIModelClient:
                     is_async=False,
                 ),
             )
-        return self._execute_with_retry_sync(
-            prompt=prompt,
-            context=context,
-            instructions=instructions,
-            messages=messages,
-        )
+        capture_cb = getattr(self._provider_client, "_capture_python_logs", None)
+        if callable(capture_cb):
+            capture_cb("start")
+        try:
+            return self._execute_with_retry_sync(
+                prompt=prompt,
+                context=context,
+                instructions=instructions,
+                messages=messages,
+            )
+        except Exception:
+            raise
+        finally:
+            if callable(capture_cb):
+                capture_cb("stop")
 
     def cleanup_sync(self) -> None:
         """
@@ -296,12 +329,21 @@ class AIModelClient:
                     is_async=True,
                 ),
             )
-        return await self._execute_with_retry_async(
-            prompt=prompt,
-            context=context,
-            instructions=instructions,
-            messages=messages,
-        )
+        capture_cb = getattr(self._provider_client, "_capture_python_logs", None)
+        if callable(capture_cb):
+            capture_cb("start")
+        try:
+            return await self._execute_with_retry_async(
+                prompt=prompt,
+                context=context,
+                instructions=instructions,
+                messages=messages,
+            )
+        except Exception:
+            raise
+        finally:
+            if callable(capture_cb):
+                capture_cb("stop")
 
     async def cleanup_async(self) -> None:
         """
