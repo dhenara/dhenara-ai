@@ -120,6 +120,7 @@ class AnthropicMessageConverter:
             if isinstance(content, ChatResponseTextContentItem) and content.text:
                 content_blocks.append({"type": "text", "text": content.text})
             elif isinstance(content, ChatResponseReasoningContentItem):
+                # TODO: Make sure the conversion is proper back to anthropic format
                 if content.thinking_text:
                     content_blocks.append({"type": "text", "text": content.thinking_text})
                 elif content.metadata.get("redacted_thinking_data"):

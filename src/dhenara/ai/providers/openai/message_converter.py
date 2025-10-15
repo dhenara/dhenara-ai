@@ -116,6 +116,7 @@ class OpenAIMessageConverter:
                 if content.text:
                     text_parts.append(content.text)
             elif isinstance(content, ChatResponseReasoningContentItem):
+                # TODO: Take care of proper conversion back to openai format
                 if content.thinking_text:
                     reasoning_parts.append(content.thinking_text)
             elif isinstance(content, ChatResponseToolCallContentItem):
@@ -179,18 +180,34 @@ class OpenAIMessageConverter:
         item_type = _get(output_item, "type", None)
 
         # Reasoning/thinking blocks
-        if item_type in ("reasoning", "reasoning_content", "reasoning_summary"):
-            thinking_text = _get(output_item, "content", None)
-            # Some providers (OpenAI) return encrypted/no content; include item regardless for parity
+        if item_type == "reasoning":
+            # Reasoning/thinking blocks
+            thinking_id = _get(output_item, "id", None)
+            signature = _get(output_item, "encrypted_content", None)
+            status = _get(output_item, "status", None)
+            summary_obj = _get(output_item, "summary", None)
+            content_obj = _get(output_item, "content", None)
+            if isinstance(content_obj, list):
+                content_text = " ".join(filter(None, (_get(c, "text", "") for c in content_obj))) or None
+            else:
+                content_text = _get(content_obj, "text", None)
+
+            if isinstance(summary_obj, list):
+                summary = " ".join(filter(None, (_get(s, "text", "") for s in summary_obj))) or None
+            else:
+                summary = _get(summary_obj, "text", None)
+
             items.append(
                 ChatResponseReasoningContentItem(
                     index=index_start,
                     role=role,
-                    thinking_text=thinking_text,
-                    metadata={},
+                    thinking_id=thinking_id,
+                    thinking_text=content_text,
+                    thinking_summary=summary,
+                    thinking_signature=signature,
+                    thinking_status=status,
                 )
             )
-            return items
 
         # Function/tool calls
         if item_type in ("function_call", "tool_call", "function.tool_call"):
@@ -223,7 +240,6 @@ class OpenAIMessageConverter:
                     metadata={},
                 )
             )
-            return items
 
         # Assistant message with text/structured output content
         if item_type in ("message", "output_message"):

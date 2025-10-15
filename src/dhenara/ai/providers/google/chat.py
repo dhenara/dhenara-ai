@@ -21,6 +21,7 @@ from dhenara.ai.types.genai import (
     ChatResponseChoiceDelta,
     ChatResponseContentItemDelta,
     ChatResponseGenericContentItemDelta,
+    ChatResponseReasoningContentItemDelta,
     ChatResponseTextContentItemDelta,
     ChatResponseUsage,
     StreamingChatResponse,
@@ -271,6 +272,7 @@ class GoogleAIChat(GoogleAIClientBase):
             total_tokens=response.usage_metadata.total_token_count or 0,
             prompt_tokens=response.usage_metadata.prompt_token_count or 0,
             completion_tokens=completion_tokens,
+            reasoning_tokens=thoughts_tokens if thoughts_tokens > 0 else None,
         )
 
     def parse_response(
@@ -312,6 +314,19 @@ class GoogleAIChat(GoogleAIClientBase):
         delta,
     ) -> ChatResponseContentItemDelta:
         if isinstance(delta, Part):
+            # Handle thinking/thought content first (Google's encrypted reasoning with summary)
+            # When part.thought=True, this is a thinking part and part.text contains the summary
+            if hasattr(delta, "thought") and delta.thought is True:
+                thinking_summary_delta = delta.text if hasattr(delta, "text") else None
+                thought_signature = getattr(delta, "thought_signature", None)
+
+                return ChatResponseReasoningContentItemDelta(
+                    index=index,
+                    role=role,
+                    thinking_summary_delta=thinking_summary_delta,
+                    thinking_signature=thought_signature,
+                )
+
             if hasattr(delta, "text"):
                 return ChatResponseTextContentItemDelta(
                     index=index,

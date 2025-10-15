@@ -59,15 +59,44 @@ def render_content_item(content_item, choice_index: int = 0) -> str:
             output.append(text)
 
     elif content_type == ChatResponseContentItemType.REASONING:
-        # Reasoning/thinking output
-        thinking = content_item.get_text()
-        if thinking:
+        thinking_text = content_item.thinking_text
+
+        thinking_summary = content_item.thinking_summary
+        has_signature = content_item.thinking_signature is not None
+
+        any_thinking = thinking_text or thinking_summary or has_signature
+        if any_thinking:
             header = (
                 f"{ConsoleColors.CYAN}{ConsoleColors.BOLD}🧠 Reasoning/Thinking "
                 f"[{choice_index}.{content_index}]:{ConsoleColors.RESET}{ConsoleColors.CYAN}"
             )
             output.append(header)
-            output.append(thinking)
+
+        if thinking_text:
+            output.append(thinking_text)
+
+        if thinking_summary:
+            header = (
+                f"{ConsoleColors.MAGENTA}{ConsoleColors.BOLD}🔐 Reasoning Summary "
+                f"[{choice_index}.{content_index}]:{ConsoleColors.RESET}{ConsoleColors.MAGENTA}"
+            )
+            output.append(header)
+            output.append(thinking_summary)
+            if has_signature:
+                sig_type = type(content_item.reasoning_signature).__name__
+                output.append(f"{ConsoleColors.GRAY}  [+ encrypted signature: {sig_type}]{ConsoleColors.RESET}")
+            output.append(ConsoleColors.RESET)
+        elif has_signature:
+            # Has signature but no summary text
+            header = (
+                f"{ConsoleColors.MAGENTA}{ConsoleColors.BOLD}🔐 Encrypted Reasoning "
+                f"[{choice_index}.{content_index}]:{ConsoleColors.RESET}"
+            )
+            output.append(header)
+            sig_type = type(content_item.reasoning_signature).__name__
+            output.append(f"{ConsoleColors.GRAY}  [encrypted reasoning signature: {sig_type}]{ConsoleColors.RESET}")
+
+        if any_thinking:
             output.append(ConsoleColors.RESET)
 
     elif content_type == ChatResponseContentItemType.TOOL_CALL:
@@ -270,8 +299,8 @@ class StreamingRenderer:
         if content_type != self.current_content_type or choice_index != self.current_choice_index:
             if self.content_started:
                 # End previous content
-                if self.current_content_type == ChatResponseContentItemType.REASONING:
-                    print(ConsoleColors.RESET)  # Reset reasoning color
+                if self.current_content_type in (ChatResponseContentItemType.REASONING,):
+                    print(ConsoleColors.RESET)  # Reset color
                 print()  # New line before next content
 
             # Start new content section
@@ -289,9 +318,13 @@ class StreamingRenderer:
                 self.full_response_text += text_delta
 
         elif content_type == ChatResponseContentItemType.REASONING:
-            thinking_delta = content_delta.get_text_delta() if hasattr(content_delta, "get_text_delta") else None
+            thinking_delta = content_delta.thinking_text_delta
+            summary_delta = content_delta.thinking_summary_delta
             if thinking_delta:
                 print(f"{ConsoleColors.CYAN}{thinking_delta}{ConsoleColors.RESET}", end="", flush=True)
+
+            if summary_delta:
+                print(f"{ConsoleColors.MAGENTA}{summary_delta}{ConsoleColors.RESET}", end="", flush=True)
 
         elif content_type == ChatResponseContentItemType.TOOL_CALL:
             # Tool calls are usually not streamed incrementally in a useful way

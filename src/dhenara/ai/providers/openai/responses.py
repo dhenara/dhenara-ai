@@ -123,12 +123,13 @@ class OpenAIResponses(OpenAIClientBase):
                 if isinstance(effort, str) and effort.lower() == "minimal":
                     effort = "low"
                 reasoning_config["effort"] = effort
+            else:
+                # Default effort if reasoning is enabled but not specified
+                reasoning_config["effort"] = "low"
 
-            # Summary generation (optional)
-            # OpenAI can generate summaries of reasoning: "auto", "concise", "detailed"
-            # This is different from the full reasoning traces which are encrypted
-            if hasattr(self.config, "reasoning_summary") and self.config.reasoning_summary:
-                reasoning_config["generate_summary"] = self.config.reasoning_summary
+            # Inorder to get the reasoning text, OpenAI need to pass `summary` as any of the
+            # : "auto", "concise", "detailed"
+            reasoning_config["summary"] = "auto"
 
             if reasoning_config:
                 args["reasoning"] = reasoning_config
@@ -448,6 +449,7 @@ class OpenAIResponses(OpenAIClientBase):
                     index=0,
                     role="assistant",
                     thinking_text_delta=delta_text,
+                    # TODO: take care of summary, id and signature
                 )
                 choice_delta = ChatResponseChoiceDelta(
                     index=0,

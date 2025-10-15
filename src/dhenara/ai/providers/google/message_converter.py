@@ -31,6 +31,22 @@ class GoogleMessageConverter:
         role: str,
         structured_output_config: StructuredOutputConfig | None = None,
     ) -> ChatResponseContentItem:
+        # Handle thinking/thought content first (Google's encrypted reasoning)
+        # Google's part.thought=True indicates this is a thinking part
+        # The part.text contains the thinking SUMMARY (not full reasoning - that's encrypted)
+        # The part.thought_signature is an encrypted signature for multi-turn context
+        if hasattr(part, "thought") and part.thought is True:
+            thinking_summary = part.text if hasattr(part, "text") else None
+            thought_signature = getattr(part, "thought_signature", None)
+            # thought_signature base64.b64encode(part.thought_signature).decode("utf-8")
+
+            return ChatResponseReasoningContentItem(
+                index=index,
+                role=role,
+                thinking_summary=thinking_summary,
+                thinking_signature=thought_signature,
+            )
+
         if hasattr(part, "text") and part.text is not None:
             text_value = part.text
 
@@ -104,6 +120,7 @@ class GoogleMessageConverter:
             if isinstance(content, ChatResponseTextContentItem) and content.text:
                 parts.append({"text": content.text})
             elif isinstance(content, ChatResponseReasoningContentItem) and content.thinking_text:
+                # TODO: Take care of proper conversion back to google format
                 parts.append({"text": content.thinking_text})
             elif isinstance(content, ChatResponseToolCallContentItem) and content.tool_call:
                 tool_call = content.tool_call

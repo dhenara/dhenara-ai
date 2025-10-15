@@ -282,9 +282,25 @@ class StreamingManager:
                                 matching_content.text = (matching_content.text or "") + delta_text
 
                         elif content_delta.type == ChatResponseContentItemType.REASONING:
-                            delta_text = content_delta.get_text_delta()
-                            if delta_text:
-                                matching_content.thinking_text = (matching_content.thinking_text or "") + delta_text
+                            thinking_text_delta = content_delta.thinking_text_delta
+                            thinking_summary_delta = content_delta.thinking_summary_delta
+                            thinking_id = content_delta.thinking_id
+                            thinking_signature = content_delta.thinking_signature
+
+                            if thinking_text_delta:
+                                matching_content.thinking_text = (
+                                    matching_content.thinking_text or ""
+                                ) + thinking_text_delta
+
+                            if thinking_summary_delta:
+                                matching_content.thinking_summary = (
+                                    matching_content.thinking_summary or ""
+                                ) + thinking_summary_delta
+
+                            if thinking_id:
+                                matching_content.thinking_id = thinking_id
+                            if thinking_signature:
+                                matching_content.thinking_signature = thinking_signature
 
                         elif content_delta.type in (
                             ChatResponseContentItemType.TOOL_CALL,

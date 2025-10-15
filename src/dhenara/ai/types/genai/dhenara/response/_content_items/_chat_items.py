@@ -47,9 +47,14 @@ class ChatResponseReasoningContentItem(BaseChatResponseContentItem):
         None,
         description="Thinking text content, for reasoning mode",
     )
+    thinking_id: str | None = None
+    thinking_summary: str | None = None  # Some models may provide a summary
+    thinking_signature: str | None = None
+    thinking_status: str | None = None  # OpenAI provides status as in_progress, completed, or incomplete
+    metadata: dict | None = None
 
     def get_text(self) -> str:
-        return self.thinking_text
+        return self.thinking_text or self.thinking_summary or None
 
 
 class ChatResponseToolCallContentItem(BaseChatResponseContentItem):
@@ -119,12 +124,13 @@ class ChatResponseTextContentItemDelta(BaseChatResponseContentItemDelta):
 class ChatResponseReasoningContentItemDelta(BaseChatResponseContentItemDelta):
     type: ChatResponseContentItemType = ChatResponseContentItemType.REASONING
 
-    thinking_text_delta: str | None = Field(
-        None,
-    )
+    thinking_text_delta: str | None = None
+    thinking_summary_delta: str | None = None  # Some models may provide a summary
+    thinking_id: str | None = None
+    thinking_signature: str | None = None
 
     def get_text_delta(self) -> str:
-        return self.thinking_text_delta
+        return self.thinking_text_delta or self.thinking_summary_delta or None
 
 
 # TODO: Tool call in streaming is not supported now
