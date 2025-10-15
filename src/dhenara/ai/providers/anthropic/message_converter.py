@@ -6,6 +6,10 @@ import json
 from collections.abc import Iterable
 
 from anthropic.types import ContentBlock, Message
+from anthropic.types.redacted_thinking_block_param import RedactedThinkingBlockParam
+from anthropic.types.text_block_param import TextBlockParam
+from anthropic.types.thinking_block_param import ThinkingBlockParam
+from anthropic.types.tool_use_block_param import ToolUseBlockParam
 
 from dhenara.ai.types.genai import (
     ChatResponseContentItem,
@@ -65,7 +69,7 @@ class AnthropicMessageConverter:
                     index=index,
                     role=role,
                     thinking_text=getattr(content_block, "thinking", ""),
-                    metadata={"signature": getattr(content_block, "signature", None)},
+                    thinking_signature=getattr(content_block, "signature", None),
                 )
             ]
 
@@ -114,46 +118,65 @@ class AnthropicMessageConverter:
 
     @staticmethod
     def choice_to_provider_message(choice: ChatResponseChoice) -> dict[str, object]:
-        content_blocks: list[dict[str, object]] = []
+        content_blocks: list[object] = []
 
         for content in choice.contents:
             if isinstance(content, ChatResponseTextContentItem) and content.text:
-                content_blocks.append({"type": "text", "text": content.text})
+                content_blocks.append(TextBlockParam(type="text", text=content.text))
             elif isinstance(content, ChatResponseReasoningContentItem):
-                # TODO: Make sure the conversion is proper back to anthropic format
+                # Anthropic thinking blocks require thinking text + signature
                 if content.thinking_text:
-                    content_blocks.append({"type": "text", "text": content.thinking_text})
-                elif content.metadata.get("redacted_thinking_data"):
+                    # Proper thinking block with signature
                     content_blocks.append(
-                        {
-                            "type": "redacted_thinking",
-                            "data": content.metadata.get("redacted_thinking_data"),
-                        }
+                        ThinkingBlockParam(
+                            type="thinking",
+                            thinking=content.thinking_text,
+                            signature=content.thinking_signature,
+                        )
+                    )
+                elif content.metadata.get("redacted_thinking_data"):
+                    # Redacted thinking (when signature but no text)
+                    content_blocks.append(
+                        RedactedThinkingBlockParam(
+                            type="redacted_thinking", data=content.metadata.get("redacted_thinking_data")
+                        )
+                    )
+                elif content.thinking_text:
+                    # Fallback: if no signature, emit as text (for cross-provider compatibility)
+                    content_blocks.append(
+                        TextBlockParam(
+                            type="text",
+                            text=content.thinking_text,
+                        )
                     )
             elif isinstance(content, ChatResponseToolCallContentItem) and content.tool_call:
                 tool_call = content.tool_call
                 content_blocks.append(
-                    {
-                        "type": "tool_use",
-                        "id": tool_call.id,
-                        "name": tool_call.name,
-                        "input": tool_call.arguments,
-                    }
+                    ToolUseBlockParam(
+                        type="tool_use",
+                        id=tool_call.id,
+                        name=tool_call.name,
+                        input=tool_call.arguments,
+                    )
                 )
             elif isinstance(content, ChatResponseStructuredOutputContentItem):
                 output = content.structured_output
                 if output.structured_data:
                     content_blocks.append(
-                        {
-                            "type": "text",
-                            "text": json.dumps(output.structured_data),
-                        }
+                        TextBlockParam(
+                            type="text",
+                            text=json.dumps(
+                                output.structured_data,
+                            ),
+                        )
                     )
 
-        if len(content_blocks) == 1 and content_blocks[0].get("type") == "text":
-            return {"role": "assistant", "content": content_blocks[0]["text"]}
+        # Anthropic accepts content as either string or list of block params; keep list form for validation
+        if len(content_blocks) == 1 and isinstance(content_blocks[0], TextBlockParam):
+            return {"role": "assistant", "content": content_blocks[0].text}
 
         if content_blocks:
+            # SDK accepts a list of block params (they serialize to correct schema)
             return {"role": "assistant", "content": content_blocks}
 
         return {"role": "assistant", "content": ""}

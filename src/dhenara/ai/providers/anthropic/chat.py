@@ -387,6 +387,7 @@ class AnthropicChat(AnthropicClientBase):
                 index=index,
                 role=role,
                 thinking_text_delta=delta.thinking,
+                thinking_signature=None,  # TODO: Take care of signature
                 metadata={},
             )
         elif isinstance(delta, SignatureDelta):

@@ -3,10 +3,31 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Iterable
 
 from openai.types.chat import ChatCompletionMessage
+from openai.types.chat.chat_completion_assistant_message_param import (
+    ChatCompletionAssistantMessageParam,
+)
+from openai.types.chat.chat_completion_content_part_text_param import (
+    ChatCompletionContentPartTextParam,
+)
+from openai.types.chat.chat_completion_message_tool_call_param import (
+    ChatCompletionMessageToolCallParam,
+)
+from openai.types.responses.response_function_tool_call_param import (
+    ResponseFunctionToolCallParam,
+)
+from openai.types.responses.response_output_message_param import (
+    ResponseOutputMessageParam,
+)
+from openai.types.responses.response_output_text_param import ResponseOutputTextParam
+from openai.types.responses.response_reasoning_item_param import (
+    ResponseReasoningItemParam,
+)
 
+from dhenara.ai.providers.openai import OPENAI_USE_RESPONSES_DEFAULT
 from dhenara.ai.types.genai import (
     ChatResponseContentItem,
     ChatResponseReasoningContentItem,
@@ -19,6 +40,8 @@ from dhenara.ai.types.genai import (
 from dhenara.ai.types.genai.ai_model import AIModelProviderEnum
 from dhenara.ai.types.genai.dhenara.request import StructuredOutputConfig
 from dhenara.ai.types.genai.dhenara.response import ChatResponseChoice
+
+logger = logging.getLogger(__name__)
 
 
 class OpenAIMessageConverter:
@@ -105,56 +128,59 @@ class OpenAIMessageConverter:
         return []
 
     @staticmethod
-    def choice_to_provider_message(choice: ChatResponseChoice) -> dict[str, object]:
-        """Convert ChatResponseChoice into OpenAI-compatible assistant message."""
-        text_parts: list[str] = []
-        reasoning_parts: list[str] = []
-        tool_calls_payload: list[dict[str, object]] = []
+    def choice_to_provider_message_chat_api(choice: ChatResponseChoice) -> ChatCompletionAssistantMessageParam:
+        """Convert ChatResponseChoice into OpenAI ChatCompletionAssistantMessageParam.
 
-        for content in choice.contents:
-            if isinstance(content, ChatResponseTextContentItem):
-                if content.text:
-                    text_parts.append(content.text)
-            elif isinstance(content, ChatResponseReasoningContentItem):
-                # TODO: Take care of proper conversion back to openai format
-                if content.thinking_text:
-                    reasoning_parts.append(content.thinking_text)
-            elif isinstance(content, ChatResponseToolCallContentItem):
-                tool_call = content.tool_call
-                tool_calls_payload.append(
-                    {
-                        "id": tool_call.id,
-                        "type": "function",
-                        "function": {
-                            "name": tool_call.name,
-                            "arguments": json.dumps(tool_call.arguments),
+        **DEPRECATED**: OpenAI Chat API path. Use Responses API (`choice_to_provider_message_responses_api`) instead.
+
+        This method converts all content to plain text for legacy Chat API compatibility.
+        Reasoning content is flattened to text (no native reasoning support in Chat API).
+        Tool calls and structured outputs are preserved when possible.
+        """
+        logger.warning(
+            "OpenAI Chat API converter is deprecated. Use Responses API "
+            "(`choice_to_provider_message_responses_api`) for full fidelity."
+        )
+
+        content_parts: list[ChatCompletionContentPartTextParam] = []
+        tool_calls: list[ChatCompletionMessageToolCallParam] = []
+
+        for item in choice.contents:
+            if isinstance(item, ChatResponseTextContentItem) and item.text:
+                content_parts.append(ChatCompletionContentPartTextParam(type="text", text=item.text))
+            elif isinstance(item, ChatResponseReasoningContentItem):
+                # Convert reasoning to text (Chat API doesn't support explicit reasoning)
+                text = item.thinking_text or item.thinking_summary
+                if text:
+                    content_parts.append(ChatCompletionContentPartTextParam(type="text", text=text))
+            elif isinstance(item, ChatResponseStructuredOutputContentItem):
+                output = item.structured_output
+                if output and output.structured_data is not None:
+                    content_parts.append(
+                        ChatCompletionContentPartTextParam(type="text", text=json.dumps(output.structured_data))
+                    )
+            elif isinstance(item, ChatResponseToolCallContentItem) and item.tool_call:
+                tc = item.tool_call
+                tool_calls.append(
+                    ChatCompletionMessageToolCallParam(
+                        id=tc.id,
+                        type="function",
+                        function={
+                            "name": tc.name,
+                            "arguments": json.dumps(tc.arguments) if tc.arguments is not None else "{}",
                         },
-                    }
+                    )
                 )
-            elif isinstance(content, ChatResponseStructuredOutputContentItem):
-                output = content.structured_output
-                if output.structured_data:
-                    text_parts.append(json.dumps(output.structured_data))
 
-        message: dict[str, object] = {"role": "assistant"}
+        # When no parts, emit an empty text part to satisfy schema
+        if not content_parts and not tool_calls:
+            content_parts = [ChatCompletionContentPartTextParam(type="text", text="")]
 
-        if text_parts:
-            message["content"] = "\n".join(text_parts)
-        elif reasoning_parts:
-            message["content"] = "\n".join(reasoning_parts)
-        else:
-            message["content"] = None
+        return ChatCompletionAssistantMessageParam(
+            role="assistant", content=content_parts if content_parts else None, tool_calls=tool_calls or None
+        )
 
-        if tool_calls_payload:
-            message["tool_calls"] = tool_calls_payload
-
-        return message
-
-    @staticmethod
-    def choices_to_provider_messages(choices: Iterable[ChatResponseChoice]) -> list[dict[str, object]]:
-        return [OpenAIMessageConverter.choice_to_provider_message(choice) for choice in choices]
-
-    # Responses API output conversion
+    # Responses API output conversion (provider → Dhenara)
     @staticmethod
     def provider_message_to_content_items_responses_api(
         *,
@@ -293,3 +319,112 @@ class OpenAIMessageConverter:
             return items
 
         return items
+
+    @staticmethod
+    def choice_to_provider_message_responses_api(
+        choice: ChatResponseChoice,
+    ) -> dict[str, object]:
+        """Convert ChatResponseChoice into OpenAI Responses API input format.
+
+        Returns a dict containing role='assistant' and 'output' array with proper SDK param types:
+        - ResponseOutputMessageParam for text/structured outputs
+        - ResponseReasoningItemParam for thinking/reasoning content
+        - ResponseFunctionToolCallParam for tool calls
+
+        This maintains full fidelity with Responses API schema, preserving reasoning IDs,
+        signatures, summaries, and tool call metadata.
+        """
+        output_items: list[ResponseOutputMessageParam | ResponseReasoningItemParam | ResponseFunctionToolCallParam] = []
+
+        # Group content by type to build output items
+        for item in choice.contents:
+            if isinstance(item, ChatResponseTextContentItem) and item.text:
+                # ResponseOutputMessage with output_text content
+                output_items.append(
+                    ResponseOutputMessageParam(
+                        id=f"msg_{len(output_items)}",  # Generate ID if not tracked
+                        type="message",
+                        role="assistant",
+                        status="completed",
+                        content=[ResponseOutputTextParam(type="output_text", text=item.text, annotations=[])],
+                    )
+                )
+            elif isinstance(item, ChatResponseStructuredOutputContentItem):
+                output = item.structured_output
+                if output and output.structured_data is not None:
+                    # Structured output as output_text JSON
+                    output_items.append(
+                        ResponseOutputMessageParam(
+                            id=f"msg_{len(output_items)}",
+                            type="message",
+                            role="assistant",
+                            status="completed",
+                            content=[
+                                ResponseOutputTextParam(
+                                    type="output_text", text=json.dumps(output.structured_data), annotations=[]
+                                )
+                            ],
+                        )
+                    )
+            elif isinstance(item, ChatResponseReasoningContentItem):
+                # ResponseReasoningItem with thinking content and summary
+                thinking_id = item.thinking_id or f"reasoning_{len(output_items)}"
+                summary_text = item.thinking_summary or ""
+                content_parts = []
+                if item.thinking_text:
+                    # content is optional per SDK, omit if none
+                    content_parts = [
+                        ResponseOutputTextParam(type="output_text", text=item.thinking_text, annotations=[])
+                    ]
+                output_items.append(
+                    ResponseReasoningItemParam(
+                        id=thinking_id,
+                        type="reasoning",
+                        summary=[ResponseOutputTextParam(type="output_text", text=summary_text, annotations=[])],
+                        content=content_parts or None,
+                        encrypted_content=item.thinking_signature,
+                        status=item.thinking_status or "completed",
+                    )
+                )
+            elif isinstance(item, ChatResponseToolCallContentItem) and item.tool_call:
+                tc = item.tool_call
+                output_items.append(
+                    ResponseFunctionToolCallParam(
+                        id=tc.id or f"call_{len(output_items)}",
+                        type="function_call",
+                        call_id=tc.id or f"call_{len(output_items)}",
+                        name=tc.name,
+                        arguments=json.dumps(tc.arguments) if tc.arguments else "{}",
+                        status="completed",
+                    )
+                )
+
+        # If no output items, add an empty message to satisfy schema
+        if not output_items:
+            output_items.append(
+                ResponseOutputMessageParam(
+                    id="msg_0",
+                    type="message",
+                    role="assistant",
+                    status="completed",
+                    content=[ResponseOutputTextParam(type="output_text", text="", annotations=[])],
+                )
+            )
+
+        return {"role": "assistant", "output": output_items}
+
+    @staticmethod
+    def choice_to_provider_message(choice: ChatResponseChoice) -> ChatCompletionAssistantMessageParam:
+        if OPENAI_USE_RESPONSES_DEFAULT:
+            return OpenAIMessageConverter.choice_to_provider_message_responses_api(choice)
+        else:
+            return OpenAIMessageConverter.choice_to_provider_message_chat_api(choice)
+
+    @staticmethod
+    def choices_to_provider_messages(
+        choices: Iterable[ChatResponseChoice],
+    ) -> list[ChatCompletionAssistantMessageParam]:
+        if OPENAI_USE_RESPONSES_DEFAULT:
+            return [OpenAIMessageConverter.choice_to_provider_message_responses_api(choice) for choice in choices]
+        else:
+            return [OpenAIMessageConverter.choice_to_provider_message_chat_api(choice) for choice in choices]

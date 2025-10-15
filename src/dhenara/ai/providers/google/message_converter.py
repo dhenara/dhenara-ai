@@ -114,14 +114,31 @@ class GoogleMessageConverter:
 
     @staticmethod
     def choice_to_provider_message(choice: ChatResponseChoice) -> dict[str, object]:
+        """Convert ChatResponseChoice to Google Gemini message format.
+
+        Google uses 'model' role and parts array with:
+        - text parts for plain content
+        - thought parts (thought=True + thought_signature) for reasoning
+        - function_call parts for tool calls
+        - structured outputs as JSON text
+
+        Note: Google SDK types not always available; we emit strict dict schema.
+        """
         parts: list[dict[str, object]] = []
 
         for content in choice.contents:
             if isinstance(content, ChatResponseTextContentItem) and content.text:
                 parts.append({"text": content.text})
-            elif isinstance(content, ChatResponseReasoningContentItem) and content.thinking_text:
-                # TODO: Take care of proper conversion back to google format
-                parts.append({"text": content.thinking_text})
+            elif isinstance(content, ChatResponseReasoningContentItem):
+                # Google thinking: thought=True, text=summary, thought_signature for multi-turn
+                signature = content.thinking_signature
+                text_content = content.thinking_summary or content.thinking_text
+                if text_content and signature:
+                    # Proper thought part with signature
+                    parts.append({"text": text_content, "thought": True, "thought_signature": signature})
+                elif text_content:
+                    # Fallback: emit as text if no signature (cross-provider compatibility)
+                    parts.append({"text": text_content})
             elif isinstance(content, ChatResponseToolCallContentItem) and content.tool_call:
                 tool_call = content.tool_call
                 parts.append(
@@ -134,7 +151,7 @@ class GoogleMessageConverter:
                 )
             elif isinstance(content, ChatResponseStructuredOutputContentItem):
                 output = content.structured_output
-                if output.structured_data:
+                if output and output.structured_data:
                     parts.append({"text": json.dumps(output.structured_data)})
 
         if not parts:
