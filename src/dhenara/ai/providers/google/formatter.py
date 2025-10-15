@@ -256,15 +256,6 @@ class GoogleFormatter(BaseFormatter):
         return _clean_schema_for_api(_schema)
 
     @classmethod
-    def _format_response_choice(cls, choice: ChatResponseChoice) -> dict[str, Any]:
-        """Format a ChatResponseChoice into Google/Gemini message format.
-
-        Combines all content items from the choice into a single model message.
-        Google supports multiple parts (text, function_call) in a single message.
-        """
-        return GoogleMessageConverter.choice_to_provider_message(choice)
-
-    @classmethod
     def convert_message_item(
         cls,
         message_item: MessageItem,
@@ -276,6 +267,7 @@ class GoogleFormatter(BaseFormatter):
             Handles:
         - Prompt: converts to user/model message via format_prompt (may return list)
         - ChatResponseChoice: model message with all content items (text, function_call parts, etc.)
+            Delegates to GoogleMessageConverter.choice_to_provider_message.
         - ToolCallResult: user message with function_response part
         - ToolCallResultsMessage: user message with multiple function_response parts
 
@@ -322,8 +314,9 @@ class GoogleFormatter(BaseFormatter):
             }
 
         # Case 3: ChatResponseChoice (model response with all content items)
+        # Delegate to message converter (single source of truth for ChatResponse conversions)
         if isinstance(message_item, ChatResponseChoice):
-            return cls._format_response_choice(choice=message_item)
+            return GoogleMessageConverter.choice_to_provider_message(message_item)
 
         # Should not reach here due to MessageItem type constraint
         raise ValueError(f"Unsupported message item type: {type(message_item)}")

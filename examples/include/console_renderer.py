@@ -82,18 +82,14 @@ def render_content_item(content_item, choice_index: int = 0) -> str:
             )
             output.append(header)
             output.append(thinking_summary)
-            if has_signature:
-                sig_type = type(content_item.reasoning_signature).__name__
-                output.append(f"{ConsoleColors.GRAY}  [+ encrypted signature: {sig_type}]{ConsoleColors.RESET}")
-            output.append(ConsoleColors.RESET)
-        elif has_signature:
+        if has_signature:
             # Has signature but no summary text
             header = (
                 f"{ConsoleColors.MAGENTA}{ConsoleColors.BOLD}🔐 Encrypted Reasoning "
                 f"[{choice_index}.{content_index}]:{ConsoleColors.RESET}"
             )
             output.append(header)
-            sig_type = type(content_item.reasoning_signature).__name__
+            sig_type = type(content_item.thinking_signature).__name__
             output.append(f"{ConsoleColors.GRAY}  [encrypted reasoning signature: {sig_type}]{ConsoleColors.RESET}")
 
         if any_thinking:

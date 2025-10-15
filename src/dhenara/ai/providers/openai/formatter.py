@@ -18,13 +18,7 @@ from dhenara.ai.types.genai.dhenara.request import (
     ToolDefinition,
 )
 from dhenara.ai.types.genai.dhenara.request.data import FormattedPrompt
-from dhenara.ai.types.genai.dhenara.response import (
-    ChatResponseChoice,
-    ChatResponseReasoningContentItem,
-    ChatResponseStructuredOutputContentItem,
-    ChatResponseTextContentItem,
-    ChatResponseToolCallContentItem,
-)
+from dhenara.ai.types.genai.dhenara.response import ChatResponseChoice
 from dhenara.ai.types.shared.file import FileFormatEnum, GenericFile
 
 logger = logging.getLogger(__name__)
@@ -188,55 +182,9 @@ class OpenAIFormatter(BaseFormatter):
             ]
 
         if isinstance(message_item, ChatResponseChoice):
-            # Convert assistant choice: map all content types to appropriate Responses input items
-            # Responses API expects function_call items and message items separately
-            import json as _json
-
-            result_items: list[dict] = []
-
-            # Collect text/reasoning for message
-            texts: list[str] = []
-            for c in message_item.contents:
-                if isinstance(c, ChatResponseTextContentItem) and c.text:
-                    texts.append(c.text)
-                elif isinstance(c, ChatResponseReasoningContentItem) and c.thinking_text:
-                    texts.append(c.thinking_text)
-                elif isinstance(c, ChatResponseStructuredOutputContentItem) and c.structured_output:
-                    try:
-                        if c.structured_output.structured_data:
-                            texts.append(_json.dumps(c.structured_output.structured_data))
-                    except Exception:
-                        pass
-                elif isinstance(c, ChatResponseToolCallContentItem):
-                    # Add function_call items for Responses API
-                    tc = c.tool_call
-                    result_items.append(
-                        {
-                            "type": "function_call",
-                            "call_id": tc.id,
-                            "name": tc.name,
-                            "arguments": _json.dumps(tc.arguments)
-                            if isinstance(tc.arguments, dict)
-                            else str(tc.arguments),
-                        }
-                    )
-
-            # Add message if there's any text content
-            if texts:
-                result_items.insert(
-                    0,
-                    {
-                        "role": "assistant",
-                        "content": [{"type": "output_text", "text": "\n".join(texts)}],
-                    },
-                )
-
-            # Return list if multiple items, single dict if one
-            if len(result_items) == 1:
-                return result_items[0]
-            if result_items:
-                return result_items
-            return {"role": "assistant", "content": [{"type": "output_text", "text": ""}]}
+            # Convert assistant choice using Responses API INPUT format (simplified for multi-turn)
+            # Delegate to message converter (single source of truth for ChatResponse conversions)
+            return OpenAIMessageConverter.choice_to_provider_message_responses_api_input(message_item)
 
         raise ValueError(f"Unsupported message item type for Responses formatting: {type(message_item)}")
 
@@ -538,15 +486,6 @@ class OpenAIFormatter(BaseFormatter):
         }
 
     @classmethod
-    def _format_response_choice(cls, choice: ChatResponseChoice) -> dict[str, Any]:
-        """Format a ChatResponseChoice into OpenAI message format.
-
-        Combines all content items from the choice into a single assistant message.
-        This preserves the proper message structure (e.g., tool calls stay with their text).
-        """
-        return OpenAIMessageConverter.choice_to_provider_message(choice)
-
-    @classmethod
     def convert_message_item(
         cls,
         message_item: MessageItem,
@@ -558,6 +497,7 @@ class OpenAIFormatter(BaseFormatter):
             Handles:
         - Prompt: converts to user/system/assistant message via format_prompt (may return list)
         - ChatResponseChoice: assistant message with all content items (text, tool calls, reasoning, etc.)
+            Delegates to OpenAIMessageConverter.choice_to_provider_message for Chat API format.
         - ToolCallResult: tool message with function output
         - ToolCallResultsMessage: expands grouped tool results into provider messages
 
@@ -593,8 +533,9 @@ class OpenAIFormatter(BaseFormatter):
             ]
 
         # Case 3: ChatResponseChoice (assistant response with all content items)
+        # Delegate to message converter (single source of truth for ChatResponse conversions)
         if isinstance(message_item, ChatResponseChoice):
-            return cls._format_response_choice(choice=message_item)
+            return OpenAIMessageConverter.choice_to_provider_message(message_item)
 
         # Should not reach here due to MessageItem type constraint
         raise ValueError(f"Unsupported message item type: {type(message_item)}")

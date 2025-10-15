@@ -9,13 +9,6 @@ from .formatter import OpenAIFormatter
 
 logger = logging.getLogger(__name__)
 
-"""
-Hardcoded switch for adopting OpenAI Responses API.
-Phase 1: keep legacy Chat/Image as default. Toggle to True to route OpenAI to Responses
-path (implemented in a dedicated client class; Azure providers remain on legacy chat).
-"""
-OPENAI_USE_RESPONSES_DEFAULT = True
-
 
 # -----------------------------------------------------------------------------
 class OpenAIClientBase(AIModelProviderClientBase):

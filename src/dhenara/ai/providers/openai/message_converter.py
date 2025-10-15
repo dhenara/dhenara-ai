@@ -27,7 +27,7 @@ from openai.types.responses.response_reasoning_item_param import (
     ResponseReasoningItemParam,
 )
 
-from dhenara.ai.providers.openai import OPENAI_USE_RESPONSES_DEFAULT
+from dhenara.ai.providers.openai.constants import OPENAI_USE_RESPONSES_DEFAULT
 from dhenara.ai.types.genai import (
     ChatResponseContentItem,
     ChatResponseReasoningContentItem,
@@ -412,6 +412,53 @@ class OpenAIMessageConverter:
             )
 
         return {"role": "assistant", "output": output_items}
+
+    @staticmethod
+    def choice_to_provider_message_responses_api_input(
+        choice: ChatResponseChoice,
+    ) -> dict[str, object]:
+        """Convert ChatResponseChoice to Responses API INPUT format for multi-turn conversations.
+
+        For prior assistant messages in conversation history, Responses API expects:
+        {"role": "assistant", "content": [{"type": "output_text", "text": "..."}]}
+
+        Note: Assistant messages use "output_text" type, not "input_text". This simplifies
+        the assistant's prior response to plain text, discarding reasoning IDs and complex
+        structure. The full output format with reasoning items is only used in model responses,
+        not when feeding history back as input.
+        """
+        import json as _json
+
+        # Collect all text content (text, reasoning text, structured output as JSON)
+        texts: list[str] = []
+        for item in choice.contents:
+            if isinstance(item, ChatResponseTextContentItem) and item.text:
+                texts.append(item.text)
+            elif isinstance(item, ChatResponseReasoningContentItem):
+                # For reasoning, prefer summary if available, else thinking_text
+                if item.thinking_summary:
+                    texts.append(f"[Reasoning Summary] {item.thinking_summary}")
+                elif item.thinking_text:
+                    texts.append(f"[Reasoning] {item.thinking_text}")
+            elif isinstance(item, ChatResponseStructuredOutputContentItem) and item.structured_output:
+                try:
+                    if item.structured_output.structured_data:
+                        texts.append(_json.dumps(item.structured_output.structured_data))
+                except Exception:
+                    pass
+            elif isinstance(item, ChatResponseToolCallContentItem):
+                # Tool calls need to be represented separately in input format
+                # For now, represent as text description
+                tc = item.tool_call
+                texts.append(f"[Tool Call: {tc.name}({_json.dumps(tc.arguments) if tc.arguments else ''})]")
+
+        # Combine all text into single content
+        combined_text = "\n\n".join(texts) if texts else ""
+
+        return {
+            "role": "assistant",
+            "content": [{"type": "output_text", "text": combined_text}],
+        }
 
     @staticmethod
     def choice_to_provider_message(choice: ChatResponseChoice) -> ChatCompletionAssistantMessageParam:

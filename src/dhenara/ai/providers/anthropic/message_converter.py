@@ -171,10 +171,6 @@ class AnthropicMessageConverter:
                         )
                     )
 
-        # Anthropic accepts content as either string or list of block params; keep list form for validation
-        if len(content_blocks) == 1 and isinstance(content_blocks[0], TextBlockParam):
-            return {"role": "assistant", "content": content_blocks[0].text}
-
         if content_blocks:
             # SDK accepts a list of block params (they serialize to correct schema)
             return {"role": "assistant", "content": content_blocks}

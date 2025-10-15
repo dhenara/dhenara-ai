@@ -292,7 +292,14 @@ class BaseFormatter(ABC):
         pass
 
     # -------------------------------------------------------------------------
-    # Tools & Structured output
+    # Tools & Structured output (INPUT to model - tool/function DEFINITIONS)
+    #
+    # These methods convert tool/function/structured-output SCHEMAS that we send
+    # TO the model in API requests (not tool CALLS from model responses).
+    #
+    # For converting tool CALLS from ChatResponseChoice (model's response),
+    # see message converters (e.g., OpenAIMessageConverter.choice_to_provider_message).
+    # -------------------------------------------------------------------------
     @classmethod
     @abstractmethod
     def convert_function_parameter(
@@ -300,7 +307,7 @@ class BaseFormatter(ABC):
         param: FunctionParameter,
         model_endpoint: AIModelEndpoint | None = None,
     ) -> dict[str, Any]:
-        """Convert a single FunctionParameter to provider format"""
+        """Convert a single FunctionParameter to provider format (for API request input)"""
         pass
 
     @classmethod
@@ -310,7 +317,7 @@ class BaseFormatter(ABC):
         params: FunctionParameters,
         model_endpoint: AIModelEndpoint | None = None,
     ) -> dict[str, Any]:
-        """Convert FunctionParameters to provider format"""
+        """Convert FunctionParameters to provider format (for API request input)"""
         pass
 
     @classmethod
@@ -320,7 +327,7 @@ class BaseFormatter(ABC):
         func_def: FunctionDefinition,
         model_endpoint: AIModelEndpoint | None = None,
     ) -> dict[str, Any]:
-        """Convert FunctionDefinition to provider format"""
+        """Convert FunctionDefinition to provider format (for API request input)"""
         pass
 
     @classmethod
@@ -330,7 +337,7 @@ class BaseFormatter(ABC):
         tool: ToolDefinition,
         model_endpoint: AIModelEndpoint | None = None,
     ) -> Any:
-        """Convert ToolDefinition to provider format"""
+        """Convert ToolDefinition to provider format (for API request input)"""
         pass
 
     @classmethod
@@ -340,7 +347,7 @@ class BaseFormatter(ABC):
         tool_choice: ToolChoice,
         model_endpoint: AIModelEndpoint | None = None,
     ) -> Any:
-        """Convert ToolChoice to provider format"""
+        """Convert ToolChoice to provider format (for API request input)"""
         pass
 
     @classmethod
@@ -350,5 +357,5 @@ class BaseFormatter(ABC):
         structured_output: StructuredOutputConfig,
         model_endpoint: AIModelEndpoint | None = None,
     ) -> dict[str, Any]:
-        """Convert StructuredOutputConfig to provider format"""
+        """Convert StructuredOutputConfig to provider format (for API request input)"""
         pass
