@@ -136,11 +136,17 @@ class ChatResponseReasoningContentItemDelta(BaseChatResponseContentItemDelta):
 # TODO: Tool call in streaming is not supported now
 class ChatResponseToolCallContentItemDelta(BaseChatResponseContentItemDelta):
     type: ChatResponseContentItemType = ChatResponseContentItemType.TOOL_CALL
-    tool_calls_delta: str
+    # Optional fully-formed tool call (eg. on completed event)
+    tool_call: ChatResponseToolCall | None = None
+    # Optional incremental arguments delta (plain text JSON chunk)
+    arguments_delta: str | None = None
+    # Backward-compatible fields (not used but kept to avoid breaking callers)
+    tool_calls_delta: str | None = None
     tool_call_deltas: list[dict] = Field(default_factory=list)
 
     def get_text_delta(self) -> str:
-        return self.tool_calls_delta
+        # Prefer new field, fallback to legacy name if present
+        return self.arguments_delta or self.tool_calls_delta
 
 
 # TODO: Structed output in streaming is not supported now

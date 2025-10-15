@@ -14,6 +14,8 @@ from dhenara.ai.types.genai import (
     ChatResponseContentItem,
     ChatResponseReasoningContentItemDelta,
     ChatResponseTextContentItemDelta,
+    ChatResponseToolCall,
+    ChatResponseToolCallContentItemDelta,
     ChatResponseUsage,
     StreamingChatResponse,
 )
@@ -444,12 +446,19 @@ class OpenAIResponses(OpenAIClientBase):
         # Note: reasoning has its own dedicated text stream separate from reasoning_summary
         elif event_type == "response.reasoning_text.delta":
             delta_text = getattr(chunk, "delta", None)
+            item_id = getattr(chunk, "item_id", None)
+            content_index = getattr(chunk, "content_index", None)
+            output_index = getattr(chunk, "output_index", None)
             if delta_text:
                 content_delta = ChatResponseReasoningContentItemDelta(
                     index=0,
                     role="assistant",
                     thinking_text_delta=delta_text,
-                    # TODO: take care of summary, id and signature
+                    thinking_id=item_id,
+                    metadata={
+                        "output_index": output_index,
+                        "content_index": content_index,
+                    },
                 )
                 choice_delta = ChatResponseChoiceDelta(
                     index=0,
@@ -464,11 +473,19 @@ class OpenAIResponses(OpenAIClientBase):
         # Reasoning summary delta (condensed reasoning for o3-mini)
         elif event_type == "response.reasoning_summary_text.delta":
             delta_text = getattr(chunk, "delta", None)
+            item_id = getattr(chunk, "item_id", None)
+            summary_index = getattr(chunk, "summary_index", None)
+            output_index = getattr(chunk, "output_index", None)
             if delta_text:
                 content_delta = ChatResponseReasoningContentItemDelta(
                     index=0,
                     role="assistant",
-                    thinking_text_delta=delta_text,
+                    thinking_summary_delta=delta_text,
+                    thinking_id=item_id,
+                    metadata={
+                        "output_index": output_index,
+                        "summary_index": summary_index,
+                    },
                 )
                 choice_delta = ChatResponseChoiceDelta(
                     index=0,
@@ -482,16 +499,101 @@ class OpenAIResponses(OpenAIClientBase):
 
         # Function call arguments delta (tool calls)
         elif event_type == "response.function_call_arguments.delta":
-            # Tool calls stream incrementally; we accumulate them
-            # The streaming manager should handle partial tool call assembly
-            # For now, we'll skip tool call streaming deltas as they're complex
-            # and require state tracking across multiple chunks
+            # Incremental tool call arguments (JSON string pieces)
+            delta_text = getattr(chunk, "delta", None)
+            if delta_text:
+                content_delta = ChatResponseToolCallContentItemDelta(
+                    index=0,
+                    role="assistant",
+                    arguments_delta=delta_text,
+                    metadata={},
+                )
+                choice_delta = ChatResponseChoiceDelta(
+                    index=0,
+                    finish_reason=None,
+                    stop_sequence=None,
+                    content_deltas=[content_delta],
+                    metadata={},
+                )
+                response_chunk = self.streaming_manager.update(choice_deltas=[choice_delta])
+                processed.append(StreamingChatResponse(id=getattr(chunk, "id", None), data=response_chunk))
+
+        # Function call completed with full arguments and name
+        elif event_type == "response.function_call_arguments.done":
+            # Fields: name, arguments (string), item_id
+            name = getattr(chunk, "name", None)
+            args_str = getattr(chunk, "arguments", None)
+            item_id = getattr(chunk, "item_id", None)
+            tool_call_obj = None
+            if name:
+                try:
+                    parsed_args = json.loads(args_str) if isinstance(args_str, str) else args_str
+                except Exception:
+                    parsed_args = {"raw": args_str}
+                tool_call_obj = ChatResponseToolCall(id=item_id, name=name, arguments=parsed_args or {})
+
+            content_delta = ChatResponseToolCallContentItemDelta(
+                index=0,
+                role="assistant",
+                tool_call=tool_call_obj,
+                metadata={},
+            )
+            choice_delta = ChatResponseChoiceDelta(
+                index=0,
+                finish_reason=None,
+                stop_sequence=None,
+                content_deltas=[content_delta],
+                metadata={},
+            )
+            response_chunk = self.streaming_manager.update(choice_deltas=[choice_delta])
+            processed.append(StreamingChatResponse(id=getattr(chunk, "id", None), data=response_chunk))
+
+        # Text done (no payload needed, but included for completeness)
+        elif event_type == "response.text.done" or event_type == "response.output_text.done":
+            # No-op: our consolidation model doesn't require explicit done markers for text
             pass
+
+        # Output/part lifecycle events (minimal handling to prep indices if needed)
+        elif event_type in ("response.output_item.added", "response.content_part.added"):
+            # For now, we don't need to act since we use a flat single-choice/index=0 model.
+            # In future we can map output_index/content_index to content indices to separate parts.
+            pass
+        elif event_type in ("response.output_item.done", "response.content_part.done"):
+            # No-op currently
+            pass
+
+        # Reasoning summary part events (piecewise summary text)
+        elif event_type in ("response.reasoning_summary_part.added", "response.reasoning_summary_part.done"):
+            part = getattr(chunk, "part", None)
+            text = getattr(part, "text", None) if part is not None else None
+            item_id = getattr(chunk, "item_id", None)
+            output_index = getattr(chunk, "output_index", None)
+            summary_index = getattr(chunk, "summary_index", None)
+            if text:
+                content_delta = ChatResponseReasoningContentItemDelta(
+                    index=0,
+                    role="assistant",
+                    thinking_summary_delta=text,
+                    thinking_id=item_id,
+                    metadata={
+                        "output_index": output_index,
+                        "summary_index": summary_index,
+                    },
+                )
+                choice_delta = ChatResponseChoiceDelta(
+                    index=0,
+                    finish_reason=None,
+                    stop_sequence=None,
+                    content_deltas=[content_delta],
+                    metadata={},
+                )
+                response_chunk = self.streaming_manager.update(choice_deltas=[choice_delta])
+                processed.append(StreamingChatResponse(id=getattr(chunk, "id", None), data=response_chunk))
 
         # Completion event - usage already handled above
         elif event_type == "response.completed":
-            # Mark as done
-            pass
+            # Emit a done chunk for clients that rely on it
+            processed.append(self.streaming_manager.get_streaming_done_chunk())
 
         # Error events
         elif event_type == "error":

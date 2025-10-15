@@ -309,6 +309,19 @@ class StreamingManager:
                             # Update metadata for tool calls and generic content
                             matching_content.metadata.update(content_delta.metadata)
 
+                            # If it's a tool call, update the incremental arguments or set full tool_call
+                            if content_delta.type == ChatResponseContentItemType.TOOL_CALL:
+                                if hasattr(content_delta, "tool_call") and content_delta.tool_call:
+                                    # If we have a complete tool_call object, set/replace it
+                                    if hasattr(matching_content, "tool_call"):
+                                        matching_content.tool_call = content_delta.tool_call
+                                # Handle incremental arguments appends into metadata buffer
+                                if hasattr(content_delta, "arguments_delta") and content_delta.arguments_delta:
+                                    # Maintain a buffer for args in metadata
+                                    buf_key = "arguments_buffer"
+                                    prev = matching_content.metadata.get(buf_key) or ""
+                                    matching_content.metadata[buf_key] = prev + content_delta.arguments_delta
+
         # Update token count
         self.progress.updates_count += 1
 
