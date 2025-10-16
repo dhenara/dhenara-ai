@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
 
 from anthropic.types import ContentBlock, Message
 from anthropic.types.redacted_thinking_block_param import RedactedThinkingBlockParam
@@ -11,6 +10,7 @@ from anthropic.types.text_block_param import TextBlockParam
 from anthropic.types.thinking_block_param import ThinkingBlockParam
 from anthropic.types.tool_use_block_param import ToolUseBlockParam
 
+from dhenara.ai.providers.base import BaseMessageConverter
 from dhenara.ai.types.genai import (
     ChatResponseContentItem,
     ChatResponseReasoningContentItem,
@@ -24,11 +24,11 @@ from dhenara.ai.types.genai.dhenara.request import StructuredOutputConfig
 from dhenara.ai.types.genai.dhenara.response import ChatResponseChoice
 
 
-class AnthropicMessageConverter:
+class AnthropicMessageConverter(BaseMessageConverter):
     """Bidirectional converter for Anthropic messages."""
 
     @staticmethod
-    def provider_message_to_content_items(
+    def provider_message_to_dai_content_items(
         *,
         message: Message,
         structured_output_config: StructuredOutputConfig | None = None,
@@ -36,7 +36,7 @@ class AnthropicMessageConverter:
         items: list[ChatResponseContentItem] = []
         for index, content in enumerate(message.content):
             items.extend(
-                AnthropicMessageConverter.content_block_to_items(
+                AnthropicMessageConverter._content_block_to_items(
                     content_block=content,
                     index=index,
                     role=message.role,
@@ -47,7 +47,7 @@ class AnthropicMessageConverter:
         return items
 
     @staticmethod
-    def content_block_to_items(
+    def _content_block_to_items(
         *,
         content_block: ContentBlock,
         index: int,
@@ -117,7 +117,13 @@ class AnthropicMessageConverter:
         return []
 
     @staticmethod
-    def choice_to_provider_message(choice: ChatResponseChoice) -> dict[str, object]:
+    def dai_choice_to_provider_message(
+        choice: ChatResponseChoice,
+        *,
+        model: str | None = None,
+        provider: str | None = None,
+        strict_same_provider: bool = False,
+    ) -> dict[str, object]:
         content_blocks: list[object] = []
 
         for content in choice.contents:
@@ -125,7 +131,7 @@ class AnthropicMessageConverter:
                 content_blocks.append(TextBlockParam(type="text", text=content.text))
             elif isinstance(content, ChatResponseReasoningContentItem):
                 # Anthropic thinking blocks require thinking text + signature
-                if content.thinking_text:
+                if content.thinking_text and content.thinking_signature:
                     # Proper thinking block with signature
                     content_blocks.append(
                         ThinkingBlockParam(
@@ -142,13 +148,10 @@ class AnthropicMessageConverter:
                         )
                     )
                 elif content.thinking_text:
-                    # Fallback: if no signature, emit as text (for cross-provider compatibility)
-                    content_blocks.append(
-                        TextBlockParam(
-                            type="text",
-                            text=content.thinking_text,
-                        )
-                    )
+                    if strict_same_provider:
+                        raise ValueError("Anthropic: missing thinking signature for reasoning content in strict mode.")
+                    # Fallback: if no signature, emit as text (cross-provider compatibility)
+                    content_blocks.append(TextBlockParam(type="text", text=content.thinking_text))
             elif isinstance(content, ChatResponseToolCallContentItem) and content.tool_call:
                 tool_call = content.tool_call
                 content_blocks.append(
@@ -176,7 +179,3 @@ class AnthropicMessageConverter:
             return {"role": "assistant", "content": content_blocks}
 
         return {"role": "assistant", "content": ""}
-
-    @staticmethod
-    def choices_to_provider_messages(choices: Iterable[ChatResponseChoice]) -> list[dict[str, object]]:
-        return [AnthropicMessageConverter.choice_to_provider_message(choice) for choice in choices]

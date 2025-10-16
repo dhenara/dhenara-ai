@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 # -----------------------------------------------------------------------------
-class OpenAIChat(OpenAIClientBase):
+class OpenAIChatLEGACY(OpenAIClientBase):
     def get_api_call_params(
         self,
         prompt: dict | None,

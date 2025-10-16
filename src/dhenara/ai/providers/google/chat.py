@@ -291,7 +291,7 @@ class GoogleAIChat(GoogleAIClientBase):
                     index=choice_index,
                     finish_reason=candidate.finish_reason,
                     stop_sequence=None,
-                    contents=GoogleMessageConverter.provider_message_to_content_items(
+                    contents=GoogleMessageConverter.provider_message_to_dai_content_items(
                         message=candidate.content,
                         structured_output_config=self.config.structured_output,
                     ),

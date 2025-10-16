@@ -352,7 +352,7 @@ class AnthropicChat(AnthropicClientBase):
         role: str,
         content_item: ContentBlock,
     ) -> ChatResponseContentItem:
-        converted_items = AnthropicMessageConverter.content_block_to_items(
+        converted_items = AnthropicMessageConverter._content_block_to_items(
             content_block=content_item,
             index=index,
             role=role,

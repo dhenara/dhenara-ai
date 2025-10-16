@@ -165,8 +165,8 @@ class BaseFormatter(ABC):
         - ToolCallResult: Tool execution results
         - ToolCallResultsMessage: Grouped tool execution results emitted together
 
-            This method delegates to provider-specific convert_message_item for each item.
-            Note: convert_message_item can return either a single dict or a list of dicts
+            This method delegates to provider-specific convert_dai_message_item_to_provider for each item.
+            Note: convert_dai_message_item_to_provider can return either a single dict or a list of dicts
             (e.g., Prompt objects may expand to multiple messages like system + user).
         """
         if not messages:
@@ -174,7 +174,7 @@ class BaseFormatter(ABC):
 
         formatted_messages = []
         for msg_item in messages:
-            formatted = cls.convert_message_item(
+            formatted = cls.convert_dai_message_item_to_provider(
                 message_item=msg_item,
                 model_endpoint=model_endpoint,
                 **kwargs,
@@ -189,7 +189,7 @@ class BaseFormatter(ABC):
 
     @classmethod
     @abstractmethod
-    def convert_message_item(
+    def convert_dai_message_item_to_provider(
         cls,
         message_item: MessageItem,
         model_endpoint: AIModelEndpoint | None = None,
@@ -298,7 +298,7 @@ class BaseFormatter(ABC):
     # TO the model in API requests (not tool CALLS from model responses).
     #
     # For converting tool CALLS from ChatResponseChoice (model's response),
-    # see message converters (e.g., OpenAIMessageConverter.choice_to_provider_message).
+    # see message converters (e.g., OpenAIMessageConverter.dai_choice_to_provider_message).
     # -------------------------------------------------------------------------
     @classmethod
     @abstractmethod

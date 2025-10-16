@@ -256,7 +256,7 @@ class GoogleFormatter(BaseFormatter):
         return _clean_schema_for_api(_schema)
 
     @classmethod
-    def convert_message_item(
+    def convert_dai_message_item_to_provider(
         cls,
         message_item: MessageItem,
         model_endpoint: AIModelEndpoint | None = None,
@@ -267,7 +267,7 @@ class GoogleFormatter(BaseFormatter):
             Handles:
         - Prompt: converts to user/model message via format_prompt (may return list)
         - ChatResponseChoice: model message with all content items (text, function_call parts, etc.)
-            Delegates to GoogleMessageConverter.choice_to_provider_message.
+            Delegates to GoogleMessageConverter.dai_choice_to_provider_message.
         - ToolCallResult: user message with function_response part
         - ToolCallResultsMessage: user message with multiple function_response parts
 
@@ -316,7 +316,7 @@ class GoogleFormatter(BaseFormatter):
         # Case 3: ChatResponseChoice (model response with all content items)
         # Delegate to message converter (single source of truth for ChatResponse conversions)
         if isinstance(message_item, ChatResponseChoice):
-            return GoogleMessageConverter.choice_to_provider_message(message_item)
+            return GoogleMessageConverter.dai_choice_to_provider_message(message_item)
 
         # Should not reach here due to MessageItem type constraint
         raise ValueError(f"Unsupported message item type: {type(message_item)}")

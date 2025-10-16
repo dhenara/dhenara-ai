@@ -373,11 +373,18 @@ class AIModelProviderClientBase(ABC):
                 return AIModelCallResponse(sync_stream_generator=stream_generator)
 
             response = self.do_api_call_sync(api_call_params)
+            prdata = (
+                response.model_dump()
+                if hasattr(response, "model_dump")
+                else response
+                if isinstance(response, dict)
+                else str(response)
+            )
 
             # Capture provider response
             self._capture_artifacts(
                 stage="provider_response",
-                data=response if isinstance(response, dict) else str(response),
+                data=prdata,
                 filename="dai_provider_response.json",
             )
 
@@ -401,6 +408,7 @@ class AIModelProviderClientBase(ABC):
             api_call_status = self._create_error_status(str(e))
             # Flush Python logs on error
             self._capture_python_logs(when="error")
+            return AIModelCallResponse(status=api_call_status)
 
     async def generate_response_async(
         self,
@@ -459,11 +467,18 @@ class AIModelProviderClientBase(ABC):
                 return AIModelCallResponse(async_stream_generator=stream_generator)
 
             response = await self.do_api_call_async(api_call_params)
+            prdata = (
+                response.model_dump()
+                if hasattr(response, "model_dump")
+                else response
+                if isinstance(response, dict)
+                else str(response)
+            )
 
             # Capture provider response
             self._capture_artifacts(
                 stage="provider_response",
-                data=response if isinstance(response, dict) else str(response),
+                data=prdata,
                 filename="dai_provider_response.json",
             )
 
@@ -487,6 +502,7 @@ class AIModelProviderClientBase(ABC):
             api_call_status = self._create_error_status(str(e))
             # Flush Python logs on error
             self._capture_python_logs(when="error")
+            return AIModelCallResponse(status=api_call_status)
 
     def _format_and_generate_response_sync(
         self,

@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
 from typing import Any
 
+from dhenara.ai.providers.base import BaseMessageConverter
 from dhenara.ai.types.genai import (
     ChatResponseContentItem,
     ChatResponseGenericContentItem,
@@ -20,7 +20,7 @@ from dhenara.ai.types.genai.dhenara.request import StructuredOutputConfig
 from dhenara.ai.types.genai.dhenara.response import ChatResponseChoice
 
 
-class GoogleMessageConverter:
+class GoogleMessageConverter(BaseMessageConverter):
     """Bidirectional converter for Google Gemini messages."""
 
     @staticmethod
@@ -94,7 +94,7 @@ class GoogleMessageConverter:
         )
 
     @staticmethod
-    def provider_message_to_content_items(
+    def provider_message_to_dai_content_items(
         *,
         message: Any,
         structured_output_config: StructuredOutputConfig | None = None,
@@ -113,7 +113,13 @@ class GoogleMessageConverter:
         ]
 
     @staticmethod
-    def choice_to_provider_message(choice: ChatResponseChoice) -> dict[str, object]:
+    def dai_choice_to_provider_message(
+        choice: ChatResponseChoice,
+        *,
+        model: str | None = None,
+        provider: str | None = None,
+        strict_same_provider: bool = False,
+    ) -> dict[str, object]:
         """Convert ChatResponseChoice to Google Gemini message format.
 
         Google uses 'model' role and parts array with:
@@ -137,6 +143,8 @@ class GoogleMessageConverter:
                     # Proper thought part with signature
                     parts.append({"text": text_content, "thought": True, "thought_signature": signature})
                 elif text_content:
+                    if strict_same_provider:
+                        raise ValueError("Google: missing thought_signature for reasoning content in strict mode.")
                     # Fallback: emit as text if no signature (cross-provider compatibility)
                     parts.append({"text": text_content})
             elif isinstance(content, ChatResponseToolCallContentItem) and content.tool_call:
@@ -158,7 +166,3 @@ class GoogleMessageConverter:
             parts = [{"text": ""}]
 
         return {"role": "model", "parts": parts}
-
-    @staticmethod
-    def choices_to_provider_messages(choices: Iterable[ChatResponseChoice]) -> list[dict[str, object]]:
-        return [GoogleMessageConverter.choice_to_provider_message(choice) for choice in choices]

@@ -6,22 +6,20 @@ from dhenara.ai.types.genai.ai_model import (
     FoundationModel,
 )
 
-Claude45Sonnet = FoundationModel(
+ClaudeSonnet45 = FoundationModel(
     model_name="claude-sonnet-4-5",
     display_name="Claude Sonnet 4.5",
     provider=AIModelProviderEnum.ANTHROPIC,
     functional_type=AIModelFunctionalTypeEnum.TEXT_GENERATION,
     settings=ChatModelSettings(
         max_context_window_tokens=200000,
-        max_output_tokens=8192,
+        max_output_tokens=64000,
         supports_reasoning=True,
         max_reasoning_tokens=32000,
         max_output_tokens_reasoning_mode=64000,
     ),
     valid_options={},
-    metadata={
-        # "version_suffix": "-latest",
-    },
+    metadata={},
     order=70,
     cost_data=ChatModelCostData(
         input_token_cost_per_million=3.0,
@@ -30,7 +28,29 @@ Claude45Sonnet = FoundationModel(
 )
 
 
-Claude40Sonnet = FoundationModel(
+ClaudeHaiku45 = FoundationModel(
+    model_name="claude-haiku-4-5",
+    display_name="Claude Haiku 4.5",
+    provider=AIModelProviderEnum.ANTHROPIC,
+    functional_type=AIModelFunctionalTypeEnum.TEXT_GENERATION,
+    settings=ChatModelSettings(
+        max_context_window_tokens=200000,
+        max_output_tokens=64000,
+        supports_reasoning=True,
+        max_reasoning_tokens=32000,
+        max_output_tokens_reasoning_mode=64000,
+    ),
+    valid_options={},
+    metadata={},
+    order=82,
+    cost_data=ChatModelCostData(
+        input_token_cost_per_million=1.0,
+        output_token_cost_per_million=5.0,
+    ),
+)
+
+
+ClaudeSonnet40 = FoundationModel(
     model_name="claude-sonnet-4-0",
     display_name="Claude Sonnet 4",
     provider=AIModelProviderEnum.ANTHROPIC,
@@ -53,7 +73,7 @@ Claude40Sonnet = FoundationModel(
     ),
 )
 
-Claude40Opus = FoundationModel(
+ClaudeOpus40 = FoundationModel(
     model_name="claude-opus-4-0",
     display_name="Claude Opus 4",
     provider=AIModelProviderEnum.ANTHROPIC,
@@ -66,9 +86,7 @@ Claude40Opus = FoundationModel(
         max_output_tokens_reasoning_mode=32000,
     ),
     valid_options={},
-    metadata={
-        # "version_suffix": "-latest",
-    },
+    metadata={},
     order=75,
     cost_data=ChatModelCostData(
         input_token_cost_per_million=15.0,
@@ -165,9 +183,12 @@ Claude3Opus = FoundationModel(
     ),
 )
 
+Claude40Sonnet = ClaudeSonnet40
 CHAT_MODELS = [
-    Claude45Sonnet,
-    Claude40Opus,
+    ClaudeSonnet45,
+    ClaudeSonnet40,
+    ClaudeHaiku45,
+    ClaudeOpus40,
     Claude40Sonnet,
     Claude37Sonnet,
     Claude35Sonnet,

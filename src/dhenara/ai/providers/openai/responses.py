@@ -41,20 +41,15 @@ class OpenAIResponses(OpenAIClientBase):
         *,
         prompt: dict | None,
         context: list[dict] | None,
-        instructions: dict | None,
         messages: list | None,
     ) -> list[dict]:
         """Build the Responses API 'input' array of role/content items."""
         input_items: list[dict] = []
 
-        # Instructions as a system message if provided
-        if instructions:
-            input_items.append(OpenAIFormatter.convert_instruction_prompt_responses(instructions))
-
         if messages is not None:
             # Convert Dhenara messages to Responses input messages
             for mi in messages:
-                converted = OpenAIFormatter.convert_message_item_responses(
+                converted = OpenAIFormatter.convert_dai_message_item_to_provider(
                     message_item=mi,
                     model_endpoint=self.model_endpoint,
                 )
@@ -63,12 +58,10 @@ class OpenAIResponses(OpenAIClientBase):
                 elif converted:
                     input_items.append(converted)
         else:
-            # Context (system/user messages before prompt)
-            if context:
-                input_items.extend([OpenAIFormatter.convert_prompt_responses(c, self.model_endpoint) for c in context])
-
+            if context is not None:
+                input_items.extend(context)
             if prompt is not None:
-                input_items.append(OpenAIFormatter.convert_prompt_responses(prompt, self.model_endpoint))
+                input_items.append(prompt)
 
         return input_items
 
@@ -92,7 +85,6 @@ class OpenAIResponses(OpenAIClientBase):
         input_messages = self._build_responses_input(
             prompt=prompt,
             context=context or [],
-            instructions=instructions,
             messages=messages,
         )
 
@@ -101,6 +93,7 @@ class OpenAIResponses(OpenAIClientBase):
             "model": self.model_name_in_api_calls,
             "input": input_messages,
             "stream": self.config.streaming,
+            "instructions": " ".join(instructions) if instructions else "",
         }
 
         # Max tokens (Responses uses max_output_tokens)
@@ -148,16 +141,13 @@ class OpenAIResponses(OpenAIClientBase):
             # Use Responses-specific tool schema (top-level name)
             tools_formatted = None
             try:
-                tools_formatted = self.formatter.format_tools_responses(
-                    tools=self.config.tools,
-                    model_endpoint=self.model_endpoint,
-                )
-            except Exception:
-                # Fallback to generic formatter if Responses variant not available
                 tools_formatted = self.formatter.format_tools(
                     tools=self.config.tools,
                     model_endpoint=self.model_endpoint,
                 )
+            except Exception:
+                logger.exception("Error formatting tools for Responses API")
+
             if tools_formatted:
                 args["tools"] = tools_formatted
         if self.config.tool_choice:
@@ -322,8 +312,8 @@ class OpenAIResponses(OpenAIClientBase):
             logger.warning(f"Incomplete response: reason={reason}")
 
         for item in output:
-            converted = OpenAIMessageConverter.provider_message_to_content_items_responses_api(
-                output_item=item,
+            converted = OpenAIMessageConverter.provider_message_to_dai_content_items(
+                message=item,
                 role="assistant",
                 index_start=content_index,
                 ai_model_provider=self.model_endpoint.ai_model.provider,

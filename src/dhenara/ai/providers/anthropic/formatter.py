@@ -242,7 +242,7 @@ class AnthropicFormatter(BaseFormatter):
         return tool
 
     @classmethod
-    def convert_message_item(
+    def convert_dai_message_item_to_provider(
         cls,
         message_item: MessageItem,
         model_endpoint: AIModelEndpoint | None = None,
@@ -253,7 +253,7 @@ class AnthropicFormatter(BaseFormatter):
             Handles:
         - Prompt: converts to user/assistant message via format_prompt (may return list)
         - ChatResponseChoice: assistant message with all content items (text, tool_use blocks, etc.)
-            Delegates to AnthropicMessageConverter.choice_to_provider_message.
+            Delegates to AnthropicMessageConverter.dai_choice_to_provider_message.
         - ToolCallResult: user message with tool_result content block
         - ToolCallResultsMessage: user message containing multiple tool_result blocks
 
@@ -300,7 +300,7 @@ class AnthropicFormatter(BaseFormatter):
         # Case 3: ChatResponseChoice (assistant response with all content items)
         # Delegate to message converter (single source of truth for ChatResponse conversions)
         if isinstance(message_item, ChatResponseChoice):
-            return AnthropicMessageConverter.choice_to_provider_message(message_item)
+            return AnthropicMessageConverter.dai_choice_to_provider_message(message_item)
 
         # Should not reach here due to MessageItem type constraint
         raise ValueError(f"Unsupported message item type: {type(message_item)}")

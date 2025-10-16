@@ -42,13 +42,13 @@ def openai_endpoints(rc):
 
 def anthropic_endpoints(rc):
     from dhenara.ai.types import AIModelAPIProviderEnum, AIModelEndpoint
-    from dhenara.ai.types.genai.foundation_models.anthropic.chat import Claude35Haiku, Claude45Sonnet
+    from dhenara.ai.types.genai.foundation_models.anthropic.chat import ClaudeHaiku45, ClaudeSonnet45
 
     anthropic_api = rc.get_api(AIModelAPIProviderEnum.ANTHROPIC)
     # Single source of truth: pick the models you want to use across examples here
     return [
-        AIModelEndpoint(api=anthropic_api, ai_model=Claude35Haiku),
-        AIModelEndpoint(api=anthropic_api, ai_model=Claude45Sonnet),
+        AIModelEndpoint(api=anthropic_api, ai_model=ClaudeHaiku45),
+        AIModelEndpoint(api=anthropic_api, ai_model=ClaudeSonnet45),
     ]
 
 
@@ -65,7 +65,6 @@ def google_endpoints(rc):
 
 
 def all_endpoints(rc):
-    return openai_endpoints(rc)
     return openai_endpoints(rc) + anthropic_endpoints(rc) + google_endpoints(rc)
 
 
@@ -116,10 +115,11 @@ def create_artifact_config(dir_name: str) -> ArtifactConfig | None:
         capture_dhenara_response=True,
         prefix=None,
         enable_python_logs=True,
-        python_log_level="INFO",
+        python_log_level="DEBUG",
         python_logger_levels={
             "httpcore": "WARNING",
             "httpx": "WARNING",
             "urllib3": "WARNING",
+            "dhenara.ai": "DEBUG",
         },
     )
