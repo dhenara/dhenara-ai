@@ -4,7 +4,7 @@ import random
 from typing import Any
 
 from include.console_renderer import render_response, render_usage
-from include.shared_config import all_endpoints, load_resource_config
+from include.shared_config import all_endpoints, create_artifact_config, generate_run_dirname, load_resource_config
 
 from dhenara.ai import AIModelClient
 from dhenara.ai.types import (
@@ -127,9 +127,11 @@ def handle_conversation_turn(
     instructions: list[str],
     endpoint: AIModelEndpoint,
     conversation_nodes: list[ConversationNode],
+    art_dir_name: str,
 ) -> ConversationNode:
     """Process a single conversation turn with the specified model and query."""
     # Create config with function calling
+    artifact_config = create_artifact_config(art_dir_name)
 
     client = AIModelClient(
         model_endpoint=endpoint,
@@ -141,6 +143,7 @@ def handle_conversation_turn(
             streaming=False,
             tools=[get_weather_tool, schedule_meeting_tool],  # Add both tools
             tool_choice=ToolChoice(type="one_or_more"),
+            artifact_config=artifact_config,
         ),
         is_async=False,
     )
@@ -180,6 +183,9 @@ def run_multi_turn_conversation():
     # Store conversation history
     conversation_nodes = []
 
+    # Generate run directory once for this conversation
+    run_dir = generate_run_dirname()
+
     # Process each turn
     for i, query in enumerate(multi_turn_queries):
         # Choose a random model endpoint
@@ -194,6 +200,7 @@ def run_multi_turn_conversation():
             instructions=instructions_by_turn[i],  # Only if you need to change instruction on each turn, else leave []
             endpoint=model_endpoint,
             conversation_nodes=conversation_nodes,
+            art_dir_name=f"20_fncall/{run_dir}/turn_{i}",
         )
 
         # Display the conversation

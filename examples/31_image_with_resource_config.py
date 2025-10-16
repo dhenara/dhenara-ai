@@ -2,6 +2,7 @@ import base64
 import io
 import logging
 
+from include.shared_config import create_artifact_config, generate_run_dirname
 from PIL import Image  # NOTE: You need to install 'Pillow' # pip install Pillow
 
 from dhenara.ai import AIModelClient
@@ -69,8 +70,13 @@ def print_response(response):
 
 user_query = "Elephant amigurumi walking in savanna, a professional photograph, blurry background"
 
+# Generate run directory once for this session
+run_dir = generate_run_dirname()
+
 # OpenAI
 # GPT-Image
+artifact_config_gpt = create_artifact_config(f"31_image_rc/{run_dir}/gpt_image")
+
 client = AIModelClient(
     model_endpoint=gpt_ep,
     config=AIModelCallConfig(
@@ -79,6 +85,7 @@ client = AIModelClient(
             "size": "1024x1024",
             "n": 1,
         },
+        artifact_config=artifact_config_gpt,
     ),
     is_async=False,  # Sync mode
 )
@@ -93,6 +100,8 @@ print_response(response)
 
 
 # Dalle
+artifact_config_dalle = create_artifact_config(f"31_image_rc/{run_dir}/dalle3")
+
 client = AIModelClient(
     model_endpoint=dalle_ep,
     config=AIModelCallConfig(
@@ -103,6 +112,7 @@ client = AIModelClient(
             "n": 1,
             "response_format": "b64_json",  # or "url"
         },
+        artifact_config=artifact_config_dalle,
     ),
     is_async=False,  # Sync mode
 )

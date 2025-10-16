@@ -12,7 +12,7 @@ import random
 from typing import Literal
 
 from include.console_renderer import render_response, render_usage
-from include.shared_config import all_endpoints, load_resource_config
+from include.shared_config import all_endpoints, create_artifact_config, generate_run_dirname, load_resource_config
 from pydantic import BaseModel, Field  # Optional dependency for examples
 
 from dhenara.ai import AIModelClient
@@ -59,6 +59,7 @@ def handle_turn_with_structured_output(
     endpoint: AIModelEndpoint,
     messages: list[MessageItem],
     output_schema: type[BaseModel],
+    art_dir_name: str,
 ) -> tuple[BaseModel, list[MessageItem]]:
     """Handle a conversation turn with structured output.
 
@@ -66,6 +67,8 @@ def handle_turn_with_structured_output(
         tuple: (structured_output, updated_messages)
     """
     current_messages = [*messages, Prompt(role="user", text=user_query)]
+
+    artifact_config = create_artifact_config(art_dir_name)
 
     client = AIModelClient(
         model_endpoint=endpoint,
@@ -77,6 +80,7 @@ def handle_turn_with_structured_output(
             streaming=False,
             # Pass Pydantic model directly, not wrapped in StructuredOutputConfig
             structured_output=output_schema,
+            artifact_config=artifact_config,
         ),
         is_async=False,
     )
@@ -113,6 +117,9 @@ def run_multi_turn_with_structured_output():
 
     messages: list[MessageItem] = []
 
+    # Generate a single run directory for all turns in this conversation
+    run_dir = generate_run_dirname()
+
     # Turn 1: Generate weather info
     model_endpoint = random.choice(resource_config.model_endpoints)
     print(f"\n🔄 Turn 1 with {model_endpoint.ai_model.model_name}")
@@ -123,6 +130,7 @@ def run_multi_turn_with_structured_output():
         endpoint=model_endpoint,
         messages=messages,
         output_schema=WeatherInfo,
+        art_dir_name=f"17_structured/{run_dir}/turn_0",
     )
 
     print("📋 Structured Output:")
@@ -140,6 +148,7 @@ def run_multi_turn_with_structured_output():
         endpoint=model_endpoint,
         messages=messages,
         output_schema=PersonInfo,
+        art_dir_name=f"17_structured/{run_dir}/turn_1",
     )
 
     print("📋 Structured Output:")
@@ -161,6 +170,8 @@ def run_multi_turn_with_structured_output():
         ),
     ]
 
+    artifact_config = create_artifact_config(f"17_structured/{run_dir}/turn_2_story")
+
     client = AIModelClient(
         model_endpoint=model_endpoint,
         config=AIModelCallConfig(
@@ -169,6 +180,7 @@ def run_multi_turn_with_structured_output():
             reasoning_effort="low",
             reasoning=True,
             streaming=False,
+            artifact_config=artifact_config,
         ),
         is_async=False,
     )
@@ -193,6 +205,7 @@ def run_multi_turn_with_structured_output():
         endpoint=model_endpoint,
         messages=messages,
         output_schema=StoryAnalysis,
+        art_dir_name=f"17_structured/{run_dir}/turn_3_analysis",
     )
 
     print("\n📋 Story Analysis (Structured Output):")

@@ -10,7 +10,7 @@ Usage:
 import json
 import random
 
-from include.shared_config import all_endpoints, load_resource_config
+from include.shared_config import all_endpoints, create_artifact_config, generate_run_dirname, load_resource_config
 
 from dhenara.ai import AIModelClient
 from dhenara.ai.types import AIModelCallConfig, AIModelEndpoint
@@ -124,6 +124,7 @@ def handle_turn_with_tools(
     user_query: str,
     endpoint: AIModelEndpoint,
     messages: list[MessageItem],
+    art_dir_base: str,
     max_iterations: int = 3,
 ) -> tuple[str, list[MessageItem]]:
     """Handle a conversation turn with tool calling support.
@@ -142,6 +143,7 @@ def handle_turn_with_tools(
         # To simplify this example, we disable reasoning when tools are present.
         # See Anthropic docs: https://docs.claude.com/en/docs/build-with-claude/extended-thinking
 
+        artifact_config = create_artifact_config(f"{art_dir_base}/call_{iteration}")
         client = AIModelClient(
             model_endpoint=endpoint,
             config=AIModelCallConfig(
@@ -153,6 +155,7 @@ def handle_turn_with_tools(
                 streaming=False,
                 tools=[weather_tool, calculator_tool],
                 tool_choice={"type": "zero_or_more"},
+                artifact_config=artifact_config,
             ),
             is_async=False,
         )
@@ -220,6 +223,9 @@ def run_multi_turn_with_tools():
     print("Multi-Turn Conversation with Tools and Messages API")
     print("=" * 80)
 
+    # Generate a single run directory for all turns in this conversation
+    run_dir = generate_run_dirname()
+
     for i, query in enumerate(queries):
         model_endpoint = random.choice(resource_config.model_endpoints)
 
@@ -230,6 +236,7 @@ def run_multi_turn_with_tools():
             user_query=query,
             endpoint=model_endpoint,
             messages=messages,
+            art_dir_base=f"16_tools/{run_dir}/turn_{i}",
         )
 
         print(f"\nAssistant: {final_text}")

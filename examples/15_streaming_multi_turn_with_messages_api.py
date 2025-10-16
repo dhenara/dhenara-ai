@@ -10,7 +10,7 @@ import datetime
 import random
 
 from include.console_renderer import StreamingRenderer, render_usage
-from include.shared_config import all_endpoints, load_resource_config
+from include.shared_config import all_endpoints, create_artifact_config, generate_run_dirname, load_resource_config
 
 from dhenara.ai import AIModelClient
 from dhenara.ai.types import AIModelCallConfig, AIModelEndpoint
@@ -27,8 +27,12 @@ def handle_streaming_turn_with_messages(
     endpoint: AIModelEndpoint,
     messages: list[MessageItem],
     streaming_renderer: StreamingRenderer,
+    art_dir_name: str,
 ) -> ConversationNode:
     """Process a streaming conversation turn using messages API."""
+
+    # Create artifact config for this example to capture request/response artifacts
+    artifact_config = create_artifact_config(art_dir_name)
 
     client = AIModelClient(
         model_endpoint=endpoint,
@@ -38,6 +42,7 @@ def handle_streaming_turn_with_messages(
             reasoning_effort="low",
             reasoning=True,
             streaming=True,
+            artifact_config=artifact_config,
         ),
         is_async=False,
     )
@@ -90,6 +95,9 @@ def run_streaming_multi_turn_with_messages():
     print("Streaming Multi-Turn Conversation with Messages API")
     print("=" * 80)
 
+    # Generate a single run directory for all turns in this conversation
+    run_dir = generate_run_dirname()
+
     for i, query in enumerate(multi_turn_queries):
         model_endpoint = random.choice(resource_config.model_endpoints)
 
@@ -103,6 +111,7 @@ def run_streaming_multi_turn_with_messages():
             endpoint=model_endpoint,
             messages=messages,
             streaming_renderer=streaming_renderer,
+            art_dir_name=f"15_streaming/{run_dir}/iter_{i}",
         )
 
         # Display usage

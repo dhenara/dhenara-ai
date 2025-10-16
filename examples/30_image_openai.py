@@ -1,6 +1,7 @@
 import base64
 import io
 
+from include.shared_config import create_artifact_config, generate_run_dirname
 from PIL import Image  # NOTE: You need to install 'Pillow' # pip install Pillow
 
 from dhenara.ai import AIModelClient
@@ -18,6 +19,10 @@ openai_api = AIModelAPI(
 # Create the model endpoint
 model_endpoint = AIModelEndpoint(api=openai_api, ai_model=DallE3)
 
+# Generate artifact directory
+run_dir = generate_run_dirname()
+artifact_config = create_artifact_config(f"30_image/{run_dir}")
+
 # Create the client
 client = AIModelClient(
     model_endpoint=model_endpoint,
@@ -30,6 +35,7 @@ client = AIModelClient(
             "response_format": "b64_json",
         },
         test_mode=False,
+        artifact_config=artifact_config,
     ),
     is_async=False,  # Sync mode
 )

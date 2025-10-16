@@ -70,3 +70,6 @@ cover/
 
 # Ruff
 .ruff_cache
+
+# Example artifacts
+examples/dai_artifacts/

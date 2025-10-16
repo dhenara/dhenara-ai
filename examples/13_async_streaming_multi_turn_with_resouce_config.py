@@ -14,7 +14,7 @@ import datetime
 import random
 
 from include.console_renderer import StreamingRenderer, render_usage
-from include.shared_config import all_endpoints, load_resource_config
+from include.shared_config import all_endpoints, create_artifact_config, generate_run_dirname, load_resource_config
 
 from dhenara.ai import AIModelClient
 from dhenara.ai.types import AIModelCallConfig, AIModelEndpoint, ChatResponse, ResourceConfig
@@ -76,11 +76,13 @@ async def stream_turn(
     endpoint: AIModelEndpoint,
     history: list[ConversationNode],
     streaming_renderer: StreamingRenderer,
+    art_dir_name: str,
 ) -> ConversationNode:
     """Run a single async streaming turn using the shared StreamingRenderer.
 
     The renderer is passed in so it can be reused across turns (keeps nicer console UX).
     """
+    artifact_config = create_artifact_config(art_dir_name)
     client = AIModelClient(
         model_endpoint=endpoint,
         config=AIModelCallConfig(
@@ -89,6 +91,7 @@ async def stream_turn(
             reasoning_effort="low",
             reasoning=True,
             streaming=True,
+            artifact_config=artifact_config,
         ),
         is_async=True,
     )
@@ -135,11 +138,15 @@ async def main():  # pragma: no cover - example script
     # Reuse a single StreamingRenderer across turns for consistent console output
     streaming_renderer = StreamingRenderer()
 
+    # Generate a single run directory for all turns in this conversation
+    run_dir = generate_run_dirname()
+
     for i, q in enumerate(queries):
         ep = random.choice(rc.model_endpoints)
         print(f"\n🔄 (Async) Turn {i + 1} with {ep.ai_model.model_name} from {ep.api.provider}\n")
         print(f"User: {q}")
-        node = await stream_turn(q, instructions_by_turn[i], ep, history, streaming_renderer)
+        art_dir = f"13_async/{run_dir}/iter_{i}"
+        node = await stream_turn(q, instructions_by_turn[i], ep, history, streaming_renderer, art_dir)
         history.append(node)
 
         # Display usage stats similar to the synchronous example

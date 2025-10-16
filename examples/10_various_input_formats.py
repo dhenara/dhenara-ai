@@ -1,6 +1,6 @@
 import random
 
-from include.shared_config import all_endpoints, load_resource_config
+from include.shared_config import all_endpoints, create_artifact_config, generate_run_dirname, load_resource_config
 
 from dhenara.ai import AIModelClient
 from dhenara.ai.types import AIModelCallConfig
@@ -20,12 +20,17 @@ def demonstrate_multiple_formats():
     # OR choose if fixed order as
     # model_endpoint = resource_config.get_model_endpoint(model_name=Claude35Haiku.model_name)
 
-    # Create client
+    # Generate a single run directory - all format demonstrations will be captured in this run
+    run_dir = generate_run_dirname()
+    artifact_config = create_artifact_config(f"10_formats/{run_dir}")
+
+    # Create client once and reuse for all formats (artifacts will be iter_0, iter_1, etc.)
     client = AIModelClient(
         model_endpoint=model_endpoint,
         config=AIModelCallConfig(
             max_output_tokens=2000,
             streaming=False,
+            artifact_config=artifact_config,
         ),
         is_async=False,
     )

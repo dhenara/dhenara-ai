@@ -1,6 +1,16 @@
+from __future__ import annotations
+
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
+
+from dhenara.ai.types import ResourceConfig
+from dhenara.ai.types.genai.dhenara.request import ArtifactConfig
+
+# Global switch to enable/disable artifacts for all examples
+# Set to False to disable artifact generation across all examples
+ENABLE_ARTIFACTS = True
 
 # Ensure local src is importable when running examples directly
 _EXAMPLES_DIR = Path(__file__).resolve().parent.parent
@@ -12,8 +22,6 @@ for p in (str(_SRC_DIR), str(_ROOT_DIR)):
 
 
 def load_resource_config(credentials_file: str | None = None):
-    from dhenara.ai.types import ResourceConfig
-
     rc = ResourceConfig()
     cred_path = credentials_file or os.environ.get("DHENARA_CREDENTIALS_FILE", "~/.env_keys/.dhenara_credentials.yaml")
     rc.load_from_file(credentials_file=cred_path)
@@ -57,4 +65,61 @@ def google_endpoints(rc):
 
 
 def all_endpoints(rc):
+    return openai_endpoints(rc)
     return openai_endpoints(rc) + anthropic_endpoints(rc) + google_endpoints(rc)
+
+
+def generate_run_dirname() -> str:
+    """Generate a run directory name with timestamp.
+
+    Returns:
+        Directory name in format: run_{YYYYMMDD_HHMMSS}
+
+    Example:
+        >>> generate_run_dirname()
+        'run_20251016_093239'
+    """
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return f"run_{timestamp}"
+
+
+def create_artifact_config(dir_name: str) -> ArtifactConfig | None:
+    """Create artifact configuration for an example.
+
+    Args:
+        dir_name: Directory path relative to dai_artifacts/
+                  (e.g., "14_multi/run_20251016_093239/iter_0")
+
+    Returns:
+        ArtifactConfig with path: dai_artifacts/{dir_name}/ if ENABLE_ARTIFACTS is True,
+        None otherwise (disables artifact generation)
+
+    Example:
+        >>> run_dir = generate_run_dirname()
+        >>> config = create_artifact_config(f"14_multi/{run_dir}/iter_0")
+        >>> # Creates: dai_artifacts/14_multi/run_20251016_093239/iter_0/
+        >>> # Or returns None if ENABLE_ARTIFACTS = False
+    """
+    # Check global switch - return None to disable artifacts
+    if not ENABLE_ARTIFACTS:
+        return None
+
+    artifact_root = _EXAMPLES_DIR / "dai_artifacts" / dir_name
+
+    return ArtifactConfig(
+        enabled=True,
+        artifact_root=str(artifact_root),
+        capture_dhenara_request=True,
+        capture_provider_request=True,
+        capture_provider_response=True,
+        capture_dhenara_response=True,
+        prefix=None,
+        enable_python_logs=True,
+        python_log_level="INFO",
+        python_logger_levels={
+            "httpcore": "WARNING",
+            "httpx": "WARNING",
+            "urllib3": "WARNING",
+        },
+    )

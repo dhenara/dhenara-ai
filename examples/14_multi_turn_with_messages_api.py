@@ -12,7 +12,7 @@ import datetime
 import random
 
 from include.console_renderer import render_response, render_usage
-from include.shared_config import all_endpoints, load_resource_config
+from include.shared_config import all_endpoints, create_artifact_config, generate_run_dirname, load_resource_config
 
 from dhenara.ai import AIModelClient
 from dhenara.ai.types import AIModelCallConfig, AIModelEndpoint
@@ -29,8 +29,11 @@ def handle_conversation_turn_with_messages(
     instructions: list[str],
     endpoint: AIModelEndpoint,
     messages: list[MessageItem],
+    art_dir_name: str,
 ) -> ConversationNode:
     """Process a conversation turn using the messages API."""
+
+    artifact_config = create_artifact_config(art_dir_name)
 
     client = AIModelClient(
         model_endpoint=endpoint,
@@ -40,6 +43,7 @@ def handle_conversation_turn_with_messages(
             reasoning_effort="low",
             reasoning=True,
             streaming=False,
+            artifact_config=artifact_config,
         ),
         is_async=False,
     )
@@ -86,6 +90,9 @@ def run_multi_turn_with_messages():
     print("Multi-Turn Conversation with Messages API")
     print("=" * 80)
 
+    # Generate a single run directory for all turns in this conversation
+    run_dir = generate_run_dirname()
+
     for i, query in enumerate(multi_turn_queries):
         model_endpoint = random.choice(resource_config.model_endpoints)
 
@@ -96,6 +103,7 @@ def run_multi_turn_with_messages():
             instructions=instructions_by_turn[i],
             endpoint=model_endpoint,
             messages=messages,
+            art_dir_name=f"14_multi/{run_dir}/iter_{i}",
         )
 
         print(f"User: {query}")
