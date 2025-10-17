@@ -191,7 +191,7 @@ def handle_turn_with_tools(
 
                 # Create tool result and add to messages
                 tool_result = ToolCallResult(
-                    call_id=tool_call.id,
+                    call_id=tool_call.call_id,
                     name=tool_call.name,
                     output=tool_output,
                 )

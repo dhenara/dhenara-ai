@@ -547,13 +547,19 @@ class OpenAIResponses(OpenAIClientBase):
             name = getattr(chunk, "name", None)
             args_str = getattr(chunk, "arguments", None)
             item_id = getattr(chunk, "item_id", None)
+            call_id = getattr(chunk, "call_id", None)
             tool_call_obj = None
             if name:
                 try:
                     parsed_args = json.loads(args_str) if isinstance(args_str, str) else args_str
                 except Exception:
                     parsed_args = {"raw": args_str}
-                tool_call_obj = ChatResponseToolCall(id=item_id, name=name, arguments=parsed_args or {})
+                tool_call_obj = ChatResponseToolCall(
+                    call_id=call_id,
+                    id=item_id,
+                    name=name,
+                    arguments=parsed_args or {},
+                )
 
             content_delta = ChatResponseToolCallContentItemDelta(
                 index=0,

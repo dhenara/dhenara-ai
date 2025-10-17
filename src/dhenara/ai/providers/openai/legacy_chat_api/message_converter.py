@@ -91,11 +91,22 @@ class OpenAIMessageConverterCHATAPI:
                 else:
                     tool_payload = tool_call.model_dump()
 
+                _args = tool_payload.get("function", {}).get("arguments")
+                _parsed_args = ChatResponseToolCall.parse_args_str_or_dict(_args)
+
+                tool_call = ChatResponseToolCall(
+                    id=tool_payload.get("id"),
+                    name=tool_payload.get("function", {}).get("name"),
+                    arguments=_parsed_args.get("arguments_dict"),
+                    raw_data=_parsed_args.get("raw_data"),
+                    parse_error=_parsed_args.get("parse_error"),
+                )
+
                 tool_call_items.append(
                     ChatResponseToolCallContentItem(
                         index=index_start,
                         role=role,
-                        tool_call=ChatResponseToolCall.from_openai_format(tool_payload),
+                        tool_call=tool_call,
                         metadata={},
                     )
                 )

@@ -136,15 +136,13 @@ class OpenAIMessageConverter(BaseMessageConverter):
             return ci
 
         # Function/tool calls
-        if item_type in ("function_call", "tool_call", "function.tool_call"):
-            call_id = _get(output_item, "id", None) or _get(output_item, "call_id", None)
-            # Name can be at top-level or nested under function.name
+        if item_type in ("function_call", "custom_tool_call"):
+            call_id = _get(output_item, "call_id", None)
+            _id = _get(output_item, "id", None)
             name = _get(output_item, "name", None)
-            if not name:
-                fn_obj = _get(output_item, "function", None)
-                if isinstance(fn_obj, dict):
-                    name = fn_obj.get("name")
             arguments = _get(output_item, "arguments", None)
+            inputs = _get(output_item, "input", None)
+
             if isinstance(arguments, str):
                 try:
                     import json as _json
@@ -154,13 +152,23 @@ class OpenAIMessageConverter(BaseMessageConverter):
                     # Keep as raw string if not JSON
                     pass
 
+            args = (
+                arguments
+                if isinstance(arguments, dict)
+                else {
+                    "raw": arguments if arguments else inputs,
+                }
+            )
+
             ci = ChatResponseToolCallContentItem(
                 index=index,
                 role=role,
                 tool_call=ChatResponseToolCall(
-                    id=call_id,
+                    call_id=call_id,
+                    id=_id,
                     name=name,
-                    arguments=arguments if isinstance(arguments, dict) else {"raw": arguments},
+                    arguments=args,
+                    metadata={"type": item_type},
                 ),
                 metadata={},
             )
@@ -333,13 +341,14 @@ class OpenAIMessageConverter(BaseMessageConverter):
                         else str(tool_call.arguments)
                     )
 
-                    tool_call_param = ResponseFunctionToolCallParam(
-                        call_id=tool_call.id,
-                        type="function_call",
+                    fn_call_param = ResponseFunctionToolCallParam(
+                        call_id=tool_call.call_id,
+                        id=tool_call.id,
+                        type="function_call",  # tool_call.metadata.get("type", "function_call"),
                         name=tool_call.name,
                         arguments=args_str,
                     )
-                    output_items.append(tool_call_param)
+                    output_items.append(fn_call_param)
                 elif isinstance(item, ChatResponseStructuredOutputContentItem):
                     # TODO: implement structured output conversion
                     # For now, convert to text

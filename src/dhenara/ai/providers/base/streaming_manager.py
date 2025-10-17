@@ -256,6 +256,7 @@ class StreamingManager:
                                     custom_metadata=content_delta.custom_metadata,
                                 )
                             elif content_delta.type == ChatResponseContentItemType.TOOL_CALL:
+                                # TODO: Tools streaming is broken now. Fill in tool_call field
                                 matching_content = ChatResponseToolCallContentItem(
                                     index=content_delta.index,
                                     type=ChatResponseContentItemType.TOOL_CALL,
