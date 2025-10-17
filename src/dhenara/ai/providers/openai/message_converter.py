@@ -2,17 +2,12 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import random
 import time
 from typing import Any
 
 from openai.types.chat import ChatCompletionMessage
-from openai.types.responses import (
-    ResponseOutputMessage,
-    ResponseReasoningItem,
-)
 from openai.types.responses.response_function_tool_call_param import (
     ResponseFunctionToolCallParam,
 )
@@ -219,102 +214,14 @@ class OpenAIMessageConverter(BaseMessageConverter):
         dai_response: ChatResponse,
         model_endpoint: object | None = None,
     ) -> dict[str, Any] | list[dict[str, Any]]:
-        """Convert ChatResponse into OpenAI Responses API input format."""
+        """Convert ChatResponse into OpenAI Responses API input format.
 
-        # Derive strict behavior: enforce strict if same provider and not globally disabled
-        is_same_provider = False
-        if model_endpoint is not None:
-            try:
-                is_same_provider = getattr(model_endpoint.ai_model, "provider", None) == AIModelProviderEnum.OPEN_AI
-            except Exception:
-                is_same_provider = False
-        # strict_same_provider = is_same_provider and not BaseMessageConverter.STRICT_SAME_PROVIDER_OFF
-
-        if is_same_provider:
-            original_provider_response = dai_response.provider_response
-            output_items = None
-
-            # Check if provider_response exists and has output field
-            # For streaming responses, provider_response will be None
-            if original_provider_response is not None:
-                if hasattr(original_provider_response, "output"):
-                    output_items = original_provider_response.output
-                elif isinstance(original_provider_response, dict) and "output" in original_provider_response:
-                    output_items = original_provider_response["output"]
-
-            # If we have output_items from provider_response, convert them
-            if output_items is not None:
-                # Convert output items to proper Pydantic models, filtering out input-incompatible fields
-                converted_items = []
-                for item in output_items:
-                    # If item is already a Pydantic model instance (ResponseReasoningItem, ResponseOutputMessage)
-                    # Check using hasattr since ResponseFunctionToolCallParam is a TypedDict
-                    if isinstance(item, (ResponseReasoningItem, ResponseOutputMessage)):
-                        # Convert output models to input param models
-                        if isinstance(item, ResponseReasoningItem):
-                            param_data = {
-                                "id": item.id,
-                                "type": "reasoning",
-                                "summary": item.summary,
-                            }
-                            if item.content:
-                                param_data["content"] = item.content
-                            if item.encrypted_content:
-                                param_data["encrypted_content"] = item.encrypted_content
-                            converted_items.append(ResponseReasoningItemParam(**param_data))
-                        elif isinstance(item, ResponseOutputMessage):
-                            param_data = {
-                                "id": item.id,
-                                "type": "message",
-                                "role": item.role,
-                                "content": item.content,
-                            }
-                            converted_items.append(ResponseOutputMessageParam(**param_data))
-                    # If item is a dict, convert to appropriate Pydantic model
-                    elif isinstance(item, dict):
-                        item_type = item.get("type")
-
-                        if item_type == "reasoning":
-                            # Remove fields not allowed in input schema
-                            reasoning_data = {
-                                "id": item.get("id"),
-                                "type": "reasoning",
-                                "summary": item.get("summary"),
-                            }
-                            # Only include encrypted_content if present
-                            # Note: 'content' is typically NOT included in reasoning input items
-                            # Note: 'status' is NOT included as it's output-only
-                            if item.get("encrypted_content"):
-                                reasoning_data["encrypted_content"] = item["encrypted_content"]
-
-                            converted_items.append(ResponseReasoningItemParam(**reasoning_data))
-
-                        elif item_type == "message":
-                            # Remove fields not allowed in input schema
-                            message_data = {
-                                "id": item.get("id"),
-                                "type": "message",
-                                "role": item.get("role", "assistant"),
-                                "content": item.get("content", []),
-                            }
-                            # Note: 'status' is NOT included as it's output-only
-
-                            converted_items.append(ResponseOutputMessageParam(**message_data))
-
-                        elif item_type in ("function_call", "tool_call"):
-                            # Convert to ResponseFunctionToolCallParam (TypedDict - can't use isinstance)
-                            # Just ensure it has the required fields
-                            converted_items.append(ResponseFunctionToolCallParam(**item))
-                        else:
-                            logger.warning(f"Unknown output item type: {item_type}, keeping as-is")
-                            converted_items.append(item)
-                    else:
-                        # Unknown type, keep as-is
-                        converted_items.append(item)
-
-                return converted_items
-
-        # Fallback: convert from ChatResponseChoice (used for streaming or when provider_response is None)
+        Single source of truth: always converts from Dhenara content items,
+        regardless of whether provider_response is available or not.
+        This ensures consistent behavior for both streaming and non-streaming.
+        """
+        # Always use the Dhenara content items as the source of truth
+        # This works for both streaming (where provider_response=None) and non-streaming
         return OpenAIMessageConverter.dai_choice_to_provider_message(
             dai_response.choices[0] if dai_response.choices else None,
             model_endpoint=model_endpoint,

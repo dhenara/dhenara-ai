@@ -19,8 +19,8 @@ class BaseMessageConverter(ABC):
     ) -> list[ChatResponseContentItem]:
         pass
 
-    @abstractmethod
     @staticmethod
+    @abstractmethod
     def dai_response_to_provider_message(
         dai_response: ChatResponse,
         model_endpoint: object | None = None,
