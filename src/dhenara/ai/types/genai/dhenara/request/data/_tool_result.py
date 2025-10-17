@@ -18,9 +18,12 @@ class ToolCallResult(BaseModel):
         default="tool_result",
         description="Discriminator to simplify downstream detection of tool call results.",
     )
-    call_id: str = Field(
-        ...,
-        description="Identifier for the originating tool call provided by the model.",
+    call_id: str | None = Field(
+        default=None,
+        description=(
+            "Identifier for the originating tool call provided by the model.\n"
+            "Optional because some providers (e.g. Google Gemini) don't require it,\n"
+        ),
     )
     output: Any = Field(
         default=None,

@@ -12,6 +12,7 @@ from anthropic.types.tool_use_block_param import ToolUseBlockParam
 
 from dhenara.ai.providers.base import BaseMessageConverter
 from dhenara.ai.types.genai import (
+    ChatMessageContentPart,
     ChatResponseContentItem,
     ChatResponseReasoningContentItem,
     ChatResponseStructuredOutput,
@@ -55,11 +56,47 @@ class AnthropicMessageConverter(BaseMessageConverter):
         structured_output_config: StructuredOutputConfig | None,
     ) -> list[ChatResponseContentItem]:
         if content_block.type == "text":
+            text_value = getattr(content_block, "text", "")
+            if structured_output_config is not None:
+                # Parse structured output from plain text and retain original part for round-trip
+                parsed_data, error = ChatResponseStructuredOutput._parse_and_validate(
+                    text_value,
+                    structured_output_config,
+                )
+                structured_output = ChatResponseStructuredOutput(
+                    config=structured_output_config,
+                    structured_data=parsed_data,
+                    raw_data=text_value,
+                    parse_error=error,
+                )
+                return [
+                    ChatResponseStructuredOutputContentItem(
+                        index=index,
+                        role=role,
+                        structured_output=structured_output,
+                        message_contents=[
+                            ChatMessageContentPart(
+                                type="text",
+                                text=text_value,
+                                annotations=None,
+                                metadata=None,
+                            )
+                        ],
+                    )
+                ]
             return [
                 ChatResponseTextContentItem(
                     index=index,
                     role=role,
-                    text=getattr(content_block, "text", ""),
+                    text=text_value,
+                    message_contents=[
+                        ChatMessageContentPart(
+                            type="text",
+                            text=text_value,
+                            annotations=None,
+                            metadata=None,
+                        )
+                    ],
                 )
             ]
 
@@ -70,6 +107,7 @@ class AnthropicMessageConverter(BaseMessageConverter):
                     role=role,
                     thinking_text=getattr(content_block, "thinking", ""),
                     thinking_signature=getattr(content_block, "signature", None),
+                    thinking_id=getattr(content_block, "id", None),
                 )
             ]
 

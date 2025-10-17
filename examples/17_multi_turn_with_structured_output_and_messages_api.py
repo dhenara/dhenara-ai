@@ -105,7 +105,7 @@ def handle_turn_with_structured_output(
     # Convert to Pydantic model
     structured_obj = output_schema(**structured_data)
 
-    return structured_obj, current_messages
+    return structured_obj, current_messages, response
 
 
 def run_multi_turn_with_structured_output():
@@ -125,7 +125,7 @@ def run_multi_turn_with_structured_output():
     print(f"\n🔄 Turn 1 with {model_endpoint.ai_model.model_name}")
     print("User: Generate weather information for Paris.\n")
 
-    weather_info, messages = handle_turn_with_structured_output(
+    weather_info, messages, response = handle_turn_with_structured_output(
         user_query="Generate realistic weather information for Paris, France.",
         endpoint=model_endpoint,
         messages=messages,
@@ -134,7 +134,8 @@ def run_multi_turn_with_structured_output():
     )
 
     print("📋 Structured Output:")
-    print(json.dumps(weather_info.model_dump(), indent=2))
+    # print(json.dumps(weather_info.model_dump(), indent=2))
+    render_response(response=response.chat_response)
     print("-" * 80)
 
     # Turn 2: Generate person info (with different provider)
@@ -142,7 +143,7 @@ def run_multi_turn_with_structured_output():
     print(f"\n🔄 Turn 2 with {model_endpoint.ai_model.model_name}")
     print("User: Create a profile for someone who lives in that city.\n")
 
-    person_info, messages = handle_turn_with_structured_output(
+    person_info, messages, response = handle_turn_with_structured_output(
         user_query=f"Create a person profile for someone who lives in {weather_info.location} "
         f"where the weather is currently {weather_info.condition}.",
         endpoint=model_endpoint,
@@ -152,7 +153,8 @@ def run_multi_turn_with_structured_output():
     )
 
     print("📋 Structured Output:")
-    print(json.dumps(person_info.model_dump(), indent=2))
+    # print(json.dumps(person_info.model_dump(), indent=2))
+    render_response(response=response.chat_response)
     print("-" * 80)
 
     # Turn 3: Create a story and analyze it (with different provider)
@@ -197,11 +199,12 @@ def run_multi_turn_with_structured_output():
     render_response(story_response.chat_response)
     render_usage(story_response.chat_response)
 
-    story_text = story_response.chat_response.text() or ""
+    # story_text = story_response.chat_response.text() or ""
 
     # Now analyze it with structured output
-    story_analysis, messages = handle_turn_with_structured_output(
-        user_query=f"Analyze this story: {story_text}",
+    story_analysis, messages, response = handle_turn_with_structured_output(
+        # user_query=f"Analyze this story: {story_text}",
+        user_query="Analyze this story",
         endpoint=model_endpoint,
         messages=story_messages,
         output_schema=StoryAnalysis,
@@ -209,7 +212,8 @@ def run_multi_turn_with_structured_output():
     )
 
     print("\n📋 Story Analysis (Structured Output):")
-    print(json.dumps(story_analysis.model_dump(), indent=2))
+    # print(json.dumps(story_analysis.model_dump(), indent=2))
+    render_response(response=response.chat_response)
     print("-" * 80)
 
 

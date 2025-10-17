@@ -214,6 +214,10 @@ class AnthropicChat(AnthropicClientBase):
                 )
                 self.streaming_manager.update_usage(usage)
 
+            # Track active tool_use block indices for correct delta routing
+            if not hasattr(self.streaming_manager, "anthropic_tool_use_indices"):
+                self.streaming_manager.anthropic_tool_use_indices = set()
+
         elif isinstance(chunk, RawContentBlockStartEvent):
             block_type = chunk.content_block.type
             if block_type == "redacted_thinking":
@@ -248,6 +252,11 @@ class AnthropicChat(AnthropicClientBase):
                 # Initialize a tool call item with id and name; args will stream via deltas
                 tool_id = getattr(chunk.content_block, "id", None)
                 tool_name = getattr(chunk.content_block, "name", None)
+                # Remember this index as a tool_use block for subsequent deltas
+                try:
+                    self.streaming_manager.anthropic_tool_use_indices.add(chunk.index)
+                except Exception:
+                    pass
 
                 content_deltas = [
                     ChatResponseToolCallContentItemDelta(
@@ -280,8 +289,13 @@ class AnthropicChat(AnthropicClientBase):
                 logger.debug(f"anthropic: Unhandled content_block_type {block_type}")
 
         elif isinstance(chunk, RawContentBlockDeltaEvent):
-            # Tool use arguments typically stream as input_json deltas; try to detect
-            if getattr(chunk, "content_block", None) and getattr(chunk.content_block, "type", None) == "tool_use":
+            # Tool use arguments typically stream as input_json deltas; detect by tracked indices
+            is_tool_use = False
+            try:
+                is_tool_use = chunk.index in getattr(self.streaming_manager, "anthropic_tool_use_indices", set())
+            except Exception:
+                is_tool_use = False
+            if is_tool_use:
                 # Attempt to read partial JSON from delta; if dict, serialize chunk
                 delta = chunk.delta
                 partial = getattr(delta, "partial_json", None)
@@ -303,7 +317,7 @@ class AnthropicChat(AnthropicClientBase):
                         index=chunk.index,
                         role=self.streaming_manager.message_metadata["role"],
                         arguments_delta=arguments_delta,
-                        metadata={},
+                        metadata={"tool_use_args_delta": True},
                     )
                 ]
             else:
@@ -330,7 +344,12 @@ class AnthropicChat(AnthropicClientBase):
             processed_chunks.append(stream_response)
         elif isinstance(chunk, RawContentBlockStopEvent):
             # For tool_use, emit a finalize delta to parse accumulated arguments buffer
-            if getattr(chunk, "content_block", None) and getattr(chunk.content_block, "type", None) == "tool_use":
+            finalize_tool = False
+            try:
+                finalize_tool = chunk.index in getattr(self.streaming_manager, "anthropic_tool_use_indices", set())
+            except Exception:
+                finalize_tool = False
+            if finalize_tool:
                 content_deltas = [
                     ChatResponseToolCallContentItemDelta(
                         index=chunk.index,
@@ -351,6 +370,11 @@ class AnthropicChat(AnthropicClientBase):
                     data=response_chunk,
                 )
                 processed_chunks.append(stream_response)
+                # Clear the index tracking for this block
+                try:
+                    self.streaming_manager.anthropic_tool_use_indices.discard(chunk.index)
+                except Exception:
+                    pass
         elif isinstance(chunk, RawMessageDeltaEvent):
             # Update output tokens
             self.streaming_manager.usage.completion_tokens += chunk.usage.output_tokens

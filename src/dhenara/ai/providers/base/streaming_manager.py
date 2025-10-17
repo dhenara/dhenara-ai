@@ -60,6 +60,7 @@ class StreamingManager:
         # TODO: cleanup naming
         self.provider_metadata = {}
         self.message_metadata = {}  # Anthropic
+        self.anthropic_tool_use_indices = set()
         self.persistant_choice_metadata_list = []  # OpenAI
 
         start_time = datetime_type.now()
@@ -257,11 +258,43 @@ class StreamingManager:
                                     custom_metadata=content_delta.custom_metadata,
                                 )
                             elif content_delta.type == ChatResponseContentItemType.TOOL_CALL:
-                                # TODO: Tools streaming is broken now. Fill in tool_call field
+                                # Create tool-call item with a placeholder to satisfy validation
+                                # Prefer name from delta.tool_call if present; else from metadata hint; else 'unknown'
+                                _name = None
+                                if hasattr(content_delta, "tool_call") and content_delta.tool_call:
+                                    _name = content_delta.tool_call.name
+                                if not _name:
+                                    _name = (
+                                        (content_delta.metadata or {}).get("name")
+                                        or (content_delta.metadata or {}).get("tool_name_delta")
+                                        or "unknown"
+                                    )
+
+                                # Extract any known identifiers from metadata (e.g., OpenAI Responses)
+                                _call_id = None
+                                _item_id = None
+                                if content_delta.metadata:
+                                    _call_id = content_delta.metadata.get("call_id")
+                                    _item_id = content_delta.metadata.get("item_id")
+
                                 matching_content = ChatResponseToolCallContentItem(
                                     index=content_delta.index,
                                     type=ChatResponseContentItemType.TOOL_CALL,
                                     role=content_delta.role,
+                                    tool_call=ChatResponseToolCall(
+                                        call_id=(
+                                            content_delta.tool_call.call_id
+                                            if getattr(content_delta, "tool_call", None)
+                                            else _call_id
+                                        ),
+                                        id=(
+                                            content_delta.tool_call.id
+                                            if getattr(content_delta, "tool_call", None)
+                                            else _item_id
+                                        ),
+                                        name=_name,
+                                        arguments={},
+                                    ),
                                     metadata=content_delta.metadata,
                                     storage_metadata=content_delta.storage_metadata,
                                     custom_metadata=content_delta.custom_metadata,
@@ -320,12 +353,26 @@ class StreamingManager:
                             # Update metadata for tool calls and generic content
                             matching_content.metadata.update(content_delta.metadata)
 
-                            # If it's a tool call, update the incremental arguments or set full tool_call
+                            # If it's a tool call, update the incremental arguments, name, or set full tool_call
                             if content_delta.type == ChatResponseContentItemType.TOOL_CALL:
                                 if hasattr(content_delta, "tool_call") and content_delta.tool_call:
                                     # If we have a complete tool_call object, set/replace it
                                     if hasattr(matching_content, "tool_call"):
                                         matching_content.tool_call = content_delta.tool_call
+                                # Update name from metadata deltas if present
+                                _md = content_delta.metadata or {}
+                                if _md.get("name") and getattr(matching_content, "tool_call", None):
+                                    matching_content.tool_call.name = _md.get("name")
+                                if _md.get("tool_name_delta") and getattr(matching_content, "tool_call", None):
+                                    # Accumulate piecewise name in a buffer
+                                    name_buf = matching_content.metadata.get("name_buffer", "") + _md.get(
+                                        "tool_name_delta"
+                                    )
+                                    matching_content.metadata["name_buffer"] = name_buf
+                                    try:
+                                        matching_content.tool_call.name = name_buf
+                                    except Exception:
+                                        pass
                                 # Handle incremental arguments appends into metadata buffer
                                 if hasattr(content_delta, "arguments_delta") and content_delta.arguments_delta:
                                     # Maintain a buffer for args in metadata

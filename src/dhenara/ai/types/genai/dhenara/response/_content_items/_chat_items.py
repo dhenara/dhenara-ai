@@ -198,7 +198,10 @@ class ChatResponseReasoningContentItemDelta(BaseChatResponseContentItemDelta):
         return self.thinking_text_delta or self.thinking_summary_delta or None
 
 
-# TODO: Tool call in streaming is not supported now
+# Tool call streaming: Providers may emit incremental tool arguments deltas and/or
+# finalized tool call objects. This delta type carries either a partial arguments
+# string (arguments_delta) that the StreamingManager buffers and parses on finalize,
+# or a full tool_call when the provider sends a completed call.
 class ChatResponseToolCallContentItemDelta(BaseChatResponseContentItemDelta):
     type: ChatResponseContentItemType = ChatResponseContentItemType.TOOL_CALL
     # Optional fully-formed tool call (eg. on completed event)

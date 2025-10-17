@@ -124,6 +124,8 @@ def render_content_item(content_item, choice_index: int = 0) -> str:
         if hasattr(content_item, "tool_call") and content_item.tool_call:
             tool = content_item.tool_call
             output.append(f"{ConsoleColors.YELLOW}  Function: {tool.name}{ConsoleColors.RESET}")
+            if hasattr(tool, "call_id") and tool.call_id:
+                output.append(f"{ConsoleColors.GRAY}  Call ID: {tool.call_id}{ConsoleColors.RESET}")
             if tool.arguments:
                 output.append(f"{ConsoleColors.YELLOW}  Arguments:{ConsoleColors.RESET}")
                 args_json = format_json(tool.arguments, indent=4)
@@ -342,9 +344,11 @@ class StreamingRenderer:
                 print(f"{ConsoleColors.MAGENTA}{summary_delta}{ConsoleColors.RESET}", end="", flush=True)
 
         elif content_type == ChatResponseContentItemType.TOOL_CALL:
-            # Tool calls are usually not streamed incrementally in a useful way
-            # Just show that we're receiving tool call data
-            print(".", end="", flush=True)
+            # Show incremental argument deltas when available
+            if hasattr(content_delta, "arguments_delta") and content_delta.arguments_delta:
+                print(f"{ConsoleColors.YELLOW}{content_delta.arguments_delta}{ConsoleColors.RESET}", end="", flush=True)
+            else:
+                print(".", end="", flush=True)
 
         elif content_type == ChatResponseContentItemType.STRUCTURED_OUTPUT:
             # Structured output is usually not streamed incrementally

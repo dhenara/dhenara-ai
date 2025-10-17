@@ -148,10 +148,9 @@ def handle_turn_with_tools(
             model_endpoint=endpoint,
             config=AIModelCallConfig(
                 max_output_tokens=2000,
-                # Disable reasoning to avoid the Anthropic thinking block requirement in tool conversations
-                # max_reasoning_tokens=1024,
-                # reasoning_effort="low",
-                # reasoning=True,
+                max_reasoning_tokens=1024,
+                reasoning_effort="low",
+                reasoning=True,
                 streaming=False,
                 tools=[weather_tool, calculator_tool],
                 tool_choice={"type": "zero_or_more"},
