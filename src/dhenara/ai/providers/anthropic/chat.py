@@ -1,3 +1,4 @@
+import json
 import logging
 
 from anthropic.types import (
@@ -28,6 +29,8 @@ from dhenara.ai.types.genai import (
     ChatResponseReasoningContentItem,
     ChatResponseReasoningContentItemDelta,
     ChatResponseTextContentItemDelta,
+    ChatResponseToolCall,
+    ChatResponseToolCallContentItemDelta,
     ChatResponseUsage,
     StreamingChatResponse,
 )
@@ -241,17 +244,76 @@ class AnthropicChat(AnthropicClientBase):
                 processed_chunks.append(stream_response)
             elif block_type in ["text", "thinking"]:
                 pass
+            elif block_type == "tool_use":
+                # Initialize a tool call item with id and name; args will stream via deltas
+                tool_id = getattr(chunk.content_block, "id", None)
+                tool_name = getattr(chunk.content_block, "name", None)
+
+                content_deltas = [
+                    ChatResponseToolCallContentItemDelta(
+                        index=chunk.index,
+                        role=self.streaming_manager.message_metadata["role"],
+                        tool_call=ChatResponseToolCall(
+                            call_id=tool_id,
+                            id=None,
+                            name=tool_name,
+                            arguments={},
+                        ),
+                        metadata={"tool_use_start": True},
+                    )
+                ]
+
+                choice_deltas = [
+                    ChatResponseChoiceDelta(
+                        index=self.streaming_manager.message_metadata["index"],
+                        content_deltas=content_deltas,
+                        metadata={},
+                    )
+                ]
+                response_chunk = self.streaming_manager.update(choice_deltas=choice_deltas)
+                stream_response = StreamingChatResponse(
+                    id=self.streaming_manager.message_metadata["id"],
+                    data=response_chunk,
+                )
+                processed_chunks.append(stream_response)
             else:
                 logger.debug(f"anthropic: Unhandled content_block_type {block_type}")
 
         elif isinstance(chunk, RawContentBlockDeltaEvent):
-            content_deltas = [
-                self.process_content_item_delta(
-                    index=chunk.index,
-                    role=self.streaming_manager.message_metadata["role"],
-                    delta=chunk.delta,
-                )
-            ]
+            # Tool use arguments typically stream as input_json deltas; try to detect
+            if getattr(chunk, "content_block", None) and getattr(chunk.content_block, "type", None) == "tool_use":
+                # Attempt to read partial JSON from delta; if dict, serialize chunk
+                delta = chunk.delta
+                partial = getattr(delta, "partial_json", None)
+                if partial is None:
+                    # Fallbacks for different SDK shapes
+                    partial = getattr(delta, "delta", None)
+                try:
+                    if partial is None:
+                        arguments_delta = ""
+                    elif isinstance(partial, str):
+                        arguments_delta = partial
+                    else:
+                        arguments_delta = json.dumps(partial)
+                except Exception:
+                    arguments_delta = str(partial)
+
+                content_deltas = [
+                    ChatResponseToolCallContentItemDelta(
+                        index=chunk.index,
+                        role=self.streaming_manager.message_metadata["role"],
+                        arguments_delta=arguments_delta,
+                        metadata={},
+                    )
+                ]
+            else:
+                content_deltas = [
+                    self.process_content_item_delta(
+                        index=chunk.index,
+                        role=self.streaming_manager.message_metadata["role"],
+                        delta=chunk.delta,
+                    )
+                ]
 
             choice_deltas = [
                 ChatResponseChoiceDelta(
@@ -267,7 +329,28 @@ class AnthropicChat(AnthropicClientBase):
             )
             processed_chunks.append(stream_response)
         elif isinstance(chunk, RawContentBlockStopEvent):
-            pass
+            # For tool_use, emit a finalize delta to parse accumulated arguments buffer
+            if getattr(chunk, "content_block", None) and getattr(chunk.content_block, "type", None) == "tool_use":
+                content_deltas = [
+                    ChatResponseToolCallContentItemDelta(
+                        index=chunk.index,
+                        role=self.streaming_manager.message_metadata["role"],
+                        metadata={"finalize_tool_call": True},
+                    )
+                ]
+                choice_deltas = [
+                    ChatResponseChoiceDelta(
+                        index=self.streaming_manager.message_metadata["index"],
+                        content_deltas=content_deltas,
+                        metadata={},
+                    )
+                ]
+                response_chunk = self.streaming_manager.update(choice_deltas=choice_deltas)
+                stream_response = StreamingChatResponse(
+                    id=self.streaming_manager.message_metadata["id"],
+                    data=response_chunk,
+                )
+                processed_chunks.append(stream_response)
         elif isinstance(chunk, RawMessageDeltaEvent):
             # Update output tokens
             self.streaming_manager.usage.completion_tokens += chunk.usage.output_tokens
@@ -388,7 +471,7 @@ class AnthropicChat(AnthropicClientBase):
                 index=index,
                 role=role,
                 thinking_text_delta=delta.thinking,
-                thinking_signature=None,  # TODO: Take care of signature
+                thinking_signature=None,
                 metadata={},
             )
         elif isinstance(delta, SignatureDelta):
@@ -396,9 +479,8 @@ class AnthropicChat(AnthropicClientBase):
                 index=index,
                 role=role,
                 thinking_text_delta="",
-                metadata={
-                    "signature": delta.signature,
-                },
+                thinking_signature=delta.signature,
+                metadata={},
             )
         # TODO: Tools Not supported in streaming yet
         else:

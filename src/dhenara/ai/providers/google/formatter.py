@@ -18,7 +18,7 @@ from dhenara.ai.types.genai.dhenara.request import (
     ToolDefinition,
 )
 from dhenara.ai.types.genai.dhenara.request.data import FormattedPrompt
-from dhenara.ai.types.genai.dhenara.response import ChatResponseChoice
+from dhenara.ai.types.genai.dhenara.response import ChatResponse
 from dhenara.ai.types.shared.file import FileFormatEnum, GenericFile
 
 logger = logging.getLogger(__name__)
@@ -313,11 +313,11 @@ class GoogleFormatter(BaseFormatter):
                 ],
             }
 
-        # Case 3: ChatResponseChoice (model response with all content items)
+        # Case 3: ChatResponse (model response with all content items)
         # Delegate to message converter (single source of truth for ChatResponse conversions)
-        if isinstance(message_item, ChatResponseChoice):
-            return GoogleMessageConverter.dai_choice_to_provider_message(
-                message_item,
+        if isinstance(message_item, ChatResponse):
+            return GoogleMessageConverter.dai_response_to_provider_message(
+                dai_response=message_item,
                 model_endpoint=model_endpoint,
             )
 

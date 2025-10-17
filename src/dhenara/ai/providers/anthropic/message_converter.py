@@ -21,7 +21,7 @@ from dhenara.ai.types.genai import (
 )
 from dhenara.ai.types.genai.dhenara import ChatResponseToolCall
 from dhenara.ai.types.genai.dhenara.request import StructuredOutputConfig
-from dhenara.ai.types.genai.dhenara.response import ChatResponseChoice
+from dhenara.ai.types.genai.dhenara.response import ChatResponse, ChatResponseChoice
 
 
 class AnthropicMessageConverter(BaseMessageConverter):
@@ -150,11 +150,12 @@ class AnthropicMessageConverter(BaseMessageConverter):
                             signature=content.thinking_signature,
                         )
                     )
-                elif content.metadata.get("redacted_thinking_data"):
+                elif (getattr(content, "metadata", None) or {}).get("redacted_thinking_data"):
                     # Redacted thinking (when signature but no text)
                     content_blocks.append(
                         RedactedThinkingBlockParam(
-                            type="redacted_thinking", data=content.metadata.get("redacted_thinking_data")
+                            type="redacted_thinking",
+                            data=(getattr(content, "metadata", None) or {}).get("redacted_thinking_data"),
                         )
                     )
                 elif content.thinking_text:
@@ -167,7 +168,7 @@ class AnthropicMessageConverter(BaseMessageConverter):
                 content_blocks.append(
                     ToolUseBlockParam(
                         type="tool_use",
-                        id=tool_call.id,
+                        id=tool_call.call_id,
                         name=tool_call.name,
                         input=tool_call.arguments,
                     )
@@ -189,3 +190,20 @@ class AnthropicMessageConverter(BaseMessageConverter):
             return {"role": "assistant", "content": content_blocks}
 
         return {"role": "assistant", "content": ""}
+
+    @staticmethod
+    def dai_response_to_provider_message(
+        *,
+        dai_response: ChatResponse,
+        model_endpoint: object | None = None,
+    ) -> dict[str, object] | list[dict[str, object]]:
+        """Convert a complete ChatResponse to Anthropic provider message format.
+
+        Uses the first choice as the assistant message content, preserving
+        reasoning blocks (thinking/redacted_thinking), tool_use, and text.
+        """
+        if not dai_response or not dai_response.choices:
+            return {"role": "assistant", "content": ""}
+        return AnthropicMessageConverter.dai_choice_to_provider_message(
+            dai_response.choices[0],
+        )

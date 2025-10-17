@@ -297,7 +297,7 @@ class AnthropicFormatter(BaseFormatter):
                 ],
             }
 
-        # Case 3: ChatResponseChoice (assistant response with all content items)
+        # Case 3: ChatResponse (assistant response with all content items)
         # Delegate to message converter (single source of truth for ChatResponse conversions)
         if isinstance(message_item, ChatResponse):
             return AnthropicMessageConverter.dai_response_to_provider_message(

@@ -15,6 +15,7 @@ from dhenara.ai.types.genai import (
     ChatResponseGenericContentItem,
     ChatResponseReasoningContentItem,
     ChatResponseTextContentItem,
+    ChatResponseToolCall,
     ChatResponseToolCallContentItem,
     ChatResponseUsage,
     ExternalApiCallStatus,
@@ -331,6 +332,48 @@ class StreamingManager:
                                     buf_key = "arguments_buffer"
                                     prev = matching_content.metadata.get(buf_key) or ""
                                     matching_content.metadata[buf_key] = prev + content_delta.arguments_delta
+
+                                # Finalize tool call arguments when signaled
+                                if hasattr(content_delta, "metadata") and content_delta.metadata.get(
+                                    "finalize_tool_call"
+                                ):
+                                    buf_key = "arguments_buffer"
+                                    raw_buf = matching_content.metadata.get(buf_key)
+                                    if raw_buf is not None:
+                                        try:
+                                            import json as _json
+
+                                            parsed = _json.loads(raw_buf)
+                                            parse_error = None
+                                        except Exception as e:
+                                            parsed = {}
+                                            parse_error = str(e)
+                                            # Keep raw data for debugging
+                                            if hasattr(matching_content, "tool_call") and matching_content.tool_call:
+                                                matching_content.tool_call.raw_data = raw_buf
+
+                                        # Ensure tool_call exists
+                                        if not getattr(matching_content, "tool_call", None):
+                                            # Create a placeholder tool_call
+                                            matching_content.tool_call = ChatResponseToolCall(
+                                                call_id=None,
+                                                id=None,
+                                                name=matching_content.metadata.get("name") or "unknown",
+                                                arguments={},
+                                            )
+
+                                        # Assign parsed args and parse error
+                                        matching_content.tool_call.arguments = (
+                                            parsed if isinstance(parsed, dict) else {"raw": raw_buf}
+                                        )
+                                        if parse_error:
+                                            matching_content.tool_call.parse_error = parse_error
+
+                                        # Clear buffer
+                                        try:
+                                            del matching_content.metadata[buf_key]
+                                        except Exception:
+                                            matching_content.metadata[buf_key] = ""
 
         # Update token count
         self.progress.updates_count += 1
