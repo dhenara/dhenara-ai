@@ -35,6 +35,19 @@ logger = logging.getLogger(__name__)
 models_not_supporting_system_instructions = ["gemini-1.0-pro"]
 
 
+def _process_thought_signature(thought_signature: str | bytes | None) -> str | None:
+    import base64
+
+    if thought_signature and not isinstance(thought_signature, str):
+        try:
+            return base64.b64encode(thought_signature).decode("utf-8")
+        except Exception:
+            # Keep as-is if encoding fails
+            pass
+
+    return thought_signature
+
+
 # -----------------------------------------------------------------------------
 class GoogleAIChat(GoogleAIClientBase):
     def get_api_call_params(
@@ -343,11 +356,17 @@ class GoogleAIChat(GoogleAIClientBase):
             if _get_attr(delta, "thought", default=False) is True:
                 thinking_summary_delta = _get_attr(delta, "text", None)
                 thought_signature = _get_attr(delta, "thought_signature", None)
+                # Stash signature for upcoming function_call if present
+                try:
+                    if thought_signature:
+                        self._pending_thought_signature = thought_signature
+                except Exception:
+                    pass
                 return ChatResponseReasoningContentItemDelta(
                     index=index,
                     role=role,
                     thinking_summary_delta=thinking_summary_delta,
-                    thinking_signature=thought_signature,
+                    thinking_signature=_process_thought_signature(thought_signature),
                 )
 
             # Text piece
@@ -365,6 +384,10 @@ class GoogleAIChat(GoogleAIClientBase):
                     # Normalize function object (SDK or dict)
                     name = _get_attr(fn, "name", None) if hasattr(fn, "__dict__") else fn.get("name")
                     args = _get_attr(fn, "args", None) if hasattr(fn, "__dict__") else fn.get("args")
+                    # Capture thought_signature from this delta or any previously stashed one
+                    thought_signature = _get_attr(delta, "thought_signature", None)
+                    if not thought_signature:
+                        thought_signature = getattr(self, "_pending_thought_signature", None)
 
                     from dhenara.ai.types.genai import ChatResponseToolCall as _Tool
 
@@ -377,12 +400,26 @@ class GoogleAIChat(GoogleAIClientBase):
                         raw_data=parsed.get("raw_data"),
                         parse_error=parsed.get("parse_error"),
                     )
-                    return ChatResponseToolCallContentItemDelta(
+                    delta_obj = ChatResponseToolCallContentItemDelta(
                         index=index,
                         role=role,
                         tool_call=tool_call,
-                        metadata={"google_function_call": True},
+                        metadata={
+                            "google_function_call": True,
+                            **(
+                                {"thought_signature": _process_thought_signature(thought_signature)}
+                                if thought_signature
+                                else {}
+                            ),
+                        },
                     )
+                    # Clear the stashed signature after attaching to the call
+                    try:
+                        if getattr(self, "_pending_thought_signature", None):
+                            self._pending_thought_signature = None
+                    except Exception:
+                        pass
+                    return delta_obj
                 except Exception as e:
                     return ChatResponseGenericContentItemDelta(
                         index=index,

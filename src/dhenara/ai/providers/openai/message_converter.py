@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import logging
-import random
-import time
 from typing import Any
 
 from openai.types.chat import ChatCompletionMessage
@@ -26,7 +24,7 @@ from dhenara.ai.types.genai import (
     ChatResponseToolCall,
     ChatResponseToolCallContentItem,
 )
-from dhenara.ai.types.genai.ai_model import AIModelProviderEnum
+from dhenara.ai.types.genai.ai_model import AIModelEndpoint, AIModelProviderEnum
 from dhenara.ai.types.genai.dhenara.request import StructuredOutputConfig
 from dhenara.ai.types.genai.dhenara.response import ChatResponse, ChatResponseChoice
 
@@ -101,27 +99,27 @@ class OpenAIMessageConverter(BaseMessageConverter):
             else:
                 content_text = _get(content_obj, "text", None)
 
-            # IMPORTANT: Store the original summary_obj structure (list[dict] or str)
-            # This allows perfect round-tripping to OpenAI API
+            # IMPORTANT: Store thinking_summary as list[ChatMessageContentPart] | str | None
+            # Convert OpenAI summary list items to ChatMessageContentPart for predictable handling
             if isinstance(summary_obj, list):
-                # Convert list of Summary Pydantic objects to list[dict]
-                summary_list = []
+                summary_list: list[ChatMessageContentPart] = []
                 for s in summary_obj:
-                    if hasattr(s, "model_dump"):
-                        summary_list.append(s.model_dump())
-                    elif isinstance(s, dict):
-                        summary_list.append(s)
-                    else:
-                        # Fallback: treat as unknown object, try to extract text
-                        summary_list.append({"type": "summary_text", "text": str(s)})
+                    s_dict = s.model_dump() if hasattr(s, "model_dump") else (s if isinstance(s, dict) else {})
+                    s_type = s_dict.get("type") or "summary_text"
+                    s_text = s_dict.get("text") if isinstance(s_dict, dict) else str(s)
+                    summary_list.append(
+                        ChatMessageContentPart(
+                            type=s_type,
+                            text=s_text,
+                            annotations=None,
+                            metadata=None,
+                        )
+                    )
                 thinking_summary = summary_list
-            elif summary_obj is not None:
-                # If it's a Pydantic object, convert to dict
-                if hasattr(summary_obj, "model_dump"):
-                    thinking_summary = summary_obj.model_dump()
-                else:
-                    # If it's a string or dict, keep it as-is
-                    thinking_summary = summary_obj
+            elif isinstance(summary_obj, str):
+                thinking_summary = [
+                    ChatMessageContentPart(type="summary_text", text=summary_obj, annotations=None, metadata=None)
+                ]
             else:
                 thinking_summary = None
 
@@ -262,7 +260,7 @@ class OpenAIMessageConverter(BaseMessageConverter):
     @staticmethod
     def dai_response_to_provider_message(
         dai_response: ChatResponse,
-        model_endpoint: object | None = None,
+        model_endpoint: AIModelEndpoint,
     ) -> dict[str, Any] | list[dict[str, Any]]:
         """Convert ChatResponse into OpenAI Responses API input format.
 
@@ -275,12 +273,14 @@ class OpenAIMessageConverter(BaseMessageConverter):
         return OpenAIMessageConverter.dai_choice_to_provider_message(
             dai_response.choices[0] if dai_response.choices else None,
             model_endpoint=model_endpoint,
+            source_provider=dai_response.provider,
         )
 
     @staticmethod
     def dai_choice_to_provider_message(
         choice: ChatResponseChoice,
-        model_endpoint: object | None = None,
+        model_endpoint: AIModelEndpoint,
+        source_provider: AIModelProviderEnum,
     ) -> dict[str, Any] | list[dict[str, Any]]:
         """Convert ChatResponseChoice into OpenAI Responses API input format.
 
@@ -293,32 +293,34 @@ class OpenAIMessageConverter(BaseMessageConverter):
         followed by a message item. So we collect all reasoning items first, then
         create a single message item with all text/structured output content.
         """
-        reasoning_items: list[ResponseReasoningItemParam] = []
-        text_contents: list[dict[str, Any]] = []
-        tool_calls: list[ResponseFunctionToolCallParam] = []
-        output_items: list[ResponseReasoningItemParam | ResponseOutputMessageParam | ResponseFunctionToolCallParam] = []
+        same_provider = True if str(source_provider) == str(model_endpoint.ai_model.provider) else False
 
-        # Track message IDs and content from preserved data
-        message_id_from_content = None
-        preserved_content_array = []
+        output_items: list[ResponseReasoningItemParam | ResponseOutputMessageParam | ResponseFunctionToolCallParam] = []
 
         # First pass: collect all content by type
         for item in choice.contents:
             try:
                 if isinstance(item, ChatResponseReasoningContentItem):
                     # USE PRESERVED DATA if available for perfect round-tripping
-                    param_data = {
-                        "id": item.thinking_id or f"rs_{len(reasoning_items)}",
+                    param_data: dict[str, Any] = {
                         "type": "reasoning",
                     }
+                    if same_provider and item.thinking_id:
+                        param_data["id"] = item.thinking_id
 
                     # Use preserved summary structure (list[dict] or str) if available
                     if item.thinking_summary is not None:
                         if isinstance(item.thinking_summary, list):
-                            # Already in OpenAI format [{"type": "summary_text", "text": "..."}]
-                            param_data["summary"] = item.thinking_summary
+                            # Convert ChatMessageContentPart list to OpenAI summary list[dict]
+                            summary_list = [
+                                {
+                                    "type": getattr(p, "type", "summary_text"),
+                                    "text": getattr(p, "text", None),
+                                }
+                                for p in item.thinking_summary
+                            ]
+                            param_data["summary"] = summary_list
                         elif isinstance(item.thinking_summary, str):
-                            # Convert string to OpenAI format
                             param_data["summary"] = [{"type": "summary_text", "text": item.thinking_summary}]
                         else:
                             logger.error(f"OpenAI: Unsupported thinking_summary type; {type(item.thinking_summary)}")
@@ -333,7 +335,7 @@ class OpenAIMessageConverter(BaseMessageConverter):
 
                     # Note: For input, 'content' is NOT typically included for reasoning items
                     # Only summary is used. encrypted_content can be included if available.
-                    if item.thinking_signature:
+                    if item.thinking_signature and same_provider:
                         param_data["encrypted_content"] = item.thinking_signature
 
                     # reasoning_items.append(ResponseReasoningItemParam(**param_data))
@@ -361,11 +363,12 @@ class OpenAIMessageConverter(BaseMessageConverter):
                         content.append({"type": "output_text", "text": "", "annotations": []})
 
                     param_data = {
-                        "id": item.message_id or f"msg_{int(time.time())}_{random.randint(1000, 9999)}",
                         "type": "message",
                         "role": "assistant",
                         "content": content,
                     }
+                    if same_provider and item.message_id:
+                        param_data["id"] = item.message_id
                     message_param = ResponseOutputMessageParam(**param_data)
                     output_items.append(message_param)
 
@@ -384,9 +387,9 @@ class OpenAIMessageConverter(BaseMessageConverter):
                     )
 
                     fn_call_param = ResponseFunctionToolCallParam(
-                        call_id=tool_call.call_id,
-                        id=tool_call.id,
-                        type="function_call",  # tool_call.metadata.get("type", "function_call"),
+                        call_id=(tool_call.call_id if same_provider else None),
+                        id=(tool_call.id if same_provider else None),
+                        type="function_call",
                         name=tool_call.name,
                         arguments=args_str,
                     )
@@ -397,49 +400,5 @@ class OpenAIMessageConverter(BaseMessageConverter):
             except Exception as e:  # noqa: PERF203
                 logger.error(f"OpenAI: Validation error for item; {e}")
                 raise e
-
-        return output_items
-
-        # Second pass: construct output items
-
-        # Add all reasoning items first
-        output_items.extend(reasoning_items)
-
-        # Determine what to add next based on content
-        has_text = bool(text_contents or preserved_content_array)
-        has_reasoning = bool(reasoning_items)
-        has_tools = bool(tool_calls)
-
-        # Add message ONLY if:
-        # 1. We have actual text content, OR
-        # 2. We have reasoning but NO tool calls (reasoning alone requires message)
-        # Do NOT add empty message when we have reasoning + tool calls (violates OpenAI rules)
-        if has_text or (has_reasoning and not has_tools):
-            # Use preserved message ID if available, otherwise generate a unique one
-            if message_id_from_content:
-                msg_id = message_id_from_content
-            else:
-                # Generate unique ID using timestamp + random component
-                msg_id = f"msg_{int(time.time())}_{random.randint(1000, 9999)}"
-
-            # Use preserved content array if available, otherwise use collected text_contents
-            # If no text but reasoning exists, use empty text (required by API)
-            final_content = (
-                preserved_content_array
-                if preserved_content_array
-                else (text_contents if text_contents else [{"type": "output_text", "text": "", "annotations": []}])
-            )
-
-            message_param = ResponseOutputMessageParam(
-                id=msg_id,
-                type="message",
-                role="assistant",
-                content=final_content,
-            )
-            output_items.append(message_param)
-
-        # Add tool calls after message (if any)
-        # Tool calls must come AFTER message but BEFORE function_call_output
-        output_items.extend(tool_calls)
 
         return output_items

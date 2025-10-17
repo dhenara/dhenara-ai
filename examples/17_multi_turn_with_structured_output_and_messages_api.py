@@ -7,7 +7,6 @@ Usage:
   python examples/17_multi_turn_with_structured_output_and_messages_api.py
 """
 
-import json
 import random
 from typing import Literal
 
@@ -202,7 +201,7 @@ def run_multi_turn_with_structured_output():
     # story_text = story_response.chat_response.text() or ""
 
     # Now analyze it with structured output
-    story_analysis, messages, response = handle_turn_with_structured_output(
+    _story_analysis, messages, response = handle_turn_with_structured_output(
         # user_query=f"Analyze this story: {story_text}",
         user_query="Analyze this story",
         endpoint=model_endpoint,

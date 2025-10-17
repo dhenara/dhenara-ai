@@ -4,6 +4,7 @@ from typing import Any
 from dhenara.ai.types.genai import (
     ChatResponseContentItem,
 )
+from dhenara.ai.types.genai.ai_model import AIModelEndpoint, AIModelProviderEnum
 from dhenara.ai.types.genai.dhenara.request import StructuredOutputConfig
 from dhenara.ai.types.genai.dhenara.response import ChatResponse, ChatResponseChoice
 
@@ -22,7 +23,7 @@ class BaseMessageConverter(ABC):
     @abstractmethod
     def dai_response_to_provider_message(
         dai_response: ChatResponse,
-        model_endpoint: object | None = None,
+        model_endpoint: AIModelEndpoint,
     ) -> dict[str, Any] | list[dict[str, Any]]:
         pass
 
@@ -30,6 +31,7 @@ class BaseMessageConverter(ABC):
     @abstractmethod
     def dai_choice_to_provider_message(
         choice: ChatResponseChoice,
-        model_endpoint: object | None = None,
+        model_endpoint: AIModelEndpoint,
+        source_provider: AIModelProviderEnum,
     ) -> dict[str, Any] | list[dict[str, Any]]:
         pass

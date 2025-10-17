@@ -18,6 +18,7 @@ from dhenara.ai.types.genai import (
     ChatResponseToolCall,
     ChatResponseToolCallContentItem,
 )
+from dhenara.ai.types.genai.ai_model import AIModelEndpoint, AIModelProviderEnum
 from dhenara.ai.types.genai.dhenara.request import StructuredOutputConfig
 from dhenara.ai.types.genai.dhenara.response import ChatResponse, ChatResponseChoice
 
@@ -105,11 +106,21 @@ class GoogleMessageConverter(BaseMessageConverter):
                 metadata={"code_execution_result": code_execution_result},
             )
         if function_response is not None:
-            response_payload = function_response.response if hasattr(function_response, "response") else None
+            # Preserve the entire function_response object (name + response + any extras)
+            if hasattr(function_response, "model_dump"):
+                fr_value = function_response.model_dump()
+            elif isinstance(function_response, dict):
+                fr_value = function_response
+            else:
+                fr_value = {
+                    "name": _get(function_response, "name", None),
+                    "response": _get(function_response, "response", None),
+                }
+
             return ChatResponseGenericContentItem(
                 index=index,
                 role=role,
-                metadata={"function_response": response_payload},
+                metadata={"function_response": fr_value},
             )
 
         if function_call is not None:
@@ -207,150 +218,11 @@ class GoogleMessageConverter(BaseMessageConverter):
             for index, part in enumerate(parts)
         ]
 
-    """
-    @staticmethod
-    def provider_message_to_dai_content_items(
-        *,
-        message: Any,
-        structured_output_config: StructuredOutputConfig | None = None,
-    ) -> list[ChatResponseContentItem]:
-        parts = getattr(message, "parts", []) or []
-        role = getattr(message, "role", "model")
-
-        items: list[ChatResponseContentItem] = []
-        grouped_parts: list[ChatMessageContentPart] = []
-        # Preserve provider message id if available
-        message_id = getattr(message, "id", None)
-
-        TODO: DELETE
-        for index, part in enumerate(parts):
-
-            # Thinking parts are separate content items
-            if hasattr(part, "thought") and part.thought is True:
-                thinking_summary = getattr(part, "text", None)
-                thought_signature = getattr(part, "thought_signature", None)
-                items.append(
-                    ChatResponseReasoningContentItem(
-                        index=index,
-                        role=role,
-                        thinking_summary=thinking_summary,
-                        thinking_signature=thought_signature,
-                        thinking_id=getattr(part, "id", None),
-                    )
-                )
-                continue
-
-            # Function/tool calls and their responses remain separate items
-            if hasattr(part, "function_call") and part.function_call is not None:
-                items.append(
-                    GoogleMessageConverter.provider_part_to_content_item(
-                        part=part,
-                        index=index,
-                        role=role,
-                        structured_output_config=structured_output_config,
-                    )
-                )
-                continue
-
-            if hasattr(part, "function_response") and part.function_response is not None:
-                items.append(
-                    GoogleMessageConverter.provider_part_to_content_item(
-                        part=part,
-                        index=index,
-                        role=role,
-                        structured_output_config=structured_output_config,
-                    )
-                )
-                continue
-
-            # Aggregate regular message parts for round-trip preservation
-            try:
-                if hasattr(part, "text") and part.text is not None:
-                    grouped_parts.append(
-                        ChatMessageContentPart(
-                            type="text",
-                            text=part.text,
-                            annotations=None,
-                            metadata=None,
-                        )
-                    )
-                elif hasattr(part, "inline_data") and part.inline_data is not None:
-                    inline = part.inline_data
-                    # inline has fields: data (bytes-like) and mime_type
-                    grouped_parts.append(
-                        ChatMessageContentPart(
-                            type="inline_data",
-                            text=None,
-                            annotations=None,
-                            metadata={
-                                "mime_type": getattr(inline, "mime_type", None),
-                                "data": getattr(inline, "data", None),
-                            },
-                        )
-                    )
-                else:
-                    # Preserve unknown parts
-                    grouped_parts.append(
-                        ChatMessageContentPart(
-                            type="unknown",
-                            text=None,
-                            annotations=None,
-                            metadata={"raw_part": part.model_dump() if hasattr(part, "model_dump") else {}},
-                        )
-                    )
-            except Exception:
-                grouped_parts.append(
-                    ChatMessageContentPart(
-                        type="unknown",
-                        text=None,
-                        annotations=None,
-                        metadata={"raw_part": str(part)},
-                    )
-                )
-
-        # After iterating, emit a single message item if any grouped parts exist
-        if grouped_parts:
-            if structured_output_config is not None:
-                # Extract concatenated text for structured output parsing
-                text_value = "".join([p.text or "" for p in grouped_parts if p.type in ("text", "output_text")])
-                parsed_data, error = ChatResponseStructuredOutput._parse_and_validate(
-                    text_value, structured_output_config
-                )
-
-                structured_output = ChatResponseStructuredOutput(
-                    config=structured_output_config,
-                    structured_data=parsed_data,
-                    raw_data=text_value,
-                    parse_error=error,
-                )
-
-                items.append(
-                    ChatResponseStructuredOutputContentItem(
-                        index=len(items),
-                        role=role,
-                        structured_output=structured_output,
-                        message_id=message_id,
-                        message_contents=grouped_parts,
-                    )
-                )
-            else:
-                items.append(
-                    ChatResponseTextContentItem(
-                        index=len(items),
-                        role=role,
-                        text=None,
-                        message_id=message_id,
-                        message_contents=grouped_parts,
-                    )
-                )
-
-        return items
-    """
-
     @staticmethod
     def dai_choice_to_provider_message(
         choice: ChatResponseChoice,
-        model_endpoint: object | None = None,
+        model_endpoint: AIModelEndpoint,
+        source_provider: AIModelProviderEnum,
     ) -> dict[str, Any] | list[dict[str, Any]]:
         """Convert ChatResponseChoice to Google Gemini message format.
 
@@ -362,6 +234,8 @@ class GoogleMessageConverter(BaseMessageConverter):
 
         Note: Google SDK types not always available; we emit strict dict schema.
         """
+        same_provider = True if str(source_provider) == str(model_endpoint.ai_model.provider) else False
+
         parts: list[dict[str, object]] = []
 
         def _replay_message_contents(
@@ -413,7 +287,7 @@ class GoogleMessageConverter(BaseMessageConverter):
                     {
                         "text": text_content or "",
                         "thought": True,
-                        "thought_signature": content.thinking_signature,
+                        # "thought_signature": content.thinking_signature if same_provider else None,
                     }
                 )
 
@@ -421,15 +295,21 @@ class GoogleMessageConverter(BaseMessageConverter):
 
             if isinstance(content, ChatResponseToolCallContentItem) and content.tool_call is not None:
                 tool_call = content.tool_call
-                parts.append(
-                    {
-                        "function_call": {
-                            "name": tool_call.name,
-                            "args": tool_call.arguments,
-                        },
-                        "thought_signature": _get(content.metadata, "thought_signature", None),
-                    }
-                )
+                # Preserve Google thought_signature on function_call parts when continuing with the same provider
+                thought_sig = None
+                if same_provider and getattr(content, "metadata", None):
+                    thought_sig = content.metadata.get("thought_signature")
+
+                part_obj: dict[str, Any] = {
+                    "function_call": {
+                        "name": tool_call.name,
+                        "args": tool_call.arguments,
+                    },
+                }
+                if thought_sig:
+                    part_obj["thought_signature"] = thought_sig
+
+                parts.append(part_obj)
                 continue
 
             if isinstance(content, ChatResponseStructuredOutputContentItem):
@@ -454,7 +334,12 @@ class GoogleMessageConverter(BaseMessageConverter):
                 elif "code_execution_result" in md:
                     parts.append({"code_execution_result": md.get("code_execution_result")})
                 elif "function_response" in md:
-                    parts.append({"function_response": md.get("function_response")})
+                    fr = md.get("function_response")
+                    # Normalize into Google's expected shape { function_response: { name, response } }
+                    if isinstance(fr, dict) and ("name" in fr or "response" in fr):
+                        parts.append({"function_response": {"name": fr.get("name"), "response": fr.get("response")}})
+                    else:
+                        parts.append({"function_response": fr})
                 else:
                     parts.append({"text": json.dumps(md)})
                 continue
@@ -469,7 +354,7 @@ class GoogleMessageConverter(BaseMessageConverter):
     @staticmethod
     def dai_response_to_provider_message(
         dai_response: ChatResponse,
-        model_endpoint: object | None = None,
+        model_endpoint: AIModelEndpoint,
     ) -> dict[str, Any] | list[dict[str, Any]]:
         """Convert a complete ChatResponse to Google provider message format.
 
@@ -480,4 +365,5 @@ class GoogleMessageConverter(BaseMessageConverter):
         return GoogleMessageConverter.dai_choice_to_provider_message(
             dai_response.choices[0],
             model_endpoint=model_endpoint,
+            source_provider=dai_response.provider,
         )

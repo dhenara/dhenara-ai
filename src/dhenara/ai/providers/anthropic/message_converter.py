@@ -20,6 +20,7 @@ from dhenara.ai.types.genai import (
     ChatResponseTextContentItem,
     ChatResponseToolCallContentItem,
 )
+from dhenara.ai.types.genai.ai_model import AIModelEndpoint, AIModelProviderEnum
 from dhenara.ai.types.genai.dhenara import ChatResponseToolCall
 from dhenara.ai.types.genai.dhenara.request import StructuredOutputConfig
 from dhenara.ai.types.genai.dhenara.response import ChatResponse, ChatResponseChoice
@@ -101,6 +102,7 @@ class AnthropicMessageConverter(BaseMessageConverter):
             ]
 
         if content_block.type == "thinking":
+            # Preserve thinking_text; Anthropic has signature and id
             return [
                 ChatResponseReasoningContentItem(
                     index=index,
@@ -112,11 +114,15 @@ class AnthropicMessageConverter(BaseMessageConverter):
             ]
 
         if content_block.type == "redacted_thinking":
+            # Represent redacted thinking as a summary part with type 'redacted_thinking'
+            redacted = getattr(content_block, "data", None)
             return [
                 ChatResponseReasoningContentItem(
                     index=index,
                     role=role,
-                    metadata={"redacted_thinking_data": getattr(content_block, "data", None)},
+                    thinking_summary=[
+                        ChatMessageContentPart(type="redacted_thinking", text=None, annotations=None, metadata=redacted)
+                    ],
                 )
             ]
 
@@ -167,12 +173,12 @@ class AnthropicMessageConverter(BaseMessageConverter):
     @staticmethod
     def dai_choice_to_provider_message(
         choice: ChatResponseChoice,
-        *,
-        model: str | None = None,
-        provider: str | None = None,
-        strict_same_provider: bool = False,
+        model_endpoint: AIModelEndpoint,
+        source_provider: AIModelProviderEnum,
     ) -> dict[str, object]:
         content_blocks: list[object] = []
+
+        same_provider = True if str(source_provider) == str(model_endpoint.ai_model.provider) else False
 
         for content in choice.contents:
             if isinstance(content, ChatResponseTextContentItem) and content.text:
@@ -185,19 +191,28 @@ class AnthropicMessageConverter(BaseMessageConverter):
                         ThinkingBlockParam(
                             type="thinking",
                             thinking=content.thinking_text,
-                            signature=content.thinking_signature,
+                            signature=content.thinking_signature if same_provider else None,
                         )
                     )
-                elif (getattr(content, "metadata", None) or {}).get("redacted_thinking_data"):
+                elif content.thinking_summary:
                     # Redacted thinking (when signature but no text)
-                    content_blocks.append(
-                        RedactedThinkingBlockParam(
-                            type="redacted_thinking",
-                            data=(getattr(content, "metadata", None) or {}).get("redacted_thinking_data"),
-                        )
+                    # If represented as summary parts, try to map redacted_thinking type to redacted block
+                    rt = next(
+                        (p for p in content.thinking_summary if getattr(p, "type", "") == "redacted_thinking"),
+                        None,
                     )
+                    if rt is not None:
+                        content_blocks.append(
+                            RedactedThinkingBlockParam(type="redacted_thinking", data=getattr(rt, "metadata", None))
+                        )
+                    elif content.thinking_text:
+                        if same_provider:
+                            raise ValueError(
+                                "Anthropic: missing thinking signature for reasoning content in strict mode."
+                            )
+                        content_blocks.append(TextBlockParam(type="text", text=content.thinking_text))
                 elif content.thinking_text:
-                    if strict_same_provider:
+                    if same_provider:
                         raise ValueError("Anthropic: missing thinking signature for reasoning content in strict mode.")
                     # Fallback: if no signature, emit as text (cross-provider compatibility)
                     content_blocks.append(TextBlockParam(type="text", text=content.thinking_text))
@@ -231,7 +246,6 @@ class AnthropicMessageConverter(BaseMessageConverter):
 
     @staticmethod
     def dai_response_to_provider_message(
-        *,
         dai_response: ChatResponse,
         model_endpoint: object | None = None,
     ) -> dict[str, object] | list[dict[str, object]]:
@@ -243,5 +257,7 @@ class AnthropicMessageConverter(BaseMessageConverter):
         if not dai_response or not dai_response.choices:
             return {"role": "assistant", "content": ""}
         return AnthropicMessageConverter.dai_choice_to_provider_message(
-            dai_response.choices[0],
+            choice=dai_response.choices[0],
+            model_endpoint=model_endpoint,
+            source_provider=dai_response.provider,
         )

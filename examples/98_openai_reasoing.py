@@ -1,6 +1,6 @@
-from openai import OpenAI
-import json
 import time
+
+from openai import OpenAI
 
 client = OpenAI()
 
