@@ -86,7 +86,17 @@ class AnthropicMessageConverter(BaseMessageConverter):
             raw_response = content_block.model_dump()
 
             try:
-                tool_call = ChatResponseToolCall.from_anthropic_format(raw_response)
+                _args = raw_response.get("input")
+                _parsed_args = ChatResponseToolCall.parse_args_str_or_dict(_args)
+
+                tool_call = ChatResponseToolCall(
+                    call_id=raw_response.get("id"),
+                    id=None,
+                    name=raw_response.get("name"),
+                    arguments=_parsed_args.get("arguments_dict"),
+                    raw_data=_parsed_args.get("raw_data"),
+                    parse_error=_parsed_args.get("parse_error"),
+                )
             except Exception:
                 tool_call = None
 

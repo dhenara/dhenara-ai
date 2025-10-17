@@ -164,32 +164,6 @@ class ChatResponseStructuredOutput(BaseModel):
         return parsed_data, error
 
     @classmethod
-    def from_model_output(
-        cls,
-        raw_response: str | dict,
-        config: StructuredOutputConfig,
-    ) -> "ChatResponseStructuredOutput":
-        """Create a structured output content item from model output
-
-        Args:
-            raw_response: Raw output from the model
-            config: Schema to validate against
-
-        Returns:
-            ChatResponseStructuredOutput
-        """
-
-        raw_response_to_parse = raw_response or {}
-        parsed_data, error = cls._parse_and_validate(raw_response_to_parse, config)
-
-        return cls(
-            config=config,
-            structured_data=parsed_data,
-            raw_data=raw_response,  # Keep original response regardless of parsing
-            parse_error=error,
-        )
-
-    @classmethod
     def from_tool_call(
         cls,
         raw_response: str | dict,

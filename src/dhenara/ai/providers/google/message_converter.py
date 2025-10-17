@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from typing import Any
 
 from dhenara.ai.providers.base import BaseMessageConverter
@@ -51,10 +52,17 @@ class GoogleMessageConverter(BaseMessageConverter):
             text_value = part.text
 
             if structured_output_config is not None:
-                structured_output = ChatResponseStructuredOutput.from_model_output(
-                    raw_response=text_value,
-                    config=structured_output_config,
+                parsed_data, error = ChatResponseStructuredOutput._parse_and_validate(
+                    text_value, structured_output_config
                 )
+
+                structured_output = ChatResponseStructuredOutput(
+                    config=structured_output_config,
+                    structured_data=parsed_data,
+                    raw_data=text_value,  # Keep original response regardless of parsing
+                    parse_error=error,
+                )
+
                 return ChatResponseStructuredOutputContentItem(
                     index=index,
                     role=role,
@@ -71,11 +79,28 @@ class GoogleMessageConverter(BaseMessageConverter):
             function_payload = (
                 part.function_call.model_dump() if hasattr(part.function_call, "model_dump") else part.function_call
             )
+            _args = function_payload.get("args")
+            _parsed_args = ChatResponseToolCall.parse_args_str_or_dict(_args)
 
+            # TODO: REview. There should be some sort of id
+            # Google sometimes doesn't provide an ID (when using AFC or in certain scenarios)
+            # Generate a unique ID if not provided to ensure consistency across providers
+            tool_id = function_payload.get("id")
+            if tool_id is None:
+                tool_id = f"call_{uuid.uuid4().hex[:24]}"
+
+            tool_call = ChatResponseToolCall(
+                call_id=tool_id,
+                id=None,
+                name=function_payload.get("name"),
+                arguments=_parsed_args.get("arguments_dict"),
+                raw_data=_parsed_args.get("raw_data"),
+                parse_error=_parsed_args.get("parse_error"),
+            )
             return ChatResponseToolCallContentItem(
                 index=index,
                 role=role,
-                tool_call=ChatResponseToolCall.from_google_format(function_payload),
+                tool_call=tool_call,
                 metadata={},
             )
 

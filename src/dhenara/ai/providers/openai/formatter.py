@@ -18,7 +18,7 @@ from dhenara.ai.types.genai.dhenara.request import (
     ToolDefinition,
 )
 from dhenara.ai.types.genai.dhenara.request.data import FormattedPrompt
-from dhenara.ai.types.genai.dhenara.response import ChatResponseChoice, ChatResponse
+from dhenara.ai.types.genai.dhenara.response import ChatResponse
 from dhenara.ai.types.shared.file import FileFormatEnum, GenericFile
 
 logger = logging.getLogger(__name__)

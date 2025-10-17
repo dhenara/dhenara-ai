@@ -170,7 +170,7 @@ class ChatResponse(BaseModel):
         # return self.model_copy(deep=True)
         return self
 
-    def to_message_item_LEGACY(self, choice_index: int = 0) -> "ChatResponseChoice | None":
+    def to_message_item_LEGACY(self, choice_index: int = 0) -> "ChatResponseChoice | None":  # noqa: N802
         """Get the response choice to use as a message item in multi-turn conversations.
 
         This method returns the complete ChatResponseChoice which contains all content items

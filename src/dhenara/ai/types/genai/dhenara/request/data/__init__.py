@@ -1,4 +1,3 @@
-from ._mixin import *
 from ._role import *
 
 from ._content import *

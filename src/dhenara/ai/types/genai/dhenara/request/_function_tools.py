@@ -4,10 +4,8 @@ from typing import Any, Literal, get_type_hints
 
 from pydantic import BaseModel, Field, create_model
 
-from dhenara.ai.types.genai.dhenara.request import ToProviderMixin
 
-
-class FunctionParameter(BaseModel, ToProviderMixin):
+class FunctionParameter(BaseModel):
     """Parameter definition for function/tool parameters"""
 
     type: str = Field(..., description="Type of the parameter (string, number, boolean, etc.)")
@@ -21,7 +19,7 @@ class FunctionParameter(BaseModel, ToProviderMixin):
     )
 
 
-class FunctionParameters(BaseModel, ToProviderMixin):
+class FunctionParameters(BaseModel):
     """Schema for function parameters"""
 
     type: Literal["object"] = "object"
@@ -29,7 +27,7 @@ class FunctionParameters(BaseModel, ToProviderMixin):
     required: list[str] | None = Field(default_factory=list, description="List of required parameters")
 
 
-class FunctionDefinition(BaseModel, ToProviderMixin):
+class FunctionDefinition(BaseModel):
     """Generic function/tool definition that works across all providers"""
 
     name: str = Field(..., description="Name of the function")
@@ -37,7 +35,7 @@ class FunctionDefinition(BaseModel, ToProviderMixin):
     parameters: FunctionParameters = Field(..., description="Parameters for the function")
 
 
-class ToolDefinition(BaseModel, ToProviderMixin):
+class ToolDefinition(BaseModel):
     """Tool definition that wraps a function"""
 
     type: Literal["function"] = "function"

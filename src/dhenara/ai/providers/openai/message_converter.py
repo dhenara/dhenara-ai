@@ -191,26 +191,40 @@ class OpenAIMessageConverter(BaseMessageConverter):
                     logger.error("OpenAI: TextContentItem has no message_contents or message_contents")
                     pass
 
+            # Extract text from content array for structured output or text display
             if structured_output_config is not None:
-                text_combined = "".join(content_array).strip() if content_array else None
-            else:
-                text_combined = None  # For openai, use message_contents array instead of text
+                # For structured output, extract text from content items
+                text_parts = [
+                    item.get("text", "")
+                    for item in content_array
+                    if isinstance(item, dict) and item.get("type") == "output_text"
+                ]
+                text_combined = "".join(text_parts).strip() if text_parts else None
 
-            if structured_output_config is not None and text_combined is not None:
-                structured_output = ChatResponseStructuredOutput.from_model_output(
-                    raw_response=text_combined,
+                parsed_data, error = ChatResponseStructuredOutput._parse_and_validate(
+                    raw_data=text_combined,
                     config=structured_output_config,
                 )
+
+                structured_output = ChatResponseStructuredOutput(
+                    structured_data=parsed_data,
+                    parse_error=error,
+                    config=structured_output_config,
+                    raw_data=text_combined,  # Preserve combined text for error analysis
+                )
+
                 ci = ChatResponseStructuredOutputContentItem(
                     index=index,
                     role=role,
                     structured_output=structured_output,
+                    message_id=message_id,
+                    message_contents=content_array,
                 )
             else:
                 ci = ChatResponseTextContentItem(
                     index=index,
                     role=role,
-                    text=text_combined,
+                    text=None,  # For openai, use message_contents array instead of text
                     message_id=message_id,
                     message_contents=content_array,
                 )
@@ -306,7 +320,8 @@ class OpenAIMessageConverter(BaseMessageConverter):
                     # reasoning_items.append(ResponseReasoningItemParam(**param_data))
                     output_items.append(ResponseReasoningItemParam(**param_data))
 
-                elif isinstance(item, ChatResponseTextContentItem):
+                elif isinstance(item, (ChatResponseTextContentItem, ChatResponseStructuredOutputContentItem)):
+                    # Structured output are nothing but text content in model responses
                     content = []
 
                     if item.message_contents:
@@ -349,13 +364,7 @@ class OpenAIMessageConverter(BaseMessageConverter):
                         arguments=args_str,
                     )
                     output_items.append(fn_call_param)
-                elif isinstance(item, ChatResponseStructuredOutputContentItem):
-                    # TODO: implement structured output conversion
-                    # For now, convert to text
-                    if hasattr(item.structured_output, "raw_response"):
-                        text_contents.append(
-                            {"type": "output_text", "text": item.structured_output.raw_response, "annotations": []}
-                        )
+
                 else:
                     logger.warning(f"OpenAI: unsupported content item type: {type(item).__name__}")
             except Exception as e:  # noqa: PERF203

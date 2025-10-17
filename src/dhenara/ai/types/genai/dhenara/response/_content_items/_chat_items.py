@@ -81,6 +81,16 @@ class ChatResponseToolCallContentItem(BaseChatResponseContentItem):
 
 class ChatResponseStructuredOutputContentItem(BaseChatResponseContentItem):
     type: ChatResponseContentItemType = ChatResponseContentItemType.STRUCTURED_OUTPUT
+
+    # Provider-specific fields for round-tripping (e.g., OpenAI Responses API)
+    message_id: str | None = Field(
+        None,
+    )
+    message_contents: list[dict] | None = Field(
+        None,
+        description="Provider-specific full content array for round-tripping (e.g., OpenAI output_text items)",
+    )
+
     structured_output: ChatResponseStructuredOutput = Field(...)
 
     def get_text(self) -> str:
