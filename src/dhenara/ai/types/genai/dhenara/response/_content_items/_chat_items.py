@@ -28,7 +28,7 @@ class ChatResponseTextContentItem(BaseChatResponseContentItem):
         text: The actual text content of the message
         function_call: Optional function call details if the message involves function calling
         message_id: Provider-specific message ID (for OpenAI Responses API round-tripping)
-        message_content: Provider-specific full content array (for OpenAI Responses API round-tripping)
+        message_contents: Provider-specific full content array (for OpenAI Responses API round-tripping)
     """
 
     type: ChatResponseContentItemType = ChatResponseContentItemType.TEXT
@@ -43,7 +43,7 @@ class ChatResponseTextContentItem(BaseChatResponseContentItem):
         None,
         description="Provider-specific message ID for round-tripping",
     )
-    message_content: list[dict] | None = Field(
+    message_contents: list[dict] | None = Field(
         None,
         description="Provider-specific full content array for round-tripping (e.g., OpenAI output_text items)",
     )
@@ -127,6 +127,15 @@ class ChatResponseTextContentItemDelta(BaseChatResponseContentItemDelta):
 
     text_delta: str | None = Field(
         None,
+    )
+    # Provider-specific fields for round-tripping (e.g., OpenAI Responses API)
+    message_id: str | None = Field(
+        None,
+        description="Provider-specific message ID for round-tripping",
+    )
+    message_contents: list[dict] | None = Field(
+        None,
+        description="Provider-specific full content array for round-tripping (e.g., OpenAI output_text items)",
     )
 
     def get_text_delta(self) -> str:

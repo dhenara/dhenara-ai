@@ -311,21 +311,29 @@ class OpenAIResponses(OpenAIClientBase):
             reason = getattr(incomplete_details, "reason", None)
             logger.warning(f"Incomplete response: reason={reason}")
 
-        for item in output:
-            converted = OpenAIMessageConverter.provider_message_to_dai_content_items(
-                message=item,
-                role="assistant",
-                index_start=content_index,
-                ai_model_provider=self.model_endpoint.ai_model.provider,
-                structured_output_config=self.config.structured_output,
-            )
-            if not converted:
-                continue
-            for ci in converted:
-                # Normalize incremental indices
-                ci.index = content_index
-                contents.append(ci)
-                content_index += 1
+        # for item in output:
+        #    converted = OpenAIMessageConverter.provider_message_item_to_dai_content_item(
+        #        message_item=item,
+        #        role="assistant",
+        #        index_start=content_index,
+        #        ai_model_provider=self.model_endpoint.ai_model.provider,
+        #        structured_output_config=self.config.structured_output,
+        #    )
+        #    if not converted:
+        #        continue
+        #    for ci in converted:
+        #        # Normalize incremental indices
+        #        ci.index = content_index
+        #        contents.append(ci)
+        #        content_index += 1
+
+        contents = OpenAIMessageConverter.provider_message_to_dai_content_items(
+            message=output,
+            role="assistant",
+            index_start=content_index,
+            ai_model_provider=self.model_endpoint.ai_model.provider,
+            structured_output_config=self.config.structured_output,
+        )
 
         usage, usage_charge = self.get_usage_and_charge(response)
 
@@ -420,17 +428,18 @@ class OpenAIResponses(OpenAIClientBase):
             if delta_text:
                 # Check if we have a pending message ID for this output_index
                 message_id = None
-                message_content = None
+                message_contents = None
                 if hasattr(self.streaming_manager, "pending_message_ids"):
                     message_id = self.streaming_manager.pending_message_ids.get(output_index or 0)
                 if hasattr(self.streaming_manager, "pending_message_content"):
-                    message_content = self.streaming_manager.pending_message_content.get(output_index or 0)
+                    message_contents = self.streaming_manager.pending_message_content.get(output_index or 0)
 
                 content_delta = ChatResponseTextContentItemDelta(
                     index=0,
                     role="assistant",
                     text_delta=delta_text,
-                    metadata={"message_id": message_id, "message_content": message_content} if message_id else {},
+                    message_id=message_id,
+                    message_contents=message_contents if message_id else {},
                 )
                 choice_delta = ChatResponseChoiceDelta(
                     index=0,
