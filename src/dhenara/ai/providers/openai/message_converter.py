@@ -16,6 +16,7 @@ from openai.types.responses import (
 
 from dhenara.ai.providers.base import BaseMessageConverter
 from dhenara.ai.types.genai import (
+    ChatMessageContentPart,
     ChatResponseContentItem,
     ChatResponseGenericContentItem,
     ChatResponseReasoningContentItem,
@@ -181,24 +182,42 @@ class OpenAIMessageConverter(BaseMessageConverter):
 
             # IMPORTANT: Preserve the original content array for round-tripping
             # Convert Pydantic models to dicts if needed
-            content_array = []
+            content_array: list[ChatMessageContentPart] = []
             for part in contents or []:
-                if hasattr(part, "model_dump"):
-                    content_array.append(part.model_dump())
-                elif isinstance(part, dict):
-                    content_array.append(part)
-                else:
-                    logger.error("OpenAI: TextContentItem has no message_contents or message_contents")
-                    pass
+                try:
+                    ctype = _get(part, "type", None)
+                    if ctype == "output_text":
+                        text = _get(part, "text", None)
+                        annotations = _get(part, "annotations", None)
+                        content_array.append(
+                            ChatMessageContentPart(
+                                type=ctype,
+                                text=text,
+                                annotations=annotations,
+                            )
+                        )
+                        continue
+                    elif ctype == "refusal":
+                        reason = _get(part, "refusal", None)
+                        content_array.append(
+                            ChatMessageContentPart(
+                                type=ctype,
+                                text=None,
+                                annotations=None,
+                                metadata={"refusal": reason},
+                            )
+                        )
+                        continue
+                    else:
+                        logger.error("OpenAI: TextContentItem has no message_contents or message_contents")
+                        continue
+                except Exception as _e:
+                    logger.error("OpenAI: Failed to convert message part to ChatMessageContentPart")
 
             # Extract text from content array for structured output or text display
             if structured_output_config is not None:
-                # For structured output, extract text from content items
-                text_parts = [
-                    item.get("text", "")
-                    for item in content_array
-                    if isinstance(item, dict) and item.get("type") == "output_text"
-                ]
+                # For structured output, extract text from message content parts
+                text_parts = [part.text for part in content_array if part.type == "output_text" and part.text]
                 text_combined = "".join(text_parts).strip() if text_parts else None
 
                 parsed_data, error = ChatResponseStructuredOutput._parse_and_validate(
@@ -325,7 +344,15 @@ class OpenAIMessageConverter(BaseMessageConverter):
                     content = []
 
                     if item.message_contents:
-                        content = item.message_contents
+                        # Convert ChatMessageContentPart back to plain dicts for provider
+                        content = [
+                            {
+                                "type": p.type,
+                                "text": p.text,
+                                "annotations": p.annotations,
+                            }
+                            for p in item.message_contents
+                        ]
                     elif item.text is not None:
                         content.append({"type": "output_text", "text": item.text, "annotations": []})
                     else:

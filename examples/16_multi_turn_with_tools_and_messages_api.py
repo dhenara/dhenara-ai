@@ -162,12 +162,14 @@ def handle_turn_with_tools(
 
         response = client.generate(messages=current_messages, instructions=["Use tools when appropriate."])
 
+        # If provider failed or returned nothing, stop this turn gracefully
         if not response.chat_response or not response.chat_response.choices:
-            break
+            # Nothing to do in this turn; return without looping further
+            return "", current_messages
 
         choice = response.chat_response.choices[0]
         has_tool_calls = False
-        text_response = None
+        text_response: str | None = None
 
         # Add the complete assistant response as a single message item
         # This keeps all content (text + tool calls) together as required by LLM APIs
@@ -198,12 +200,41 @@ def handle_turn_with_tools(
                 current_messages.append(tool_result)
 
             # Capture text response
-            elif hasattr(content, "text") and content.text:
-                text_response = content.text
+            else:
+                # Text content can come as either plain text or a preserved OpenAI content array
+                # Prefer explicit text attribute when available
+                if hasattr(content, "text") and content.text:
+                    text_response = content.text
+                # Otherwise, try to extract from message_contents (OpenAI Responses API)
+                elif hasattr(content, "message_contents") and content.message_contents:
+                    try:
+                        parts = content.message_contents or []
+                        texts: list[str] = []
+                        for p in parts:
+                            if isinstance(p, dict):
+                                if p.get("type") == "output_text":
+                                    texts.append(p.get("text") or "")
+                            else:
+                                # ChatMessageContentPart
+                                t = getattr(p, "type", None)
+                                txt = getattr(p, "text", None)
+                                if t == "output_text" and txt:
+                                    texts.append(txt)
+                        combined = "".join(texts).strip()
+                        if combined:
+                            text_response = combined
+                    except Exception:
+                        # Leave text_response as-is if parsing fails
+                        pass
 
         # If no tool calls, we have the final response
         if not has_tool_calls:
             return text_response or "", current_messages
+
+        # If we executed tool calls and we already received a text response in the same output,
+        # we can return that immediately instead of spinning another iteration.
+        if has_tool_calls and (text_response is not None):
+            return text_response, current_messages
 
     return "Max iterations reached", current_messages
 

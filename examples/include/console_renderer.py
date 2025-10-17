@@ -60,11 +60,11 @@ def render_content_item(content_item, choice_index: int = 0) -> str:
 
     elif content_type == ChatResponseContentItemType.REASONING:
         thinking_text = content_item.thinking_text
-
+        thinking_id = getattr(content_item, "thinking_id", None)
         thinking_summary = content_item.thinking_summary
         has_signature = content_item.thinking_signature is not None
 
-        any_thinking = thinking_text or thinking_summary or has_signature
+        any_thinking = thinking_text or thinking_summary or has_signature or thinking_id
         if any_thinking:
             header = (
                 f"{ConsoleColors.CYAN}{ConsoleColors.BOLD}🧠 Reasoning/Thinking "
@@ -72,10 +72,13 @@ def render_content_item(content_item, choice_index: int = 0) -> str:
             )
             output.append(header)
 
+            if thinking_id:
+                output.append(f"ID: {thinking_id}")
+
         if thinking_text:
             output.append(thinking_text)
 
-        if thinking_summary:
+        if thinking_summary is not None:
             header = (
                 f"{ConsoleColors.MAGENTA}{ConsoleColors.BOLD}🔐 Reasoning Summary "
                 f"[{choice_index}.{content_index}]:{ConsoleColors.RESET}{ConsoleColors.MAGENTA}"
@@ -84,7 +87,7 @@ def render_content_item(content_item, choice_index: int = 0) -> str:
             # Handle both string and list[dict] formats
             if isinstance(thinking_summary, str):
                 output.append(thinking_summary)
-            elif isinstance(thinking_summary, list):
+            elif isinstance(thinking_summary, list) and thinking_summary:
                 # Extract text from list of summary dicts
                 summary_texts = []
                 for item in thinking_summary:
@@ -93,6 +96,9 @@ def render_content_item(content_item, choice_index: int = 0) -> str:
                     else:
                         summary_texts.append(str(item))
                 output.append("\n".join(summary_texts))
+            elif isinstance(thinking_summary, list) and not thinking_summary:
+                # Empty summary list - reasoning occurred but no summary available
+                output.append(f"{ConsoleColors.GRAY}[No summary available]{ConsoleColors.RESET}")
             else:
                 output.append(str(thinking_summary))
         if has_signature:

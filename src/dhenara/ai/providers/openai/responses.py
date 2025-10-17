@@ -124,7 +124,7 @@ class OpenAIResponses(OpenAIClientBase):
 
             # Inorder to get the reasoning text, OpenAI need to pass `summary` as any of the
             # : "auto", "concise", "detailed"
-            reasoning_config["summary"] = "auto"
+            reasoning_config["summary"] = "detailed"
 
             if reasoning_config:
                 args["reasoning"] = reasoning_config

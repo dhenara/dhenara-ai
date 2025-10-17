@@ -190,10 +190,10 @@ def run_multi_turn_with_structured_output():
     # Add the complete assistant response to messages
     assistant_message = story_response.chat_response.to_message_item()
     if assistant_message:
-        messages.append(assistant_message)
+        story_messages.append(assistant_message)
 
     # Extract story text and display with renderer
-    print()
+    print("📋 Story Response:")
     render_response(story_response.chat_response)
     render_usage(story_response.chat_response)
 
@@ -203,7 +203,7 @@ def run_multi_turn_with_structured_output():
     story_analysis, messages = handle_turn_with_structured_output(
         user_query=f"Analyze this story: {story_text}",
         endpoint=model_endpoint,
-        messages=messages,
+        messages=story_messages,
         output_schema=StoryAnalysis,
         art_dir_name=f"17_structured/{run_dir}/turn_3_analysis",
     )

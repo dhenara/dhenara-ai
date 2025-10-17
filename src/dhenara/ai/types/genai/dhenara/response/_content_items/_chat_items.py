@@ -2,6 +2,8 @@ from typing import Union
 
 from pydantic import Field
 
+from dhenara.ai.types.shared.base.base import BaseModel
+
 from ._base import BaseResponseContentItem, ChatResponseContentItemType
 from ._structured_output import ChatResponseStructuredOutput
 from ._tool_call import ChatResponseToolCall
@@ -16,6 +18,30 @@ class BaseChatResponseContentItem(BaseResponseContentItem):
         default=None,
         description="Role of the message sender in the chat context",
     )
+
+
+class ChatMessageContentPart(BaseModel):
+    """Provider-agnostic message content part.
+
+    Designed to round-trip provider-specific content arrays (e.g., OpenAI Responses API
+    output message parts like {type: "output_text", text: "...", annotations: [...]})
+    while offering typed access in Dhenara models.
+
+    We allow extra fields for forward compatibility (providers may add more keys).
+    """
+
+    type: str = Field(..., description="Content part type (e.g., output_text, input_image)")
+    text: str | None = Field(default=None, description="Primary text content for text-like parts (e.g., output_text)")
+    annotations: list[dict] | None = Field(
+        default=None, description="Optional annotations metadata as provided by the provider"
+    )
+    metadata: dict | None = Field(default=None, description="Optional metadata as provided by the provider")
+
+    # Allow unknown provider-specific fields
+    model_config = {
+        **BaseModel.model_config,
+        "extra": "allow",
+    }
 
 
 class ChatResponseTextContentItem(BaseChatResponseContentItem):
@@ -43,13 +69,21 @@ class ChatResponseTextContentItem(BaseChatResponseContentItem):
         None,
         description="Provider-specific message ID for round-tripping",
     )
-    message_contents: list[dict] | None = Field(
+    message_contents: list[ChatMessageContentPart] | None = Field(
         None,
         description="Provider-specific full content array for round-tripping (e.g., OpenAI output_text items)",
     )
 
     def get_text(self) -> str:
-        return self.text
+        if self.text:
+            return self.text
+        if self.message_contents:
+            # Prefer concatenating text fields from output_text parts
+            texts = [p.text for p in self.message_contents if getattr(p, "type", None) == "output_text" and p.text]
+            if texts:
+                return "".join(texts)
+            return str([p.model_dump() for p in self.message_contents])
+        return ""
 
 
 class ChatResponseReasoningContentItem(BaseChatResponseContentItem):
@@ -86,7 +120,7 @@ class ChatResponseStructuredOutputContentItem(BaseChatResponseContentItem):
     message_id: str | None = Field(
         None,
     )
-    message_contents: list[dict] | None = Field(
+    message_contents: list[ChatMessageContentPart] | None = Field(
         None,
         description="Provider-specific full content array for round-tripping (e.g., OpenAI output_text items)",
     )
@@ -143,7 +177,7 @@ class ChatResponseTextContentItemDelta(BaseChatResponseContentItemDelta):
         None,
         description="Provider-specific message ID for round-tripping",
     )
-    message_contents: list[dict] | None = Field(
+    message_contents: list[ChatMessageContentPart] | None = Field(
         None,
         description="Provider-specific full content array for round-tripping (e.g., OpenAI output_text items)",
     )
@@ -180,9 +214,8 @@ class ChatResponseToolCallContentItemDelta(BaseChatResponseContentItemDelta):
         return self.arguments_delta or self.tool_calls_delta
 
 
-# TODO: Structed output in streaming is not supported now
-class ChatResponseStructuredOutputContentItemDelta(BaseChatResponseContentItem):
-    pass  # TODO
+# INFO: There is no separate `structured_output` in streaming, its simply the outout text
+# Structured output is derived interally from text deltas
 
 
 class ChatResponseGenericContentItemDelta(BaseChatResponseContentItemDelta):
@@ -197,6 +230,5 @@ ChatResponseContentItemDelta = Union[  # noqa: UP007
     ChatResponseTextContentItemDelta,
     ChatResponseReasoningContentItemDelta,
     ChatResponseToolCallContentItemDelta,
-    ChatResponseStructuredOutputContentItemDelta,
     ChatResponseGenericContentItemDelta,
 ]
