@@ -20,7 +20,7 @@ from dhenara.ai.types.genai import (
     StreamingChatResponse,
 )
 from dhenara.ai.types.genai.ai_model import AIModelAPIProviderEnum
-from dhenara.ai.types.shared.api import SSEErrorResponse
+from dhenara.ai.types.shared.api import SSEErrorCode, SSEErrorData, SSEErrorResponse
 
 logger = logging.getLogger(__name__)
 
@@ -524,12 +524,45 @@ class OpenAIResponses(OpenAIClientBase):
         elif event_type == "response.function_call_arguments.delta":
             # Incremental tool call arguments (JSON string pieces)
             delta_text = getattr(chunk, "delta", None)
+            output_index = getattr(chunk, "output_index", None)
+            # Pass along any known tool call id/name captured earlier for this output index
+            meta: dict = {}
+            if hasattr(self.streaming_manager, "pending_tool_ids"):
+                _ids = self.streaming_manager.pending_tool_ids.get(output_index or 0)
+                if _ids:
+                    meta.update(_ids)
             if delta_text:
                 content_delta = ChatResponseToolCallContentItemDelta(
                     index=0,
                     role="assistant",
                     arguments_delta=delta_text,
+                    metadata=meta,
+                )
+                choice_delta = ChatResponseChoiceDelta(
+                    index=0,
+                    finish_reason=None,
+                    stop_sequence=None,
+                    content_deltas=[content_delta],
                     metadata={},
+                )
+                response_chunk = self.streaming_manager.update(choice_deltas=[choice_delta])
+                processed.append(StreamingChatResponse(id=getattr(chunk, "id", None), data=response_chunk))
+
+        # Function call name delta (rare, but some SDKs may emit name separately)
+        elif event_type == "response.function_call.name.delta":
+            name_piece = getattr(chunk, "delta", None)
+            output_index = getattr(chunk, "output_index", None)
+            meta: dict = {"tool_name_delta": name_piece, "name": name_piece}
+            if hasattr(self.streaming_manager, "pending_tool_ids"):
+                _ids = self.streaming_manager.pending_tool_ids.get(output_index or 0)
+                if _ids:
+                    meta.update(_ids)
+            if name_piece:
+                # Emit a start delta with partial/known name in metadata to seed tool call
+                content_delta = ChatResponseToolCallContentItemDelta(
+                    index=0,
+                    role="assistant",
+                    metadata=meta,
                 )
                 choice_delta = ChatResponseChoiceDelta(
                     index=0,
@@ -565,7 +598,7 @@ class OpenAIResponses(OpenAIClientBase):
                 index=0,
                 role="assistant",
                 tool_call=tool_call_obj,
-                metadata={},
+                metadata={"call_id": call_id, "item_id": item_id, "name": name, "finalize_tool_call": True},
             )
             choice_delta = ChatResponseChoiceDelta(
                 index=0,
@@ -616,6 +649,18 @@ class OpenAIResponses(OpenAIClientBase):
                     if not hasattr(self.streaming_manager, "pending_reasoning_ids"):
                         self.streaming_manager.pending_reasoning_ids = {}
                     self.streaming_manager.pending_reasoning_ids[output_index or 0] = item_id
+                elif item_type in ("function_call", "custom_tool_call"):
+                    # Store tool call identifiers (call_id may not be available yet)
+                    if not hasattr(self.streaming_manager, "pending_tool_ids"):
+                        self.streaming_manager.pending_tool_ids = {}
+                    # Some SDKs place name/call_id on item, else None
+                    name = getattr(item, "name", None)
+                    call_id = getattr(item, "call_id", None)
+                    self.streaming_manager.pending_tool_ids[output_index or 0] = {
+                        "item_id": item_id,
+                        "call_id": call_id,
+                        "name": name,
+                    }
 
                     # Capture summary structure for round-tripping
                     summary = getattr(item, "summary", None)
@@ -672,8 +717,33 @@ class OpenAIResponses(OpenAIClientBase):
 
         # Error events
         elif event_type == "error":
+            # Emit a proper SSEErrorResponse for upstream handlers to stop streaming gracefully
             error_obj = getattr(chunk, "error", None)
-            if error_obj:
-                logger.error(f"Streaming error: {error_obj}")
+            # Attempt to extract message and optional code/details
+            msg = None
+            code = None
+            details = None
+            try:
+                msg = getattr(error_obj, "message", None) or str(error_obj)
+            except Exception:
+                msg = str(error_obj)
+            try:
+                code = getattr(error_obj, "code", None)
+            except Exception:
+                code = None
+            try:
+                details = getattr(error_obj, "param", None) or getattr(error_obj, "type", None)
+            except Exception:
+                details = None
+
+            sse_err = SSEErrorResponse(
+                data=SSEErrorData(
+                    error_code=SSEErrorCode.external_api_error,
+                    message=msg or "OpenAI streaming error",
+                    details={"code": code, "details": details},
+                )
+            )
+            # Return as a single error chunk for caller to handle immediately
+            return [sse_err]
 
         return processed

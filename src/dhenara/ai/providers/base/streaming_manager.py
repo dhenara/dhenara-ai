@@ -14,6 +14,8 @@ from dhenara.ai.types.genai import (
     ChatResponseContentItemType,
     ChatResponseGenericContentItem,
     ChatResponseReasoningContentItem,
+    ChatResponseStructuredOutput,
+    ChatResponseStructuredOutputContentItem,
     ChatResponseTextContentItem,
     ChatResponseToolCall,
     ChatResponseToolCallContentItem,
@@ -24,6 +26,7 @@ from dhenara.ai.types.genai import (
     StreamingChatResponse,
     UsageCharge,
 )
+from dhenara.ai.types.genai.dhenara.request import StructuredOutputConfig
 from dhenara.ai.types.shared.base import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -47,8 +50,10 @@ class StreamingManager:
     def __init__(
         self,
         model_endpoint: AIModelEndpoint,
+        structured_output_config: StructuredOutputConfig | None = None,
     ):
         self.model_endpoint = model_endpoint
+        self.structured_output_config = structured_output_config
 
         # Fields required  to create  final ChatResponse
         # self.final_response: ChatResponse | None = None
@@ -92,6 +97,50 @@ class StreamingManager:
         """Convert streaiming progress to ChatResponse format"""
 
         chat_response = None
+
+        # If structured output was requested, derive it from accumulated text items
+        try:
+            if self.structured_output_config is not None:
+                for choice in self.choices or []:
+                    # Determine the next index to append new items
+                    next_index = 0
+                    try:
+                        if choice.contents:
+                            next_index = max((c.index or 0) for c in choice.contents) + 1
+                    except Exception:
+                        next_index = len(choice.contents) if choice.contents else 0
+
+                    for content in list(choice.contents or []):
+                        # Only derive from text items; keep originals intact for round-trip
+                        if isinstance(content, ChatResponseTextContentItem):
+                            raw_text = content.get_text()
+                            if raw_text is None:
+                                continue
+                            parsed_data, error = ChatResponseStructuredOutput._parse_and_validate(
+                                raw_data=raw_text,
+                                config=self.structured_output_config,
+                            )
+                            # Always create a structured_output item to reflect parsing outcome
+                            structured = ChatResponseStructuredOutput(
+                                config=self.structured_output_config,
+                                structured_data=parsed_data,
+                                raw_data=(None if parsed_data is not None else raw_text),
+                                parse_error=error,
+                            )
+                            # Append a new structured content item preserving message metadata
+                            choice.contents.append(
+                                ChatResponseStructuredOutputContentItem(
+                                    index=next_index,
+                                    type=ChatResponseContentItemType.STRUCTURED_OUTPUT,
+                                    role=getattr(content, "role", None),
+                                    message_id=getattr(content, "message_id", None),
+                                    message_contents=getattr(content, "message_contents", None),
+                                    structured_output=structured,
+                                )
+                            )
+                            next_index += 1
+        except Exception as _e:
+            logger.debug(f"Structured-output post-processing skipped due to error: {_e}")
 
         usage, usage_charge = self.get_streaming_usage_and_charge()
 

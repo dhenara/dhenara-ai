@@ -94,7 +94,7 @@ class ChatResponseReasoningContentItem(BaseChatResponseContentItem):
         description="Thinking text content, for reasoning mode",
     )
     thinking_id: str | None = None
-    thinking_summary: str | list[dict] | None = None  # OpenAI/Google provide a summary. OpenAI is list of dicts
+    thinking_summary: str | list[ChatMessageContentPart] | None = None
     thinking_signature: str | None = None
     thinking_status: str | None = None  # OpenAI provides status as in_progress, completed, or incomplete
     metadata: dict | None = None

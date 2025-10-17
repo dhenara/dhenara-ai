@@ -3,7 +3,6 @@ import logging
 from google.genai.types import (
     GenerateContentConfig,
     GenerateContentResponse,
-    Part,
     SafetySetting,
     ThinkingConfig,
     Tool,
@@ -23,12 +22,12 @@ from dhenara.ai.types.genai import (
     ChatResponseGenericContentItemDelta,
     ChatResponseReasoningContentItemDelta,
     ChatResponseTextContentItemDelta,
+    ChatResponseToolCall,
+    ChatResponseToolCallContentItemDelta,
     ChatResponseUsage,
     StreamingChatResponse,
 )
 from dhenara.ai.types.shared.api import SSEErrorResponse
-
-logger = logging.getLogger(__name__)
 
 logger = logging.getLogger(__name__)
 
@@ -223,13 +222,27 @@ class GoogleAIChat(GoogleAIClientBase):
                             delta=part,
                         )
                     )
+
+                # Serialize provider-native content for diagnostics (avoid odd keys)
+                try:
+                    provider_content = (
+                        candidate.content.model_dump()
+                        if hasattr(candidate.content, "model_dump")
+                        else str(candidate.content)
+                    )
+                except Exception:
+                    provider_content = None
+
                 choice_deltas.append(
                     ChatResponseChoiceDelta(
                         index=candidate_index,
                         finish_reason=candidate.finish_reason,
                         stop_sequence=None,
                         content_deltas=content_deltas,
-                        metadata={"safety_ratings": candidate.safety_ratings, "": candidate.content},  # Choice metadata
+                        metadata={
+                            "safety_ratings": candidate.safety_ratings,
+                            "provider_content": provider_content,
+                        },  # Choice metadata
                     )
                 )
 
@@ -314,13 +327,22 @@ class GoogleAIChat(GoogleAIClientBase):
         role: str,
         delta,
     ) -> ChatResponseContentItemDelta:
-        if isinstance(delta, Part):
-            # Handle thinking/thought content first (Google's encrypted reasoning with summary)
-            # When part.thought=True, this is a thinking part and part.text contains the summary
-            if hasattr(delta, "thought") and delta.thought is True:
-                thinking_summary_delta = delta.text if hasattr(delta, "text") else None
-                thought_signature = getattr(delta, "thought_signature", None)
+        # Accept both typed SDK objects and dict-like parts
+        try:
 
+            def _get_attr(obj, attr, default=None):
+                return getattr(obj, attr, default)
+
+            # If mapping-like, switch to dict getter
+            if not hasattr(delta, "__dict__") and hasattr(delta, "get"):
+
+                def _get_attr(obj, attr, default=None):  # type: ignore[no-redef]
+                    return obj.get(attr, default)
+
+            # Reasoning/thought summary
+            if _get_attr(delta, "thought", default=False) is True:
+                thinking_summary_delta = _get_attr(delta, "text", None)
+                thought_signature = _get_attr(delta, "thought_signature", None)
                 return ChatResponseReasoningContentItemDelta(
                     index=index,
                     role=role,
@@ -328,22 +350,76 @@ class GoogleAIChat(GoogleAIClientBase):
                     thinking_signature=thought_signature,
                 )
 
-            if hasattr(delta, "text"):
+            # Text piece
+            if _get_attr(delta, "text", None) is not None:
                 return ChatResponseTextContentItemDelta(
                     index=index,
                     role=role,
-                    text_delta=delta.text,
+                    text_delta=_get_attr(delta, "text", None),
                 )
 
-            # TODO: Tools Not supported in streaming yet
-            else:
-                return ChatResponseGenericContentItemDelta(
+            # Function/tool call
+            fn = _get_attr(delta, "function_call", None)
+            if fn is not None:
+                try:
+                    # Normalize function object (SDK or dict)
+                    name = _get_attr(fn, "name", None) if hasattr(fn, "__dict__") else fn.get("name")
+                    args = _get_attr(fn, "args", None) if hasattr(fn, "__dict__") else fn.get("args")
+
+                    from dhenara.ai.types.genai import ChatResponseToolCall as _Tool
+
+                    parsed = _Tool.parse_args_str_or_dict(args)
+                    tool_call = ChatResponseToolCall(
+                        call_id=None,  # Google often omits IDs in streaming
+                        id=None,
+                        name=name,
+                        arguments=parsed.get("arguments_dict") or {},
+                        raw_data=parsed.get("raw_data"),
+                        parse_error=parsed.get("parse_error"),
+                    )
+                    return ChatResponseToolCallContentItemDelta(
+                        index=index,
+                        role=role,
+                        tool_call=tool_call,
+                        metadata={"google_function_call": True},
+                    )
+                except Exception as e:
+                    return ChatResponseGenericContentItemDelta(
+                        index=index,
+                        role=role,
+                        metadata={
+                            "part": getattr(delta, "model_dump", lambda: {})(),
+                            "error": str(e),
+                        },
+                    )
+
+            # Function response
+            fn_resp = _get_attr(delta, "function_response", None)
+            if fn_resp is not None:
+                # Represent function responses as text deltas with JSON body for now
+                try:
+                    resp = (
+                        _get_attr(fn_resp, "response", None)
+                        if hasattr(fn_resp, "__dict__")
+                        else fn_resp.get("response")
+                    )
+                except Exception:
+                    resp = None
+                import json as _json
+
+                return ChatResponseTextContentItemDelta(
                     index=index,
                     role=role,
-                    metadata={"part": delta.model_dump()},
+                    text_delta=_json.dumps(resp) if resp is not None else "",
                 )
 
-        else:
+            # Fallback: generic
+            return ChatResponseGenericContentItemDelta(
+                index=index,
+                role=role,
+                metadata={"part": getattr(delta, "model_dump", lambda: {})()},
+            )
+        except Exception:
             return self.get_unknown_content_type_item(
                 index=index,
                 role=role,

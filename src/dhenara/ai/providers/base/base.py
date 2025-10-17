@@ -356,7 +356,10 @@ class AIModelProviderClientBase(ABC):
         if self.config.test_mode:
             from dhenara.ai.providers.common.dummy import DummyAIModelResponseFns
 
-            self.streaming_manager = StreamingManager(model_endpoint=self.model_endpoint)
+            self.streaming_manager = StreamingManager(
+                model_endpoint=self.model_endpoint,
+                structured_output_config=self.config.structured_output,
+            )
             dummy_resp = DummyAIModelResponseFns(streaming_manager=self.streaming_manager)
 
             return dummy_resp.get_dummy_ai_model_response_sync(
@@ -450,7 +453,10 @@ class AIModelProviderClientBase(ABC):
         if self.config.test_mode:
             from dhenara.ai.providers.common.dummy import DummyAIModelResponseFns
 
-            self.streaming_manager = StreamingManager(model_endpoint=self.model_endpoint)
+            self.streaming_manager = StreamingManager(
+                model_endpoint=self.model_endpoint,
+                structured_output_config=self.config.structured_output,
+            )
             dummy_resp = DummyAIModelResponseFns(streaming_manager=self.streaming_manager)
 
             return await dummy_resp.get_dummy_ai_model_response_async(
@@ -605,12 +611,21 @@ class AIModelProviderClientBase(ABC):
         ]
     ]:
         """Shared streaming logic with async/sync handling"""
-        self.streaming_manager = StreamingManager(model_endpoint=self.model_endpoint)
+        self.streaming_manager = StreamingManager(
+            model_endpoint=self.model_endpoint,
+            structured_output_config=self.config.structured_output,
+        )
 
         try:
             for chunk in stream:
                 processed_chunks = self.parse_stream_chunk(chunk)
                 for pchunk in processed_chunks:
+                    # If an SSE error is encountered, surface it and stop streaming immediately
+                    if isinstance(pchunk, SSEErrorResponse):
+                        yield pchunk, None
+                        # Flush Python logs on error
+                        self._capture_python_logs(when="stream_error")
+                        return
                     yield pchunk, None
 
             # API has stopped streaming, send done-chunk and get final response
@@ -669,12 +684,20 @@ class AIModelProviderClientBase(ABC):
         ]
     ]:
         """Shared streaming logic with async/sync handling"""
-        self.streaming_manager = StreamingManager(model_endpoint=self.model_endpoint)
+        self.streaming_manager = StreamingManager(
+            model_endpoint=self.model_endpoint,
+            structured_output_config=self.config.structured_output,
+        )
 
         try:
             async for chunk in stream:
                 processed_chunks = self.parse_stream_chunk(chunk)
                 for pchunk in processed_chunks:
+                    if isinstance(pchunk, SSEErrorResponse):
+                        yield pchunk, None
+                        # Flush Python logs on error
+                        self._capture_python_logs(when="stream_error")
+                        return
                     yield pchunk, None
 
             # API has stopped streaming, send done-chunk and get final response
