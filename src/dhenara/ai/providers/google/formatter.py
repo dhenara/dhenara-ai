@@ -316,7 +316,10 @@ class GoogleFormatter(BaseFormatter):
         # Case 3: ChatResponseChoice (model response with all content items)
         # Delegate to message converter (single source of truth for ChatResponse conversions)
         if isinstance(message_item, ChatResponseChoice):
-            return GoogleMessageConverter.dai_choice_to_provider_message(message_item)
+            return GoogleMessageConverter.dai_choice_to_provider_message(
+                message_item,
+                model_endpoint=model_endpoint,
+            )
 
         # Should not reach here due to MessageItem type constraint
         raise ValueError(f"Unsupported message item type: {type(message_item)}")

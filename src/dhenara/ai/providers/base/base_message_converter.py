@@ -1,3 +1,4 @@
+import os
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -5,7 +6,7 @@ from dhenara.ai.types.genai import (
     ChatResponseContentItem,
 )
 from dhenara.ai.types.genai.dhenara.request import StructuredOutputConfig
-from dhenara.ai.types.genai.dhenara.response import ChatResponseChoice
+from dhenara.ai.types.genai.dhenara.response import ChatResponse, ChatResponseChoice
 
 
 class BaseMessageConverter(ABC):
@@ -18,13 +19,18 @@ class BaseMessageConverter(ABC):
     ) -> list[ChatResponseContentItem]:
         pass
 
+    @abstractmethod
+    @staticmethod
+    def dai_response_to_provider_message(
+        dai_response: ChatResponse,
+        model_endpoint: object | None = None,
+    ) -> dict[str, Any] | list[dict[str, Any]]:
+        pass
+
     @staticmethod
     @abstractmethod
-    def choice_to_provider_messages(
+    def dai_choice_to_provider_message(
         choice: ChatResponseChoice,
-        *,
-        model: str | None = None,
-        provider: str | None = None,
-        strict_same_provider: bool = False,
-    ) -> dict[str, object]:
+        model_endpoint: object | None = None,
+    ) -> dict[str, Any] | list[dict[str, Any]]:
         pass

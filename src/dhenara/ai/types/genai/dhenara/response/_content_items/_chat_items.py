@@ -27,6 +27,8 @@ class ChatResponseTextContentItem(BaseChatResponseContentItem):
         role: The role of the message sender (system, user, assistant, or function)
         text: The actual text content of the message
         function_call: Optional function call details if the message involves function calling
+        message_id: Provider-specific message ID (for OpenAI Responses API round-tripping)
+        message_content: Provider-specific full content array (for OpenAI Responses API round-tripping)
     """
 
     type: ChatResponseContentItemType = ChatResponseContentItemType.TEXT
@@ -34,6 +36,16 @@ class ChatResponseTextContentItem(BaseChatResponseContentItem):
     text: str | None = Field(
         None,
         description="Plain text content of the message for chat interaction (without reasoning)",
+    )
+
+    # Provider-specific fields for round-tripping (e.g., OpenAI Responses API)
+    message_id: str | None = Field(
+        None,
+        description="Provider-specific message ID for round-tripping",
+    )
+    message_content: list[dict] | None = Field(
+        None,
+        description="Provider-specific full content array for round-tripping (e.g., OpenAI output_text items)",
     )
 
     def get_text(self) -> str:
@@ -48,7 +60,7 @@ class ChatResponseReasoningContentItem(BaseChatResponseContentItem):
         description="Thinking text content, for reasoning mode",
     )
     thinking_id: str | None = None
-    thinking_summary: str | None = None  # Some models may provide a summary
+    thinking_summary: str | list[dict] | None = None  # OpenAI/Google provide a summary. OpenAI is list of dicts
     thinking_signature: str | None = None
     thinking_status: str | None = None  # OpenAI provides status as in_progress, completed, or incomplete
     metadata: dict | None = None

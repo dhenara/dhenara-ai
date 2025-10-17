@@ -344,6 +344,7 @@ class OpenAIResponses(OpenAIClientBase):
             usage=usage,
             usage_charge=usage_charge,
             choices=[choice],
+            provider_response=self.serialize_provider_response(response),
             metadata=AIModelCallResponseMetaData(
                 streaming=False,
                 duration_seconds=0,
@@ -415,12 +416,21 @@ class OpenAIResponses(OpenAIClientBase):
         # Text delta (message output_text)
         if event_type == "response.output_text.delta":
             delta_text = getattr(chunk, "delta", None)
+            output_index = getattr(chunk, "output_index", None)
             if delta_text:
+                # Check if we have a pending message ID for this output_index
+                message_id = None
+                message_content = None
+                if hasattr(self.streaming_manager, "pending_message_ids"):
+                    message_id = self.streaming_manager.pending_message_ids.get(output_index or 0)
+                if hasattr(self.streaming_manager, "pending_message_content"):
+                    message_content = self.streaming_manager.pending_message_content.get(output_index or 0)
+
                 content_delta = ChatResponseTextContentItemDelta(
                     index=0,
                     role="assistant",
                     text_delta=delta_text,
-                    metadata={},
+                    metadata={"message_id": message_id, "message_content": message_content} if message_id else {},
                 )
                 choice_delta = ChatResponseChoiceDelta(
                     index=0,
@@ -440,6 +450,15 @@ class OpenAIResponses(OpenAIClientBase):
             content_index = getattr(chunk, "content_index", None)
             output_index = getattr(chunk, "output_index", None)
             if delta_text:
+                # Use captured item_id if available, or fall back to chunk's item_id
+                if not item_id and hasattr(self.streaming_manager, "pending_reasoning_ids"):
+                    item_id = self.streaming_manager.pending_reasoning_ids.get(output_index or 0)
+
+                # Get captured summary structure
+                thinking_summary = None
+                if hasattr(self.streaming_manager, "pending_reasoning_summaries"):
+                    thinking_summary = self.streaming_manager.pending_reasoning_summaries.get(output_index or 0)
+
                 content_delta = ChatResponseReasoningContentItemDelta(
                     index=0,
                     role="assistant",
@@ -448,6 +467,7 @@ class OpenAIResponses(OpenAIClientBase):
                     metadata={
                         "output_index": output_index,
                         "content_index": content_index,
+                        "thinking_summary": thinking_summary,
                     },
                 )
                 choice_delta = ChatResponseChoiceDelta(
@@ -467,6 +487,10 @@ class OpenAIResponses(OpenAIClientBase):
             summary_index = getattr(chunk, "summary_index", None)
             output_index = getattr(chunk, "output_index", None)
             if delta_text:
+                # Use captured item_id if available
+                if not item_id and hasattr(self.streaming_manager, "pending_reasoning_ids"):
+                    item_id = self.streaming_manager.pending_reasoning_ids.get(output_index or 0)
+
                 content_delta = ChatResponseReasoningContentItemDelta(
                     index=0,
                     role="assistant",
@@ -543,11 +567,57 @@ class OpenAIResponses(OpenAIClientBase):
             # No-op: our consolidation model doesn't require explicit done markers for text
             pass
 
-        # Output/part lifecycle events (minimal handling to prep indices if needed)
+        # Output/part lifecycle events (capture message/reasoning IDs)
         elif event_type in ("response.output_item.added", "response.content_part.added"):
-            # For now, we don't need to act since we use a flat single-choice/index=0 model.
-            # In future we can map output_index/content_index to content indices to separate parts.
-            pass
+            # Capture message IDs and reasoning IDs for proper round-tripping
+            item = getattr(chunk, "item", None)
+            if item:
+                item_type = getattr(item, "type", None)
+                item_id = getattr(item, "id", None)
+                output_index = getattr(chunk, "output_index", None)
+
+                if item_type == "message" and item_id:
+                    # Store message ID in streaming manager for later retrieval
+                    if not hasattr(self.streaming_manager, "pending_message_ids"):
+                        self.streaming_manager.pending_message_ids = {}
+                    self.streaming_manager.pending_message_ids[output_index or 0] = item_id
+
+                    # Also capture the content array structure if available
+                    content = getattr(item, "content", None)
+                    if content:
+                        if not hasattr(self.streaming_manager, "pending_message_content"):
+                            self.streaming_manager.pending_message_content = {}
+                        # Convert to dicts for storage
+                        content_array = []
+                        for part in content:
+                            if hasattr(part, "model_dump"):
+                                content_array.append(part.model_dump())
+                            elif isinstance(part, dict):
+                                content_array.append(part)
+                        self.streaming_manager.pending_message_content[output_index or 0] = content_array
+
+                elif item_type == "reasoning" and item_id:
+                    # Store reasoning ID and summary structure
+                    if not hasattr(self.streaming_manager, "pending_reasoning_ids"):
+                        self.streaming_manager.pending_reasoning_ids = {}
+                    self.streaming_manager.pending_reasoning_ids[output_index or 0] = item_id
+
+                    # Capture summary structure for round-tripping
+                    summary = getattr(item, "summary", None)
+                    if summary:
+                        if not hasattr(self.streaming_manager, "pending_reasoning_summaries"):
+                            self.streaming_manager.pending_reasoning_summaries = {}
+                        # Store the summary structure (list[dict] or str)
+                        if isinstance(summary, list):
+                            summary_array = []
+                            for s in summary:
+                                if hasattr(s, "model_dump"):
+                                    summary_array.append(s.model_dump())
+                                elif isinstance(s, dict):
+                                    summary_array.append(s)
+                            self.streaming_manager.pending_reasoning_summaries[output_index or 0] = summary_array
+                        else:
+                            self.streaming_manager.pending_reasoning_summaries[output_index or 0] = summary
         elif event_type in ("response.output_item.done", "response.content_part.done"):
             # No-op currently
             pass

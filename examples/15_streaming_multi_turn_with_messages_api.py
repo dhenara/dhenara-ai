@@ -77,7 +77,7 @@ def run_streaming_multi_turn_with_messages():
     """Run a streaming multi-turn conversation using messages API."""
 
     multi_turn_queries = [
-        "Tell me a short story about a robot learning to paint.",
+        "Tell me a short story about a robot learning to paint under 500 words.",
         "Continue the story but add a twist where the robot discovers something unexpected.",
         "Conclude the story with an inspiring ending.",
     ]

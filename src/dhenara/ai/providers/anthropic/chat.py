@@ -320,6 +320,7 @@ class AnthropicChat(AnthropicClientBase):
             api_provider=self.model_endpoint.api.provider,
             usage=usage,
             usage_charge=usage_charge,
+            provider_response=self.serialize_provider_response(response),
             choices=[
                 ChatResponseChoice(
                     index=0,  # Only one choice

@@ -227,21 +227,31 @@ class StreamingManager:
                         if not matching_content:
                             # Create new content based on delta type
                             if content_delta.type == ChatResponseContentItemType.TEXT:
+                                # Extract message_id and message_content from metadata if present
+                                message_id = content_delta.metadata.get("message_id")
+                                message_content = content_delta.metadata.get("message_content")
                                 matching_content = ChatResponseTextContentItem(
                                     index=content_delta.index,
                                     type=ChatResponseContentItemType.TEXT,
                                     role=content_delta.role,
                                     text="",
+                                    message_id=message_id,
+                                    message_content=message_content,
                                     metadata=content_delta.metadata,
                                     storage_metadata=content_delta.storage_metadata,
                                     custom_metadata=content_delta.custom_metadata,
                                 )
                             elif content_delta.type == ChatResponseContentItemType.REASONING:
+                                # Extract thinking_summary from metadata if present
+                                thinking_id = content_delta.thinking_id
+                                thinking_summary = content_delta.metadata.get("thinking_summary")
                                 matching_content = ChatResponseReasoningContentItem(
                                     index=content_delta.index,
                                     type=ChatResponseContentItemType.REASONING,
                                     role=content_delta.role,
                                     thinking_text="",
+                                    thinking_id=thinking_id,
+                                    thinking_summary=thinking_summary,
                                     metadata=content_delta.metadata,
                                     storage_metadata=content_delta.storage_metadata,
                                     custom_metadata=content_delta.custom_metadata,

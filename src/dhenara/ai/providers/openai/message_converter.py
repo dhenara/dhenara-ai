@@ -4,16 +4,14 @@ from __future__ import annotations
 
 import json
 import logging
+import random
+import time
+from typing import Any
 
 from openai.types.chat import ChatCompletionMessage
-from openai.types.chat.chat_completion_assistant_message_param import (
-    ChatCompletionAssistantMessageParam,
-)
-from openai.types.chat.chat_completion_content_part_text_param import (
-    ChatCompletionContentPartTextParam,
-)
-from openai.types.chat.chat_completion_message_tool_call_param import (
-    ChatCompletionMessageToolCallParam,
+from openai.types.responses import (
+    ResponseOutputMessage,
+    ResponseReasoningItem,
 )
 from openai.types.responses.response_function_tool_call_param import (
     ResponseFunctionToolCallParam,
@@ -21,13 +19,11 @@ from openai.types.responses.response_function_tool_call_param import (
 from openai.types.responses.response_output_message_param import (
     ResponseOutputMessageParam,
 )
-from openai.types.responses.response_output_text_param import ResponseOutputTextParam
 from openai.types.responses.response_reasoning_item_param import (
     ResponseReasoningItemParam,
 )
 
 from dhenara.ai.providers.base import BaseMessageConverter
-from dhenara.ai.providers.openai.constants import OPENAI_USE_RESPONSES_DEFAULT
 from dhenara.ai.types.genai import (
     ChatResponseContentItem,
     ChatResponseReasoningContentItem,
@@ -39,7 +35,7 @@ from dhenara.ai.types.genai import (
 )
 from dhenara.ai.types.genai.ai_model import AIModelProviderEnum
 from dhenara.ai.types.genai.dhenara.request import StructuredOutputConfig
-from dhenara.ai.types.genai.dhenara.response import ChatResponseChoice
+from dhenara.ai.types.genai.dhenara.response import ChatResponse, ChatResponseChoice
 
 logger = logging.getLogger(__name__)
 
@@ -80,27 +76,47 @@ class OpenAIMessageConverter(BaseMessageConverter):
             status = _get(output_item, "status", None)
             summary_obj = _get(output_item, "summary", None)
             content_obj = _get(output_item, "content", None)
+
+            # Extract text for display, but PRESERVE original structure for round-tripping
             if isinstance(content_obj, list):
                 content_text = " ".join(filter(None, (_get(c, "text", "") for c in content_obj))) or None
             else:
                 content_text = _get(content_obj, "text", None)
 
+            # IMPORTANT: Store the original summary_obj structure (list[dict] or str)
+            # This allows perfect round-tripping to OpenAI API
             if isinstance(summary_obj, list):
-                summary = " ".join(filter(None, (_get(s, "text", "") for s in summary_obj))) or None
+                # Convert list of Summary Pydantic objects to list[dict]
+                summary_list = []
+                for s in summary_obj:
+                    if hasattr(s, "model_dump"):
+                        summary_list.append(s.model_dump())
+                    elif isinstance(s, dict):
+                        summary_list.append(s)
+                    else:
+                        # Fallback: treat as unknown object, try to extract text
+                        summary_list.append({"type": "summary_text", "text": str(s)})
+                thinking_summary = summary_list
+            elif summary_obj is not None:
+                # If it's a Pydantic object, convert to dict
+                if hasattr(summary_obj, "model_dump"):
+                    thinking_summary = summary_obj.model_dump()
+                else:
+                    # If it's a string or dict, keep it as-is
+                    thinking_summary = summary_obj
             else:
-                summary = _get(summary_obj, "text", None)
+                thinking_summary = None
 
-            items.append(
-                ChatResponseReasoningContentItem(
-                    index=index_start,
-                    role=role,
-                    thinking_id=thinking_id,
-                    thinking_text=content_text,
-                    thinking_summary=summary,
-                    thinking_signature=signature,
-                    thinking_status=status,
-                )
+            ci = ChatResponseReasoningContentItem(
+                index=index_start,
+                role=role,
+                thinking_id=thinking_id,
+                thinking_text=content_text,
+                thinking_summary=thinking_summary,  # Preserved original structure
+                thinking_signature=signature,
+                thinking_status=status,
             )
+            items.append(ci)
 
         # Function/tool calls
         if item_type in ("function_call", "tool_call", "function.tool_call"):
@@ -121,22 +137,22 @@ class OpenAIMessageConverter(BaseMessageConverter):
                     # Keep as raw string if not JSON
                     pass
 
-            items.append(
-                ChatResponseToolCallContentItem(
-                    index=index_start,
-                    role=role,
-                    tool_call=ChatResponseToolCall(
-                        id=call_id,
-                        name=name,
-                        arguments=arguments if isinstance(arguments, dict) else {"raw": arguments},
-                    ),
-                    metadata={},
-                )
+            ci = ChatResponseToolCallContentItem(
+                index=index_start,
+                role=role,
+                tool_call=ChatResponseToolCall(
+                    id=call_id,
+                    name=name,
+                    arguments=arguments if isinstance(arguments, dict) else {"raw": arguments},
+                ),
+                metadata={},
             )
+            items.append(ci)
 
         # Assistant message with text/structured output content
         if item_type in ("message", "output_message"):
             contents = _get(output_item, "content", None) or []
+            message_id = _get(output_item, "id", None)
 
             # Build a single concatenated text from output_text parts
             text_parts: list[str] = []
@@ -150,26 +166,37 @@ class OpenAIMessageConverter(BaseMessageConverter):
 
             text_combined = "".join(text_parts).strip() if text_parts else None
 
+            # IMPORTANT: Preserve the original content array for round-tripping
+            # Convert Pydantic models to dicts if needed
+            content_array = []
+            for part in contents or []:
+                if hasattr(part, "model_dump"):
+                    content_array.append(part.model_dump())
+                elif isinstance(part, dict):
+                    content_array.append(part)
+                else:
+                    content_array.append({"type": "output_text", "text": str(part), "annotations": []})
+
             if structured_output_config is not None and text_combined:
                 structured_output = ChatResponseStructuredOutput.from_model_output(
                     raw_response=text_combined,
                     config=structured_output_config,
                 )
-                items.append(
-                    ChatResponseStructuredOutputContentItem(
-                        index=index_start,
-                        role=role,
-                        structured_output=structured_output,
-                    )
+                ci = ChatResponseStructuredOutputContentItem(
+                    index=index_start,
+                    role=role,
+                    structured_output=structured_output,
                 )
+                items.append(ci)
             elif text_combined is not None:
-                items.append(
-                    ChatResponseTextContentItem(
-                        index=index_start,
-                        role=role,
-                        text=text_combined,
-                    )
+                ci = ChatResponseTextContentItem(
+                    index=index_start,
+                    role=role,
+                    text=text_combined,
+                    message_id=message_id,  # Preserved for round-tripping
+                    message_content=content_array,  # Preserved for round-tripping
                 )
+                items.append(ci)
 
             return items
 
@@ -188,98 +215,227 @@ class OpenAIMessageConverter(BaseMessageConverter):
         return items
 
     @staticmethod
+    def dai_response_to_provider_message(
+        dai_response: ChatResponse,
+        model_endpoint: object | None = None,
+    ) -> dict[str, Any] | list[dict[str, Any]]:
+        """Convert ChatResponse into OpenAI Responses API input format."""
+
+        # Derive strict behavior: enforce strict if same provider and not globally disabled
+        is_same_provider = False
+        if model_endpoint is not None:
+            try:
+                is_same_provider = getattr(model_endpoint.ai_model, "provider", None) == AIModelProviderEnum.OPEN_AI
+            except Exception:
+                is_same_provider = False
+        # strict_same_provider = is_same_provider and not BaseMessageConverter.STRICT_SAME_PROVIDER_OFF
+
+        if is_same_provider:
+            original_provider_response = dai_response.provider_response
+            output_items = None
+
+            # Check if provider_response exists and has output field
+            # For streaming responses, provider_response will be None
+            if original_provider_response is not None:
+                if hasattr(original_provider_response, "output"):
+                    output_items = original_provider_response.output
+                elif isinstance(original_provider_response, dict) and "output" in original_provider_response:
+                    output_items = original_provider_response["output"]
+
+            # If we have output_items from provider_response, convert them
+            if output_items is not None:
+                # Convert output items to proper Pydantic models, filtering out input-incompatible fields
+                converted_items = []
+                for item in output_items:
+                    # If item is already a Pydantic model instance (ResponseReasoningItem, ResponseOutputMessage)
+                    # Check using hasattr since ResponseFunctionToolCallParam is a TypedDict
+                    if isinstance(item, (ResponseReasoningItem, ResponseOutputMessage)):
+                        # Convert output models to input param models
+                        if isinstance(item, ResponseReasoningItem):
+                            param_data = {
+                                "id": item.id,
+                                "type": "reasoning",
+                                "summary": item.summary,
+                            }
+                            if item.content:
+                                param_data["content"] = item.content
+                            if item.encrypted_content:
+                                param_data["encrypted_content"] = item.encrypted_content
+                            converted_items.append(ResponseReasoningItemParam(**param_data))
+                        elif isinstance(item, ResponseOutputMessage):
+                            param_data = {
+                                "id": item.id,
+                                "type": "message",
+                                "role": item.role,
+                                "content": item.content,
+                            }
+                            converted_items.append(ResponseOutputMessageParam(**param_data))
+                    # If item is a dict, convert to appropriate Pydantic model
+                    elif isinstance(item, dict):
+                        item_type = item.get("type")
+
+                        if item_type == "reasoning":
+                            # Remove fields not allowed in input schema
+                            reasoning_data = {
+                                "id": item.get("id"),
+                                "type": "reasoning",
+                                "summary": item.get("summary"),
+                            }
+                            # Only include encrypted_content if present
+                            # Note: 'content' is typically NOT included in reasoning input items
+                            # Note: 'status' is NOT included as it's output-only
+                            if item.get("encrypted_content"):
+                                reasoning_data["encrypted_content"] = item["encrypted_content"]
+
+                            converted_items.append(ResponseReasoningItemParam(**reasoning_data))
+
+                        elif item_type == "message":
+                            # Remove fields not allowed in input schema
+                            message_data = {
+                                "id": item.get("id"),
+                                "type": "message",
+                                "role": item.get("role", "assistant"),
+                                "content": item.get("content", []),
+                            }
+                            # Note: 'status' is NOT included as it's output-only
+
+                            converted_items.append(ResponseOutputMessageParam(**message_data))
+
+                        elif item_type in ("function_call", "tool_call"):
+                            # Convert to ResponseFunctionToolCallParam (TypedDict - can't use isinstance)
+                            # Just ensure it has the required fields
+                            converted_items.append(ResponseFunctionToolCallParam(**item))
+                        else:
+                            logger.warning(f"Unknown output item type: {item_type}, keeping as-is")
+                            converted_items.append(item)
+                    else:
+                        # Unknown type, keep as-is
+                        converted_items.append(item)
+
+                return converted_items
+
+        # Fallback: convert from ChatResponseChoice (used for streaming or when provider_response is None)
+        return OpenAIMessageConverter.dai_choice_to_provider_message(
+            dai_response.choices[0] if dai_response.choices else None,
+            model_endpoint=model_endpoint,
+        )
+
+    @staticmethod
     def dai_choice_to_provider_message(
         choice: ChatResponseChoice,
-        *,
-        model: str | None = None,
-        provider: AIModelProviderEnum | None = None,
-        strict_same_provider: bool = False,
-    ) -> dict[str, object]:
+        model_endpoint: object | None = None,
+    ) -> dict[str, Any] | list[dict[str, Any]]:
         """Convert ChatResponseChoice into OpenAI Responses API input format.
 
-        Returns a dict containing role='assistant' and 'output' array with proper SDK param types:
-        - ResponseOutputMessageParam for text/structured outputs
-        - ResponseReasoningItemParam for thinking/reasoning content
+        Returns a list of proper SDK param types for input:
+        - ResponseReasoningItemParam items (one per reasoning content item)
+        - ResponseOutputMessageParam (a single message with all text content)
         - ResponseFunctionToolCallParam for tool calls
 
-        This maintains full fidelity with Responses API schema, preserving reasoning IDs,
-        signatures, summaries, and tool call metadata.
+        Important: OpenAI Responses API requires that ALL reasoning items must be
+        followed by a message item. So we collect all reasoning items first, then
+        create a single message item with all text/structured output content.
         """
-        output_items: list[ResponseOutputMessageParam | ResponseReasoningItemParam | ResponseFunctionToolCallParam] = []
+        reasoning_items: list[ResponseReasoningItemParam] = []
+        text_contents: list[dict[str, Any]] = []
+        tool_calls: list[ResponseFunctionToolCallParam] = []
 
-        # Group content by type to build output items
+        # Track message IDs from preserved data
+        message_id_from_content = None
+        preserved_content_array = []
+
+        # First pass: collect all content by type
         for item in choice.contents:
-            if isinstance(item, ChatResponseTextContentItem) and item.text:
-                # ResponseOutputMessage with output_text content
-                output_items.append(
-                    ResponseOutputMessageParam(
-                        id=f"msg_{len(output_items)}",  # Generate ID if not tracked
-                        type="message",
-                        role="assistant",
-                        status="completed",
-                        content=[ResponseOutputTextParam(type="output_text", text=item.text, annotations=[])],
-                    )
-                )
-            elif isinstance(item, ChatResponseStructuredOutputContentItem):
-                output = item.structured_output
-                if output and output.structured_data is not None:
-                    # Structured output as output_text JSON
-                    output_items.append(
-                        ResponseOutputMessageParam(
-                            id=f"msg_{len(output_items)}",
-                            type="message",
-                            role="assistant",
-                            status="completed",
-                            content=[
-                                ResponseOutputTextParam(
-                                    type="output_text", text=json.dumps(output.structured_data), annotations=[]
-                                )
-                            ],
-                        )
-                    )
-            elif isinstance(item, ChatResponseReasoningContentItem):
-                # ResponseReasoningItem with thinking content and summary
-                thinking_id = item.thinking_id or f"reasoning_{len(output_items)}"
-                summary_text = item.thinking_summary or ""
-                content_parts = []
-                if item.thinking_text:
-                    # content is optional per SDK, omit if none
-                    content_parts = [
-                        ResponseOutputTextParam(type="output_text", text=item.thinking_text, annotations=[])
-                    ]
-                output_items.append(
-                    ResponseReasoningItemParam(
-                        id=thinking_id,
-                        type="reasoning",
-                        summary=[ResponseOutputTextParam(type="output_text", text=summary_text, annotations=[])],
-                        content=content_parts or None,
-                        encrypted_content=item.thinking_signature,
-                        status=item.thinking_status or "completed",
-                    )
-                )
-            elif isinstance(item, ChatResponseToolCallContentItem) and item.tool_call:
-                tc = item.tool_call
-                output_items.append(
-                    ResponseFunctionToolCallParam(
-                        id=tc.id or f"call_{len(output_items)}",
-                        type="function_call",
-                        call_id=tc.id or f"call_{len(output_items)}",
-                        name=tc.name,
-                        arguments=json.dumps(tc.arguments) if tc.arguments else "{}",
-                        status="completed",
-                    )
-                )
+            try:
+                if isinstance(item, ChatResponseReasoningContentItem):
+                    # USE PRESERVED DATA if available for perfect round-tripping
+                    param_data = {
+                        "id": item.thinking_id or f"rs_{len(reasoning_items)}",
+                        "type": "reasoning",
+                    }
 
-        # If no output items, add an empty message to satisfy schema
-        if not output_items:
-            output_items.append(
-                ResponseOutputMessageParam(
-                    id="msg_0",
-                    type="message",
-                    role="assistant",
-                    status="completed",
-                    content=[ResponseOutputTextParam(type="output_text", text="", annotations=[])],
-                )
+                    # Use preserved summary structure (list[dict] or str) if available
+                    if item.thinking_summary is not None:
+                        if isinstance(item.thinking_summary, list):
+                            # Already in OpenAI format [{"type": "summary_text", "text": "..."}]
+                            param_data["summary"] = item.thinking_summary
+                        elif isinstance(item.thinking_summary, str):
+                            # Convert string to OpenAI format
+                            param_data["summary"] = [{"type": "summary_text", "text": item.thinking_summary}]
+                        else:
+                            # Dict or other format
+                            param_data["summary"] = [{"type": "summary_text", "text": str(item.thinking_summary)}]
+                    else:
+                        # Fallback to empty summary
+                        param_data["summary"] = [{"type": "summary_text", "text": ""}]
+
+                    # Note: For input, 'content' is NOT typically included for reasoning items
+                    # Only summary is used. encrypted_content can be included if available.
+                    if item.thinking_signature:
+                        param_data["encrypted_content"] = item.thinking_signature
+
+                    reasoning_items.append(ResponseReasoningItemParam(**param_data))
+
+                elif isinstance(item, ChatResponseTextContentItem):
+                    # USE PRESERVED DATA if available for perfect round-tripping
+                    if item.message_id:
+                        message_id_from_content = item.message_id
+
+                    if item.message_content:
+                        # Use preserved content array directly
+                        preserved_content_array.extend(item.message_content)
+                    else:
+                        # Fallback: construct from text
+                        text_contents.append({"type": "output_text", "text": item.text, "annotations": []})
+
+                elif isinstance(item, ChatResponseToolCallContentItem):
+                    # TODO: implement tool call conversion
+                    pass
+                elif isinstance(item, ChatResponseStructuredOutputContentItem):
+                    # TODO: implement structured output conversion
+                    # For now, convert to text
+                    if hasattr(item.structured_output, "raw_response"):
+                        text_contents.append(
+                            {"type": "output_text", "text": item.structured_output.raw_response, "annotations": []}
+                        )
+                else:
+                    logger.warning(f"OpenAI: unsupported content item type: {type(item).__name__}")
+            except Exception as e:  # noqa: PERF203
+                logger.warning(f"OpenAI: Validation error for item; {e}")
+
+        # Second pass: construct output items
+        # Order is important: reasoning items must come before the message
+        output_items: list[ResponseReasoningItemParam | ResponseOutputMessageParam] = []
+
+        # Add all reasoning items first
+        output_items.extend(reasoning_items)
+
+        # Then add a single message with all text content
+        # This is REQUIRED if there are any reasoning items
+        if text_contents or preserved_content_array or reasoning_items:
+            # Use preserved message ID if available, otherwise generate a unique one
+            if message_id_from_content:
+                msg_id = message_id_from_content
+            else:
+                # Generate unique ID using timestamp + random component
+                msg_id = f"msg_{int(time.time())}_{random.randint(1000, 9999)}"
+
+            # Use preserved content array if available, otherwise use collected text_contents
+            final_content = (
+                preserved_content_array
+                if preserved_content_array
+                else (text_contents if text_contents else [{"type": "output_text", "text": "", "annotations": []}])
             )
 
-        return {"role": "assistant", "output": output_items}
+            message_param = ResponseOutputMessageParam(
+                id=msg_id,
+                type="message",
+                role="assistant",
+                content=final_content,
+            )
+            output_items.append(message_param)
+
+        # Add tool calls (if any)
+        output_items.extend(tool_calls)
+
+        return output_items

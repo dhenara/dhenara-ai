@@ -778,6 +778,18 @@ class AIModelProviderClientBase(ABC):
     def parse_stream_chunk(self, chunk) -> StreamingChatResponse | SSEErrorResponse | None:
         pass
 
+    def serialize_provider_response(self, response: object) -> dict | None:
+        # INFO: Keep this disabled so that we get consistent outputs across streamoing and non-streaming
+        # paths. For streaming cases, we can't get a tru e provider response object anyway.
+        return None
+
+        # Serialize content blocks for provider_message using SDK Pydantic validation
+        if hasattr(response, "model_dump"):
+            return response.model_dump()
+        elif isinstance(response, dict):
+            return response
+        return None
+
     @abstractmethod
     def _get_usage_from_provider_response(self, response):
         pass
@@ -875,7 +887,7 @@ class AIModelProviderClientBase(ABC):
             }
 
         except Exception as e:
-            logger.exception(f"format_inputs: {e}")
+            logger.exception(f"format_inputs failed: {e}")
             return None, None, None
 
     # -------------------------------------------------------------------------

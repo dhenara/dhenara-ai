@@ -69,6 +69,10 @@ class ChatResponse(BaseModel):
     usage_charge: UsageCharge | None = None
     choices: list[ChatResponseChoice] = []
     metadata: AIModelCallResponseMetaData | dict = {}
+    provider_response: dict | None = Field(
+        default=None,
+        description=("Complete provider-native response."),
+    )
 
     def get_visible_fields(self) -> dict:
         return self.model_dump(exclude=["choices"])
@@ -154,13 +158,28 @@ class ChatResponse(BaseModel):
         structured_item = self.first(ChatResponseContentItemType.STRUCTURED_OUTPUT)
         return structured_item.structured_output.as_pydantic() if structured_item else None
 
-    def to_message_item(self, choice_index: int = 0) -> "ChatResponseChoice | None":
+    def to_message_item(self, choice_index: int = 0) -> "ChatResponse| None":
+        """Get the response choice to use as a message item in multi-turn conversations.
+
+        This method returns the complete ChatResponsewhich contains all content items
+        (text, tool calls, etc.) from the assistant's response. This preserves the proper
+        message structure required by LLM providers (e.g., OpenAI requires tool calls and
+        their results to be kept together).
+
+        """
+        # return self.model_copy(deep=True)
+        return self
+
+    def to_message_item_LEGACY(self, choice_index: int = 0) -> "ChatResponseChoice | None":
         """Get the response choice to use as a message item in multi-turn conversations.
 
         This method returns the complete ChatResponseChoice which contains all content items
         (text, tool calls, etc.) from the assistant's response. This preserves the proper
         message structure required by LLM providers (e.g., OpenAI requires tool calls and
         their results to be kept together).
+
+        For OpenAI provider, includes the original provider_response in metadata to enable
+        exact round-trip fidelity for multi-turn conversations.
 
         Args:
             choice_index: Index of the choice to return (default: 0)
@@ -170,7 +189,17 @@ class ChatResponse(BaseModel):
         """
         if not self.choices or choice_index >= len(self.choices):
             return None
-        return self.choices[choice_index]
+
+        choice = self.choices[choice_index]
+
+        # For OpenAI, include provider_response in choice metadata for exact round-trip
+        if self.provider_response and self.provider == AIModelProviderEnum.OPEN_AI:
+            # Create a copy of the choice with provider_response in metadata
+            choice_copy = choice.model_copy(deep=True)
+            choice_copy.metadata["provider_response"] = self.provider_response
+            return choice_copy
+
+        return choice
 
     def preview_dict(self):
         """

@@ -81,7 +81,20 @@ def render_content_item(content_item, choice_index: int = 0) -> str:
                 f"[{choice_index}.{content_index}]:{ConsoleColors.RESET}{ConsoleColors.MAGENTA}"
             )
             output.append(header)
-            output.append(thinking_summary)
+            # Handle both string and list[dict] formats
+            if isinstance(thinking_summary, str):
+                output.append(thinking_summary)
+            elif isinstance(thinking_summary, list):
+                # Extract text from list of summary dicts
+                summary_texts = []
+                for item in thinking_summary:
+                    if isinstance(item, dict) and "text" in item:
+                        summary_texts.append(item["text"])
+                    else:
+                        summary_texts.append(str(item))
+                output.append("\n".join(summary_texts))
+            else:
+                output.append(str(thinking_summary))
         if has_signature:
             # Has signature but no summary text
             header = (

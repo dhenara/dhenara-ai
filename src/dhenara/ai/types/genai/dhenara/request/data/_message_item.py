@@ -16,10 +16,9 @@ from ._prompt import Prompt
 from ._tool_result import ToolCallResult, ToolCallResultsMessage
 
 if TYPE_CHECKING:
-    from dhenara.ai.types.genai.dhenara.response import ChatResponseChoice
-
+    from dhenara.ai.types.genai.dhenara.response import ChatResponse
 # MessageItem is a type-safe union of all valid message items
 # that can be passed to the messages parameter
 # Using Union with string forward reference to avoid circular import at runtime
 # ChatResponseChoice keeps all content items (text, tool calls, etc.) together as a single assistant message
-MessageItem = Union[Prompt, "ChatResponseChoice", ToolCallResult, ToolCallResultsMessage]
+MessageItem = Union[Prompt, "ChatResponse", ToolCallResult, ToolCallResultsMessage]

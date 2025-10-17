@@ -52,16 +52,23 @@ def handle_conversation_turn_with_messages(
     new_messages = [*messages, Prompt(role="user", text=user_query)]
 
     # Generate response using messages API
-    response = client.generate(
-        messages=new_messages,
-        instructions=instructions,
-    )
+    try:
+        response = client.generate(
+            messages=new_messages,
+            instructions=instructions,
+        )
+    except Exception as e:
+        print(f"\n❌ Exception during generate: {e}")
+        import traceback
+
+        traceback.print_exc()
+        raise
 
     # Create conversation node
     node = ConversationNode(
         user_query=user_query,
         input_files=[],
-        response=response.chat_response,
+        response=response.chat_response if response else None,
         timestamp=datetime.datetime.now().isoformat(),
     )
 
@@ -78,9 +85,9 @@ def run_multi_turn_with_messages():
     ]
 
     instructions_by_turn = [
-        ["Be creative and engaging."],
-        ["Build upon the previous story seamlessly."],
-        ["Bring the story to a satisfying conclusion."],
+        ["Be creative and engaging. Strictly limit to 400 words."],
+        ["Build upon the previous story seamlessly. Strictly limit to 400 words."],
+        ["Bring the story to a satisfying conclusion. Strictly limit to 400 words."],
     ]
 
     # Store conversation history as MessageItem list
@@ -98,22 +105,34 @@ def run_multi_turn_with_messages():
 
         print(f"\n🔄 Turn {i + 1} with {model_endpoint.ai_model.model_name} from {model_endpoint.api.provider}\n")
 
-        node = handle_conversation_turn_with_messages(
-            user_query=query,
-            instructions=instructions_by_turn[i],
-            endpoint=model_endpoint,
-            messages=messages,
-            art_dir_name=f"14_multi/{run_dir}/iter_{i}",
-        )
+        try:
+            node = handle_conversation_turn_with_messages(
+                user_query=query,
+                instructions=instructions_by_turn[i],
+                endpoint=model_endpoint,
+                messages=messages,
+                art_dir_name=f"14_multi/{run_dir}/iter_{i}",
+            )
+        except Exception as e:
+            print(f"\n❌ Error in turn {i + 1}: {e}")
+            import traceback
+
+            traceback.print_exc()
+            break
 
         print(f"User: {query}")
         print(f"Model: {model_endpoint.ai_model.model_name}\n")
 
         # Display response using shared renderer
-        render_response(node.response)
+        if node and node.response:
+            render_response(node.response)
+        else:
+            print("⚠️  No response generated")
+            break
 
         # Display usage
-        render_usage(node.response)
+        if node and node.response:
+            render_usage(node.response)
 
         print("-" * 80)
 
