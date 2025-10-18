@@ -100,12 +100,15 @@ class BaseFormatter(ABC):
     @classmethod
     def join_instructions(
         cls,
-        instructions: list[str | SystemInstruction],
+        instructions: list[str | SystemInstruction] | str,
         model_endpoint: AIModelEndpoint | None = None,
         **kwargs,
     ) -> dict[str, Any]:
         if not instructions:
             return None
+
+        if isinstance(instructions, str):
+            return instructions
 
         def _process_single_instruction(instr):
             if isinstance(instr, str):
@@ -130,10 +133,13 @@ class BaseFormatter(ABC):
     @classmethod
     def format_instructions(
         cls,
-        instructions: list[str | dict | Prompt],
+        instructions: list[str | dict | Prompt] | str,
         model_endpoint: AIModelEndpoint | None = None,
         **kwargs,
     ) -> dict[str, Any]:
+        if not instructions:
+            return None
+
         # Convert instructions to  Dhenara Promot
         joined_instructions = cls.join_instructions(instructions, **kwargs)
 

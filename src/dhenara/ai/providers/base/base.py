@@ -828,7 +828,7 @@ class AIModelProviderClientBase(ABC):
         """Format inputs into provider-specific formats"""
         try:
             # Validate mutual exclusivity: either (prompt+context) OR messages, not both
-            has_traditional_inputs = prompt is not None or (context is not None and len(context) > 0)
+            has_traditional_inputs = prompt is not None and (context is not None and len(context) > 0)
             has_messages = messages is not None and len(messages) > 0
 
             if has_traditional_inputs and has_messages:
@@ -840,43 +840,18 @@ class AIModelProviderClientBase(ABC):
             if not has_traditional_inputs and not has_messages:
                 raise ValueError("Either 'messages' or 'prompt/context' must be provided")
 
-            # If messages are provided, format them and instructions
-            # Provider-specific formatting will happen in get_api_call_params
-            if has_messages:
-                # Format instructions if provided
-                formatted_instructions = None
-                if instructions:
-                    formatted_instructions = self.formatter.format_instructions(
-                        instructions=instructions,
-                        model_endpoint=self.model_endpoint,
-                        **kwargs,
-                    )
-
-                # Validate Options
-                if not self.model_endpoint.ai_model.validate_options(self.config.options):
-                    raise ValueError("validate_inputs: ERROR: validate_options failed")
-
-                self.formatted_config = self.config
-                self._input_validation_pending = False
-
-                return {
-                    "prompt": None,
-                    "context": [],
-                    "instructions": formatted_instructions,
-                    "messages": messages,
-                }
-
-            # Traditional path: format prompt and context
+            formatted_prompt = None
             # Format prompt
-            formatted_prompt = self.formatter.format_prompt(
-                prompt=prompt,
-                model_endpoint=self.model_endpoint,
-                **kwargs,
-            )
+            if prompt:
+                formatted_prompt = self.formatter.format_prompt(
+                    prompt=prompt,
+                    model_endpoint=self.model_endpoint,
+                    **kwargs,
+                )
 
-            # Format context
+            # Format context ( exclude if messages are provided)
             formatted_context = []
-            if context:
+            if context and (not has_messages):
                 formatted_context = self.formatter.format_context(
                     context=context,
                     model_endpoint=self.model_endpoint,
@@ -903,11 +878,22 @@ class AIModelProviderClientBase(ABC):
             self.formatted_config = self.config
 
             self._input_validation_pending = False
-            return {
-                "prompt": formatted_prompt,
-                "context": formatted_context,
-                "instructions": formatted_instructions,
-            }
+
+            # If messages are provided, format them and instructions
+            # Provider-specific formatting will happen in get_api_call_params
+            if has_messages:
+                return {
+                    "prompt": formatted_prompt,
+                    "context": [],
+                    "instructions": formatted_instructions,
+                    "messages": messages,
+                }
+            else:
+                return {
+                    "prompt": formatted_prompt,
+                    "context": formatted_context,
+                    "instructions": formatted_instructions,
+                }
 
         except Exception as e:
             logger.exception(f"format_inputs failed: {e}")

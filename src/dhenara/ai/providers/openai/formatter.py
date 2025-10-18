@@ -86,12 +86,8 @@ class OpenAIFormatter(BaseFormatter):
         formatted_prompt: FormattedPrompt,
         model_endpoint: AIModelEndpoint | None = None,
     ) -> dict[str, Any]:
-        # Beta models won't support System role
-        if model_endpoint.ai_model.beta:
-            role = cls.role_map.get(PromptMessageRoleEnum.USER)
-        else:
-            role = cls.role_map.get(formatted_prompt.role)
-
+        # For Responses API, instructions are just text
+        role = cls.role_map.get(formatted_prompt.role)
         return {"role": role, "content": formatted_prompt.text}
 
     @classmethod

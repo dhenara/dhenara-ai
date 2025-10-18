@@ -93,8 +93,11 @@ class OpenAIResponses(OpenAIClientBase):
             "model": self.model_name_in_api_calls,
             "input": input_messages,
             "stream": self.config.streaming,
-            "instructions": " ".join(instructions) if instructions else "",
         }
+        if instructions:
+            # Instruction at this point are in Dhenara format
+            instructions_text = instructions.get("content")
+            args["instructions"] = instructions_text
 
         # Max tokens (Responses uses max_output_tokens)
         # Note: Responses API doesn't have a separate max_reasoning_tokens parameter.
@@ -155,27 +158,6 @@ class OpenAIResponses(OpenAIClientBase):
                 tool_choice=self.config.tool_choice,
                 model_endpoint=self.model_endpoint,
             )
-
-        # Structured output via text.format parameter
-        if self.config.structured_output:
-            # Responses API uses text.format for structured output, not response_format
-            schema_dict = self.formatter.convert_structured_output(
-                structured_output=self.config.structured_output,
-                model_endpoint=self.model_endpoint,
-            )
-            # Extract json_schema from the Chat-style format
-            if schema_dict.get("type") == "json_schema" and "json_schema" in schema_dict:
-                json_schema_info = schema_dict["json_schema"]
-                args["text"] = {
-                    "format": {
-                        "type": "json_schema",
-                        "name": json_schema_info.get("name", "output"),
-                        "schema": json_schema_info.get("schema", {}),
-                        "strict": json_schema_info.get("strict", True),
-                    }
-                }
-                if "description" in json_schema_info:
-                    args["text"]["format"]["description"] = json_schema_info["description"]
 
         # Metadata: attach user id if available
         user = self.config.get_user()
