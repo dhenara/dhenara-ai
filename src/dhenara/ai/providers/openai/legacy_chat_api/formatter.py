@@ -309,7 +309,7 @@ class OpenAIFormatterCHATAPI(BaseFormatter):
             "json_schema": {
                 "name": schema_name,
                 "schema": schema,
-                # "strict": True,
+                "strict": True,
             },
         }
 
