@@ -276,4 +276,4 @@ GPT41Nano = FoundationModel(
 )
 
 
-CHAT_MODELS = [GPT5, GPT5Mini,GPT5Nano, GPT41, GPT41Mini, GPT41Nano, GPT4o, GPT4oMini, O1, O1Mini, O3, O3Mini, O4Mini]
+CHAT_MODELS = [GPT5, GPT5Mini, GPT5Nano, GPT41, GPT41Mini, GPT41Nano, GPT4o, GPT4oMini, O1, O1Mini, O3, O3Mini, O4Mini]

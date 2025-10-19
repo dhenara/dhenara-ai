@@ -86,6 +86,21 @@ class ChatResponseTextContentItem(BaseChatResponseContentItem):
         return ""
 
 
+# NOTE: LLMs outs structured as pure text with all text properties, we parse them as strucuted output with validation.
+# THus structured output content items are extended from text items.
+class ChatResponseStructuredOutputContentItem(ChatResponseTextContentItem):
+    type: ChatResponseContentItemType = ChatResponseContentItemType.STRUCTURED_OUTPUT
+    structured_output: ChatResponseStructuredOutput = Field(...)
+
+    def get_text(self) -> str:
+        if self.structured_output:
+            if self.structured_output.structured_data is not None:
+                return f"Structured  Output: {self.structured_output.structured_data}"
+            else:
+                return f"Structured  Output was failed to parse. Unparsed items: {self.structured_output.model_dump()}"
+        return str(self.metadata)
+
+
 class ChatResponseReasoningContentItem(BaseChatResponseContentItem):
     type: ChatResponseContentItemType = ChatResponseContentItemType.REASONING
 
@@ -110,29 +125,6 @@ class ChatResponseToolCallContentItem(BaseChatResponseContentItem):
     def get_text(self) -> str:
         if self.tool_call:
             return f"Tool call: {self.tool_call.model_dump()}"
-        return str(self.metadata)
-
-
-class ChatResponseStructuredOutputContentItem(BaseChatResponseContentItem):
-    type: ChatResponseContentItemType = ChatResponseContentItemType.STRUCTURED_OUTPUT
-
-    # Provider-specific fields for round-tripping (e.g., OpenAI Responses API)
-    message_id: str | None = Field(
-        None,
-    )
-    message_contents: list[ChatMessageContentPart] | None = Field(
-        None,
-        description="Provider-specific full content array for round-tripping (e.g., OpenAI output_text items)",
-    )
-
-    structured_output: ChatResponseStructuredOutput = Field(...)
-
-    def get_text(self) -> str:
-        if self.structured_output:
-            if self.structured_output.structured_data is not None:
-                return f"Structured  Output: {self.structured_output.structured_data}"
-            else:
-                return f"Structured  Output was failed to parse. Unparsed items: {self.structured_output.model_dump()}"
         return str(self.metadata)
 
 
