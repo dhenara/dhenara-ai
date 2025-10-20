@@ -828,7 +828,8 @@ class AIModelProviderClientBase(ABC):
         """Format inputs into provider-specific formats"""
         try:
             # Validate mutual exclusivity: either (prompt+context) OR messages, not both
-            has_traditional_inputs = prompt is not None and (context is not None and len(context) > 0)
+            context_items = list(context) if context else []
+            has_traditional_inputs = bool(prompt) or bool(context_items)
             has_messages = messages is not None and len(messages) > 0
 
             if has_traditional_inputs and has_messages:
@@ -838,7 +839,7 @@ class AIModelProviderClientBase(ABC):
                 )
 
             if not has_traditional_inputs and not has_messages:
-                raise ValueError("Either 'messages' or 'prompt/context' must be provided")
+                raise ValueError("Either 'messages' or a non-empty 'prompt/context' must be provided")
 
             formatted_prompt = None
             # Format prompt
@@ -851,9 +852,9 @@ class AIModelProviderClientBase(ABC):
 
             # Format context ( exclude if messages are provided)
             formatted_context = []
-            if context and (not has_messages):
+            if context_items and (not has_messages):
                 formatted_context = self.formatter.format_context(
-                    context=context,
+                    context=context_items,
                     model_endpoint=self.model_endpoint,
                     **kwargs,
                 )
@@ -888,16 +889,16 @@ class AIModelProviderClientBase(ABC):
                     "instructions": formatted_instructions,
                     "messages": messages,
                 }
-            else:
-                return {
-                    "prompt": formatted_prompt,
-                    "context": formatted_context,
-                    "instructions": formatted_instructions,
-                }
+
+            return {
+                "prompt": formatted_prompt,
+                "context": formatted_context,
+                "instructions": formatted_instructions,
+            }
 
         except Exception as e:
             logger.exception(f"format_inputs failed: {e}")
-            return None, None, None
+            return None
 
     # -------------------------------------------------------------------------
     # For Usage and cost
