@@ -7,6 +7,7 @@ from dhenara.ai.types.genai import (
     AIModelCallResponseMetaData,
     AIModelEndpoint,
     AIModelFunctionalTypeEnum,
+    ChatMessageContentPart,
     ChatResponse,
     ChatResponseChoice,
     ChatResponseChoiceDelta,
@@ -102,16 +103,12 @@ class StreamingManager:
         try:
             if self.structured_output_config is not None:
                 for choice in self.choices or []:
-                    # Determine the next index to append new items
-                    next_index = 0
-                    try:
-                        if choice.contents:
-                            next_index = max((c.index or 0) for c in choice.contents) + 1
-                    except Exception:
-                        next_index = len(choice.contents) if choice.contents else 0
+                    # Track indices of text items to remove after replacement
+                    items_to_remove = []
+                    items_to_add = []
 
-                    for content in list(choice.contents or []):
-                        # Only derive from text items; keep originals intact for round-trip
+                    for i, content in enumerate(choice.contents or []):
+                        # Only derive from text items; replace them with structured items
                         if isinstance(content, ChatResponseTextContentItem):
                             raw_text = content.get_text()
                             if raw_text is None:
@@ -128,10 +125,13 @@ class StreamingManager:
                                 parse_error=error,
                                 post_processed=post_processed,
                             )
-                            # Append a new structured content item preserving message metadata
-                            choice.contents.append(
+                            # Replace the text item with structured item, inheriting provider metadata.
+                            # Rationale: structured output IS the text content in validated form.
+                            # We keep message_id/message_contents from original text item for proper round-tripping.
+                            # This matches non-streaming behavior where structured replaces text, not appends.
+                            items_to_add.append(
                                 ChatResponseStructuredOutputContentItem(
-                                    index=next_index,
+                                    index=content.index,
                                     type=ChatResponseContentItemType.STRUCTURED_OUTPUT,
                                     role=getattr(content, "role", None),
                                     message_id=getattr(content, "message_id", None),
@@ -139,7 +139,14 @@ class StreamingManager:
                                     structured_output=structured,
                                 )
                             )
-                            next_index += 1
+                            items_to_remove.append(i)
+
+                    # Remove text items in reverse order to maintain indices
+                    for i in reversed(items_to_remove):
+                        choice.contents.pop(i)
+
+                    # Add structured items
+                    choice.contents.extend(items_to_add)
         except Exception as _e:
             logger.debug(f"Structured-output post-processing skipped due to error: {_e}")
 
@@ -374,6 +381,21 @@ class StreamingManager:
                             delta_text = content_delta.get_text_delta()
                             if delta_text:
                                 matching_content.text = (matching_content.text or "") + delta_text
+
+                            # Build up message_contents array for OpenAI round-tripping
+                            # This ensures that when we convert structured output items back to provider format,
+                            # we have the full content array structure with accumulated text
+                            if hasattr(matching_content, "message_id") and matching_content.message_id:
+                                if not matching_content.message_contents:
+                                    # Initialize with empty output_text part
+                                    matching_content.message_contents = [
+                                        ChatMessageContentPart(type="output_text", text="", annotations=[])
+                                    ]
+                                # Accumulate text in the first output_text part
+                                if delta_text and matching_content.message_contents:
+                                    matching_content.message_contents[0].text = (
+                                        matching_content.message_contents[0].text or ""
+                                    ) + delta_text
 
                         elif content_delta.type == ChatResponseContentItemType.REASONING:
                             thinking_text_delta = content_delta.thinking_text_delta

@@ -146,7 +146,9 @@ def run_turn(
 
     streaming_renderer = StreamingRenderer()
     prompt = Prompt(role="user", text=prompt_text)
-    stream = client.generate(messages=[*messages, prompt])
+    # Persist the user's prompt into the messages history so subsequent turns include it
+    messages = [*messages, prompt]
+    stream = client.generate(messages=messages)
     final = streaming_renderer.process_stream(stream)
 
     # Append the assistant message (contains thinking + structured block)
