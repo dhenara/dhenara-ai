@@ -301,42 +301,61 @@ class OpenAIFormatter(BaseFormatter):
     def _clean_schema_for_openai_strict_mode(cls, schema: dict[str, Any]) -> dict[str, Any]:
         """Clean JSON schema to comply with OpenAI's strict mode requirements.
 
-        - Remove additional keywords from $ref locations (OpenAI doesn't allow description/title with $ref)
-        - Remove numeric constraints (minimum/maximum from Pydantic ge/le)
-        - Add additionalProperties: false everywhere
+        - For any object types, ensure additionalProperties: false
+        - In branches (anyOf/oneOf/allOf), recursively enforce the same
+        - For array types, clean the items schema
+        - If a dict contains $ref, strip other keys alongside it
+        - Remove unsupported/min/max style numeric constraints to reduce friction
         """
         import copy
 
         schema = copy.deepcopy(schema)
 
         def clean_object(obj: dict[str, Any]) -> None:
-            """Recursively clean a schema object."""
-            if isinstance(obj, dict):
-                # If this has a $ref, remove all other keys except $ref
-                if "$ref" in obj:
-                    ref_value = obj["$ref"]
-                    obj.clear()
-                    obj["$ref"] = ref_value
-                    return
+            if not isinstance(obj, dict):
+                return
 
-                # Set additionalProperties to false for object types
-                if obj.get("type") == "object" and "additionalProperties" not in obj:
-                    obj["additionalProperties"] = False
+            # If this has a $ref, keep only $ref
+            if "$ref" in obj:
+                ref_value = obj["$ref"]
+                obj.clear()
+                obj["$ref"] = ref_value
+                return
 
-                # Remove numeric constraints
-                obj.pop("minimum", None)
-                obj.pop("maximum", None)
-                obj.pop("exclusiveMinimum", None)
-                obj.pop("exclusiveMaximum", None)
+            # Normalize object schemas
+            if obj.get("type") == "object":
+                # Force strictness: OpenAI requires additionalProperties to be false for all objects
+                obj["additionalProperties"] = False
+                # Ensure properties exists
+                if not isinstance(obj.get("properties"), dict):
+                    obj["properties"] = {}
+                # OpenAI strict mode requires 'required' to list every key in 'properties'
+                prop_keys = list(obj["properties"].keys())
+                existing_required = obj.get("required")
+                if not isinstance(existing_required, list) or set(existing_required) != set(prop_keys):
+                    obj["required"] = prop_keys
 
-                # Recursively process nested objects
-                for _key, value in list(obj.items()):
-                    if isinstance(value, dict):
-                        clean_object(value)
-                    elif isinstance(value, list):
-                        for item in value:
-                            if isinstance(item, dict):
-                                clean_object(item)
+            # Remove numeric constraints that sometimes appear from pydantic
+            for k in ("minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum"):
+                if k in obj:
+                    obj.pop(k, None)
+
+            # Recurse into common schema containers
+            for branch in ("properties", "patternProperties"):
+                if isinstance(obj.get(branch), dict):
+                    for _k, v in list(obj[branch].items()):
+                        if isinstance(v, dict):
+                            clean_object(v)
+
+            for branch in ("anyOf", "oneOf", "allOf"):
+                if isinstance(obj.get(branch), list):
+                    for item in obj[branch]:
+                        if isinstance(item, dict):
+                            clean_object(item)
+
+            # Arrays: clean items
+            if obj.get("type") == "array" and isinstance(obj.get("items"), dict):
+                clean_object(obj["items"])
 
         # Clean root schema
         clean_object(schema)
@@ -344,7 +363,8 @@ class OpenAIFormatter(BaseFormatter):
         # Clean $defs if present
         if "$defs" in schema:
             for def_schema in schema["$defs"].values():
-                clean_object(def_schema)
+                if isinstance(def_schema, dict):
+                    clean_object(def_schema)
 
         return schema
 
@@ -355,26 +375,12 @@ class OpenAIFormatter(BaseFormatter):
         model_endpoint: AIModelEndpoint | None = None,
     ) -> dict[str, Any]:
         """Convert StructuredOutputConfig to OpenAI format"""
-        # Get the original JSON schema from Pydantic or dict
+        # Get the original JSON schema from Pydantic or dict and clean for strict mode
         schema = structured_output.get_schema()
-
-        # Ensure additionalProperties is set in the root schema and all nested definitions
-        schema["additionalProperties"] = False
-
-        # Also set additionalProperties for nested schemas
-        if "$defs" in schema:
-            for def_schema in schema["$defs"].values():
-                def_schema["additionalProperties"] = False
+        schema = cls._clean_schema_for_openai_strict_mode(schema)
 
         # Extract the name from the title and use it for schema name
         schema_name = schema.get("title", "output")
-
-        # Clean up JSON Schema keywords that OpenAI doesn't permit
-        if "properties" in schema:
-            for prop in schema["properties"].values():
-                # Remove numeric constraints that are not permitted. (from pydantic ge, le)
-                prop.pop("minimum", None)
-                prop.pop("maximum", None)
 
         # Return formatted response format
         return {
