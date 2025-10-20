@@ -182,8 +182,14 @@ class AnthropicMessageConverter(BaseMessageConverter):
         same_provider = True if str(source_provider) == str(model_endpoint.ai_model.provider) else False
 
         for content in choice.contents:
-            if isinstance(content, ChatResponseTextContentItem) and content.text:
-                content_blocks.append(TextBlockParam(type="text", text=content.text))
+            if isinstance(content, ChatResponseTextContentItem):
+                # Replay message_contents if available for better round-tripping
+                if content.message_contents:
+                    for part in content.message_contents:
+                        if part.type == "text" and part.text:
+                            content_blocks.append(TextBlockParam(type="text", text=part.text))
+                elif content.text:
+                    content_blocks.append(TextBlockParam(type="text", text=content.text))
             elif isinstance(content, ChatResponseReasoningContentItem):
                 # Anthropic thinking blocks require thinking text + signature
                 if content.thinking_text and content.thinking_signature:
@@ -228,16 +234,21 @@ class AnthropicMessageConverter(BaseMessageConverter):
                     )
                 )
             elif isinstance(content, ChatResponseStructuredOutputContentItem):
-                output = content.structured_output
-                if output.structured_data:
-                    content_blocks.append(
-                        TextBlockParam(
-                            type="text",
-                            text=json.dumps(
-                                output.structured_data,
-                            ),
+                # Prefer replaying message_contents for round-trip fidelity
+                if content.message_contents:
+                    for part in content.message_contents:
+                        if part.type == "text" and part.text:
+                            content_blocks.append(TextBlockParam(type="text", text=part.text))
+                else:
+                    # Fallback: serialize structured_data as JSON text
+                    output = content.structured_output
+                    if output and output.structured_data:
+                        content_blocks.append(
+                            TextBlockParam(
+                                type="text",
+                                text=json.dumps(output.structured_data),
+                            )
                         )
-                    )
 
         if content_blocks:
             # SDK accepts a list of block params (they serialize to correct schema)

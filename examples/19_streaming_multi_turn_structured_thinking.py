@@ -235,9 +235,7 @@ def run_streaming_multi_turn_structured_thinking():
         sys.exit(1)
     # Extra validation: day count must match plan.days
     if len(itinerary.days) != plan.days:
-        state.errors.append(
-            f"Turn2:Itinerary day count mismatch. expected={plan.days}, got={len(itinerary.days)}"
-        )
+        state.errors.append(f"Turn2:Itinerary day count mismatch. expected={plan.days}, got={len(itinerary.days)}")
     state.itinerary = itinerary
     print("Parsed Itinerary:")
     print(json.dumps(itinerary.model_dump(), indent=2))
@@ -265,9 +263,7 @@ def run_streaming_multi_turn_structured_thinking():
     # Validate total ~= sum(items)
     items_total = sum(i.cost for i in budget.items)
     if not close_enough(budget.total, items_total):
-        state.errors.append(
-            f"Turn3:Budget total mismatch. total={budget.total}, sum(items)={items_total}"
-        )
+        state.errors.append(f"Turn3:Budget total mismatch. total={budget.total}, sum(items)={items_total}")
     state.budget = budget
     print("Parsed Budget:")
     print(json.dumps(budget.model_dump(), indent=2))

@@ -57,7 +57,7 @@ def calculate(operation: str, a: float, b: float) -> dict:
 weather_tool = ToolDefinition(
     function=FunctionDefinition(
         name="get_weather",
-        description="Get the current weather for a location",
+        description="Get the current weather for a location in Celsius",
         parameters=FunctionParameters(
             type="object",
             required=["location"],

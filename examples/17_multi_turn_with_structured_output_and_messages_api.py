@@ -125,7 +125,7 @@ def run_multi_turn_with_structured_output():
     print("User: Generate weather information for Paris.\n")
 
     weather_info, messages, response = handle_turn_with_structured_output(
-        user_query="Generate realistic weather information for Paris, France.",
+        user_query="Generate realistic weather information for Paris, France in Celsius.",
         endpoint=model_endpoint,
         messages=messages,
         output_schema=WeatherInfo,

@@ -214,7 +214,7 @@ class OpenAIMessageConverter(BaseMessageConverter):
                 structured_output = ChatResponseStructuredOutput(
                     config=structured_output_config,
                     structured_data=parsed_data,
-                    raw_data=text_joined, # Preserve combined text for error analysis
+                    raw_data=text_joined,
                     parse_error=error,
                     post_processed=post_processed,
                 )
@@ -284,10 +284,15 @@ class OpenAIMessageConverter(BaseMessageConverter):
 
         output_items: list[ResponseReasoningItemParam | ResponseOutputMessageParam | ResponseFunctionToolCallParam] = []
 
-        # First pass: collect all content by type
+        # Track reasoning items that need a following message and collect all text/structured content
+        has_reasoning = False
+        merged_message_content: list[dict[str, Any]] = []
+        selected_message_id: str | None = None
+
         for item in choice.contents:
             try:
                 if isinstance(item, ChatResponseReasoningContentItem):
+                    has_reasoning = True
                     # USE PRESERVED DATA if available for perfect round-tripping
                     param_data: dict[str, Any] = {
                         "type": "reasoning",
@@ -325,39 +330,30 @@ class OpenAIMessageConverter(BaseMessageConverter):
                     if item.thinking_signature and same_provider:
                         param_data["encrypted_content"] = item.thinking_signature
 
-                    # reasoning_items.append(ResponseReasoningItemParam(**param_data))
                     output_items.append(ResponseReasoningItemParam(**param_data))
 
                 elif isinstance(item, (ChatResponseTextContentItem, ChatResponseStructuredOutputContentItem)):
-                    # Structured output are nothing but text content in model responses
-                    content = []
-
+                    # Keep all Dhenara content items; merge their message_contents for provider
                     if item.message_contents:
-                        # Convert ChatMessageContentPart back to plain dicts for provider
-                        content = [
-                            {
-                                "type": p.type,
-                                "text": p.text,
-                                "annotations": p.annotations,
-                            }
-                            for p in item.message_contents
-                        ]
-                    elif item.text is not None:
-                        content.append({"type": "output_text", "text": item.text, "annotations": []})
-                    else:
-                        logger.error("OpenAI: TextContentItem has no message_contents or message_contents")
-                        # Fallback:
-                        content.append({"type": "output_text", "text": "", "annotations": []})
+                        merged_message_content.extend(
+                            [
+                                {
+                                    "type": p.type,
+                                    "text": p.text,
+                                    "annotations": p.annotations,
+                                }
+                                for p in item.message_contents
+                            ]
+                        )
+                    elif item.text is not None and item.text != "":
+                        # Only add non-empty text
+                        merged_message_content.append({"type": "output_text", "text": item.text, "annotations": []})
+                    # Note: We do NOT add empty text fallback here anymore
+                    # Empty messages are only added when reasoning requires them (see below)
 
-                    param_data = {
-                        "type": "message",
-                        "role": "assistant",
-                        "content": content,
-                    }
-                    if same_provider and item.message_id:
-                        param_data["id"] = item.message_id
-                    message_param = ResponseOutputMessageParam(**param_data)
-                    output_items.append(message_param)
+                    # Preserve message_id from first text/structured item if same provider
+                    if same_provider and item.message_id and selected_message_id is None:
+                        selected_message_id = item.message_id
 
                 elif isinstance(item, ChatResponseToolCallContentItem):
                     # Include tool calls in conversation history
@@ -387,5 +383,21 @@ class OpenAIMessageConverter(BaseMessageConverter):
             except Exception as e:  # noqa: PERF203
                 logger.error(f"OpenAI: Validation error for item; {e}")
                 raise e
+
+        # OpenAI Responses API rule: ALL reasoning items MUST be followed by a message item
+        # Emit a single assistant message with merged content (or empty if no text content)
+        if has_reasoning or merged_message_content:
+            if not merged_message_content:
+                # If there's reasoning but no text, emit an empty message to satisfy API requirement
+                merged_message_content.append({"type": "output_text", "text": "", "annotations": []})
+
+            msg_payload: dict[str, Any] = {
+                "type": "message",
+                "role": "assistant",
+                "content": merged_message_content,
+            }
+            if selected_message_id:
+                msg_payload["id"] = selected_message_id
+            output_items.append(ResponseOutputMessageParam(**msg_payload))
 
         return output_items
