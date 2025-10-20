@@ -214,21 +214,50 @@ class OpenAIMessageConverter(BaseMessageConverter):
 
             # Extract text from content array for structured output or text display
             if structured_output_config is not None:
-                # For structured output, extract text from message content parts
-                text_parts = [part.text for part in content_array if part.type == "output_text" and part.text]
-                text_combined = "".join(text_parts).strip() if text_parts else None
+                structured_output = None
 
-                parsed_data, error = ChatResponseStructuredOutput._parse_and_validate(
-                    raw_data=text_combined,
-                    config=structured_output_config,
-                )
+                # 1) Responses API provider-native parsed output: check each provider part for `parsed`
+                try:
+                    for p in contents or []:
+                        # SDK objects may expose .parsed or dict with key 'parsed'
+                        parsed_obj = None
+                        if hasattr(p, "parsed"):
+                            parsed_obj = getattr(p, "parsed", None)
+                        elif isinstance(p, dict) and "parsed" in p:
+                            parsed_obj = p.get("parsed")
 
-                structured_output = ChatResponseStructuredOutput(
-                    structured_data=parsed_data,
-                    parse_error=error,
-                    config=structured_output_config,
-                    raw_data=text_combined,  # Preserve combined text for error analysis
-                )
+                        if parsed_obj is not None:
+                            parsed_dict = parsed_obj.model_dump() if hasattr(parsed_obj, "model_dump") else parsed_obj
+                            # Directly use provider-validated structure
+                            structured_output = ChatResponseStructuredOutput(
+                                structured_data=parsed_dict,
+                                parse_error=None,
+                                config=structured_output_config,
+                                raw_data=None,
+                                post_processed=False,
+                            )
+                            break
+                except Exception as _e:
+                    logger.debug(f"OpenAI: error reading provider-native parsed output: {_e}")
+
+                # 2) Fallback: parse from combined output_text (as if request was made with `create` not `parse`)
+                # Also streaming doen't support provider-native parsed output it seems
+                if structured_output is None:
+                    text_parts = [part.text for part in content_array if part.type == "output_text" and part.text]
+                    text_combined = "".join(text_parts).strip() if text_parts else None
+
+                    parsed_data, error, post_processed = ChatResponseStructuredOutput._parse_and_validate(
+                        raw_data=text_combined,
+                        config=structured_output_config,
+                    )
+
+                    structured_output = ChatResponseStructuredOutput(
+                        structured_data=parsed_data,
+                        parse_error=error,
+                        config=structured_output_config,
+                        raw_data=text_combined,  # Preserve combined text for error analysis
+                        post_processed=post_processed,
+                    )
 
                 ci = ChatResponseStructuredOutputContentItem(
                     index=index,

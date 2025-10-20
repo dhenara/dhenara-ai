@@ -61,7 +61,7 @@ class OpenAIMessageConverterCHATAPI:
                         content_text = None
 
             if structured_output_config is not None and content_text:
-                parsed_data, error = ChatResponseStructuredOutput._parse_and_validate(
+                parsed_data, error, post_processed = ChatResponseStructuredOutput._parse_and_validate(
                     content_text, structured_output_config
                 )
 
@@ -70,6 +70,7 @@ class OpenAIMessageConverterCHATAPI:
                     structured_data=parsed_data,
                     raw_data=content_text,  # Keep original response regardless of parsing
                     parse_error=error,
+                    post_processed=post_processed,
                 )
 
                 items.append(

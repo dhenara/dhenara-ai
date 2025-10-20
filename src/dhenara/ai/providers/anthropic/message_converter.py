@@ -60,7 +60,7 @@ class AnthropicMessageConverter(BaseMessageConverter):
             text_value = getattr(content_block, "text", "")
             if structured_output_config is not None:
                 # Parse structured output from plain text and retain original part for round-trip
-                parsed_data, error = ChatResponseStructuredOutput._parse_and_validate(
+                parsed_data, error, post_processed = ChatResponseStructuredOutput._parse_and_validate(
                     text_value,
                     structured_output_config,
                 )
@@ -69,6 +69,7 @@ class AnthropicMessageConverter(BaseMessageConverter):
                     structured_data=parsed_data,
                     raw_data=text_value,
                     parse_error=error,
+                    post_processed=post_processed,
                 )
                 return [
                     ChatResponseStructuredOutputContentItem(

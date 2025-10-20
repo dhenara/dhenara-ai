@@ -358,11 +358,23 @@ class OpenAIFormatter(BaseFormatter):
         # Get the original JSON schema from Pydantic or dict
         schema = structured_output.get_schema()
 
-        # Clean schema for OpenAI's strict mode
-        schema = cls._clean_schema_for_openai_strict_mode(schema)
+        # Ensure additionalProperties is set in the root schema and all nested definitions
+        schema["additionalProperties"] = False
+
+        # Also set additionalProperties for nested schemas
+        if "$defs" in schema:
+            for def_schema in schema["$defs"].values():
+                def_schema["additionalProperties"] = False
 
         # Extract the name from the title and use it for schema name
         schema_name = schema.get("title", "output")
+
+        # Clean up JSON Schema keywords that OpenAI doesn't permit
+        if "properties" in schema:
+            for prop in schema["properties"].values():
+                # Remove numeric constraints that are not permitted. (from pydantic ge, le)
+                prop.pop("minimum", None)
+                prop.pop("maximum", None)
 
         # Return formatted response format
         return {

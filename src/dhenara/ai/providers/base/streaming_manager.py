@@ -116,7 +116,7 @@ class StreamingManager:
                             raw_text = content.get_text()
                             if raw_text is None:
                                 continue
-                            parsed_data, error = ChatResponseStructuredOutput._parse_and_validate(
+                            parsed_data, error, post_processed = ChatResponseStructuredOutput._parse_and_validate(
                                 raw_data=raw_text,
                                 config=self.structured_output_config,
                             )
@@ -126,6 +126,7 @@ class StreamingManager:
                                 structured_data=parsed_data,
                                 raw_data=(None if parsed_data is not None else raw_text),
                                 parse_error=error,
+                                post_processed=post_processed,
                             )
                             # Append a new structured content item preserving message metadata
                             choice.contents.append(

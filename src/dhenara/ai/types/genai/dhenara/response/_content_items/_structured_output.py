@@ -39,6 +39,66 @@ def _coerce_json_strings(obj: Any) -> Any:
         return obj
 
 
+def _extract_json_from_text(text: str) -> Any | None:
+    """Best-effort extraction of a JSON object/array from a text blob.
+
+    Handles common patterns like markdown code fences (```json ... ```),
+    and free-form text that embeds a single top-level JSON object or array.
+    Returns parsed Python object on success, else None.
+    """
+    if not isinstance(text, str):
+        return None
+
+    s = text.strip()
+
+    # Strip markdown fences: ```json\n{...}\n```
+    if s.startswith("```"):
+        # Remove the first fence line
+        nl = s.find("\n")
+        if nl != -1:
+            body = s[nl + 1 :]
+            fence_end = body.rfind("```")
+            if fence_end != -1:
+                s = body[:fence_end].strip()
+
+    # If now looks like plain JSON, try to parse
+    if (s.startswith("{") and s.endswith("}")) or (s.startswith("[") and s.endswith("]")):
+        try:
+            return _coerce_json_strings(json.loads(s))
+        except Exception:
+            pass
+
+    # Attempt to locate a top-level JSON object by brace matching
+    def _scan_balanced(open_char: str, close_char: str) -> Any | None:
+        start = s.find(open_char)
+        if start == -1:
+            return None
+        depth = 0
+        for i in range(start, len(s)):
+            ch = s[i]
+            if ch == open_char:
+                depth += 1
+            elif ch == close_char:
+                depth -= 1
+                if depth == 0:
+                    candidate = s[start : i + 1]
+                    try:
+                        return _coerce_json_strings(json.loads(candidate))
+                    except Exception:
+                        return None
+        return None
+
+    # Try object first, then array
+    parsed = _scan_balanced("{", "}")
+    if parsed is not None:
+        return parsed
+    parsed = _scan_balanced("[", "]")
+    if parsed is not None:
+        return parsed
+
+    return None
+
+
 class ChatResponseStructuredOutput(BaseModel):
     """Content item specific to structured output responses
 
@@ -67,6 +127,10 @@ class ChatResponseStructuredOutput(BaseModel):
     parse_error: str | None = Field(
         None,
         description="Error that occurred during parsing, if any",
+    )
+    post_processed: bool = Field(
+        default=False,
+        description="True if schema-level post-processing on error was used to coerce into the schema",
     )
 
     def get_text(self) -> str:
@@ -113,10 +177,11 @@ class ChatResponseStructuredOutput(BaseModel):
         cls,
         raw_data: str | dict,
         config: StructuredOutputConfig,
-    ) -> tuple[dict | None, str | None]:
+    ) -> tuple[dict | None, str | None, bool]:
         """Parse and validate data against schema, handling nested JSON strings"""
         error = None
         parsed_data = None
+        post_processed = False
 
         try:
             # Step 1: Initial parsing if the input is a string
@@ -130,6 +195,16 @@ class ChatResponseStructuredOutput(BaseModel):
 
             # Step 2: Recursively normalize all nested JSON strings
             normalized_data = _coerce_json_strings(initial_data)
+
+            # Special case: if still a string, try to extract an embedded JSON block
+            if isinstance(normalized_data, str):
+                extracted = _extract_json_from_text(normalized_data)
+                if extracted is not None:
+                    normalized_data = extracted
+                    logger.warning(
+                        "Input failed to load on json during structured output parsing, "
+                        "but a valid json was extracted from text"
+                    )
 
             # Step 3: Get model class from config
             model_cls: type[PydanticBaseModel] = None
@@ -153,6 +228,17 @@ class ChatResponseStructuredOutput(BaseModel):
                 except Exception as e:
                     logger.exception(f"Model validation error: {e}")
                     error = str(e)
+                    # Attempt model-level post-processing fallback if available
+                    try:
+                        post_fn = getattr(model_cls, "schema_post_process_on_error", None)
+                        if callable(post_fn):
+                            fallback_data = post_fn(normalized_data)
+                            parsed_data_pyd = model_cls.model_validate(fallback_data)
+                            parsed_data = parsed_data_pyd.model_dump()
+                            error = None
+                            post_processed = True
+                    except Exception as post_e:
+                        logger.warning(f"Post-process fallback failed: {post_e}")
             else:
                 # No model class available, just return the normalized data
                 parsed_data = normalized_data
@@ -161,7 +247,7 @@ class ChatResponseStructuredOutput(BaseModel):
             logger.exception(f"Unexpected error during parsing/validation: {e}")
             error = str(e)
 
-        return parsed_data, error
+        return parsed_data, error, post_processed
 
     @classmethod
     def from_tool_call(
@@ -183,21 +269,24 @@ class ChatResponseStructuredOutput(BaseModel):
         if tool_call is not None:
             if tool_call.arguments:
                 raw_response_to_parse = tool_call.arguments  # Get the dict directly
-                parsed_data, error = cls._parse_and_validate(raw_response_to_parse, config)
+                parsed_data, error, post_processed = cls._parse_and_validate(raw_response_to_parse, config)
                 # In case of error, keep the  orginal data
                 raw_data = raw_response if error is not None else None
             else:
                 parsed_data = None
                 error = tool_call.parse_error
                 raw_data = raw_response
+                post_processed = False
         else:
             parsed_data = None
             error = "No tool call provided with `from_tool_call` method"
             raw_data = raw_response
+            post_processed = False
 
         return cls(
             config=config,
             structured_data=parsed_data,
             raw_data=raw_data,  # Keep original response regardless of parsing
             parse_error=error,
+            post_processed=post_processed,
         )

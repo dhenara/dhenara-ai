@@ -154,13 +154,16 @@ class GoogleMessageConverter(BaseMessageConverter):
         # Plain text (after handling special cases). Apply structured output if requested.
         if text is not None:
             if structured_output_config is not None:
-                parsed_data, error = ChatResponseStructuredOutput._parse_and_validate(text, structured_output_config)
+                parsed_data, error, post_processed = ChatResponseStructuredOutput._parse_and_validate(
+                    text, structured_output_config
+                )
 
                 structured_output = ChatResponseStructuredOutput(
                     config=structured_output_config,
                     structured_data=parsed_data,
                     raw_data=text,  # Keep original response regardless of parsing
                     parse_error=error,
+                    post_processed=post_processed,
                 )
 
                 return ChatResponseStructuredOutputContentItem(

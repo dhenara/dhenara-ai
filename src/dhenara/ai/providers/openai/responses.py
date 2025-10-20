@@ -159,6 +159,34 @@ class OpenAIResponses(OpenAIClientBase):
                 model_endpoint=self.model_endpoint,
             )
 
+        if self.config.structured_output:
+            # Structured output (Responses API): only attach text_format when NOT streaming.
+            # For streaming, we rely on text fallback parsing in StreamingManager.
+            if not self.config.streaming:
+                # NOTE: For Responses API, use `responses.parse` endpoint for structured output with pure pyd models
+                schema_pyd_model = self.config.structured_output.model_class_reference
+                args["text_format"] = schema_pyd_model
+            else:
+                # Structured output via text.format parameter
+                # Responses API uses text.format for structured output, not response_format
+                schema_dict = self.formatter.convert_structured_output(
+                    structured_output=self.config.structured_output,
+                    model_endpoint=self.model_endpoint,
+                )
+                # Extract json_schema from the Chat-style format
+                if schema_dict.get("type") == "json_schema" and "json_schema" in schema_dict:
+                    json_schema_info = schema_dict["json_schema"]
+                    args["text"] = {
+                        "format": {
+                            "type": "json_schema",
+                            "name": json_schema_info.get("name", "output"),
+                            "schema": json_schema_info.get("schema", {}),
+                            "strict": json_schema_info.get("strict", True),
+                        }
+                    }
+                    if "description" in json_schema_info:
+                        args["text"]["format"]["description"] = json_schema_info["description"]
+
         # Metadata: attach user id if available
         user = self.config.get_user()
         if user:
@@ -186,7 +214,12 @@ class OpenAIResponses(OpenAIClientBase):
         if self.model_endpoint.api.provider == AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
             raise ValueError("OpenAIResponses doens't supports AIModelAPIProviderEnum.MICROSOFT_AZURE_AI in Phase 1")
         else:
-            response = self._client.responses.create(**args)
+            # Use parse endpoint only for non-streaming structured output calls
+            if self.config.structured_output is not None and not self.config.streaming:
+                response = self._client.responses.parse(**args)
+            else:
+                # Fallback to create() (streaming-safe). Structured data will be parsed from text if requested.
+                response = self._client.responses.create(**args)
         return response
 
     async def do_api_call_async(
@@ -197,7 +230,11 @@ class OpenAIResponses(OpenAIClientBase):
         if self.model_endpoint.api.provider == AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
             raise ValueError("OpenAIResponses doens't supports AIModelAPIProviderEnum.MICROSOFT_AZURE_AI in Phase 1")
         else:
-            response = await self._client.responses.create(**args)
+            # Use parse endpoint only for non-streaming structured output calls
+            if self.config.structured_output is not None and not self.config.streaming:
+                response = await self._client.responses.parse(**args)
+            else:
+                response = await self._client.responses.create(**args)
         return response
 
     def do_streaming_api_call_sync(
@@ -208,6 +245,7 @@ class OpenAIResponses(OpenAIClientBase):
         if self.model_endpoint.api.provider == AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
             raise ValueError("OpenAIResponses doens't supports AIModelAPIProviderEnum.MICROSOFT_AZURE_AI in Phase 1")
         else:
+            # Never use parse() for streaming calls; rely on text-based fallback
             stream = self._client.responses.create(**args)
 
         return stream
@@ -220,6 +258,7 @@ class OpenAIResponses(OpenAIClientBase):
         if self.model_endpoint.api.provider == AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
             raise ValueError("OpenAIResponses doens't supports AIModelAPIProviderEnum.MICROSOFT_AZURE_AI in Phase 1")
         else:
+            # Never use parse() for streaming calls; rely on text-based fallback
             stream = await self._client.responses.create(**args)
 
         return stream
