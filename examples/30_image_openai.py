@@ -2,7 +2,7 @@ import base64
 import io
 
 from include.shared_config import create_artifact_config, generate_run_dirname
-from PIL import Image  # NOTE: You need to install 'Pillow' # pip install Pillow
+from PIL import Image  # NOTE: You need to install 'Pillow'
 
 from dhenara.ai import AIModelClient
 from dhenara.ai.types import AIModelAPI, AIModelAPIProviderEnum, AIModelCallConfig, AIModelEndpoint, ImageContentFormat
