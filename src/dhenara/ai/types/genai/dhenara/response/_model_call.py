@@ -10,6 +10,7 @@ from dhenara.ai.types.genai.dhenara.response import (
     ImageResponse,
     StreamingChatResponse,
 )
+from dhenara.ai.types.shared.api import SSEErrorResponse
 from dhenara.ai.types.shared.base import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -37,7 +38,7 @@ class AIModelCallResponse(BaseModel):
     async_stream_generator: (
         AsyncGenerator[
             tuple[
-                StreamingChatResponse | None,
+                StreamingChatResponse | SSEErrorResponse | None,
                 Union["AIModelCallResponse", None],
             ]
         ]
@@ -51,7 +52,7 @@ class AIModelCallResponse(BaseModel):
     sync_stream_generator: (
         Generator[
             tuple[
-                StreamingChatResponse | None,
+                StreamingChatResponse | SSEErrorResponse | None,
                 Union["AIModelCallResponse", None],
             ]
         ]

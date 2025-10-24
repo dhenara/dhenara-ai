@@ -215,7 +215,10 @@ class StreamingManager:
 
         if settings.ENABLE_USAGE_TRACKING or settings.ENABLE_COST_TRACKING:
             if not self.usage:
-                logger.fatal("Usage not set before completing streaming.")
+                logger.error(
+                    "Usage not set before completing streaming. "
+                    "Stream may have ended early due to SDK incompatibility or API error."
+                )
                 return (None, None)
 
             if settings.ENABLE_COST_TRACKING:

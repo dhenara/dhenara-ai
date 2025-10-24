@@ -53,8 +53,7 @@ class SSEResponse(BaseModel, Generic[T]):
         description="Event data payload",
     )
     id: str | None = Field(
-        default=lambda: None,
-        # default_factory=lambda: str(uuid4()),
+        default=None,
         description="Unique event identifier",
     )
     retry: int | None = Field(
