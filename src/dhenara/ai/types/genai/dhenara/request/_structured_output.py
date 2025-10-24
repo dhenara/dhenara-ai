@@ -38,6 +38,16 @@ class StructuredOutputConfig(BaseModel):
         """Get the model class for Python operations"""
         return self.model_class_reference
 
+    # Controls whether the parser should attempt schema-level post-processing on validation error.
+    allow_post_process_on_error: bool = Field(
+        default=False, # Do not set, as this has unexpected side effects
+        description=(
+            "If Enabled, calls schema_post_process_on_error fallback during structured output parsing. "
+            #"Use this when you want raw provider output to be preserved and handle coercion outside."
+            "NOTE: Do NOT set this to True unless you have a specific need, as it may lead to unexpected behavior."
+        ),
+    )
+
     # Override model_dump to handle the model_class field
     def model_dump(self, **kwargs):
         # Get the default serialization
@@ -45,4 +55,8 @@ class StructuredOutputConfig(BaseModel):
         # Remove model_class if it's in the output
         if "model_class_reference" in data:
             del data["model_class_reference"]
+
+        # This flag is a local parsing behavior and should not be serialized out to providers
+        if "allow_post_process_on_error" in data:
+            del data["allow_post_process_on_error"]
         return data

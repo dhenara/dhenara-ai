@@ -39,21 +39,21 @@ def _coerce_json_strings(obj: Any) -> Any:
         return obj
 
 
-def _extract_json_from_text(text: str) -> Any | None:
-    """Best-effort extraction of a JSON object/array from a text blob.
+def _extract_json_objects_from_text(text: str) -> list[Any]:
+    """Extract one or more JSON objects/arrays from a text blob.
 
-    Handles common patterns like markdown code fences (```json ... ```),
-    and free-form text that embeds a single top-level JSON object or array.
-    Returns parsed Python object on success, else None.
+    Robust to streaming artifacts where multiple JSON payloads are concatenated
+    (e.g., "}{"), and to markdown code fences. Returns a list of parsed objects
+    in the order they appear. If none are found, returns an empty list.
     """
+    results: list[Any] = []
     if not isinstance(text, str):
-        return None
+        return results
 
     s = text.strip()
 
     # Strip markdown fences: ```json\n{...}\n```
     if s.startswith("```"):
-        # Remove the first fence line
         nl = s.find("\n")
         if nl != -1:
             body = s[nl + 1 :]
@@ -61,42 +61,45 @@ def _extract_json_from_text(text: str) -> Any | None:
             if fence_end != -1:
                 s = body[:fence_end].strip()
 
-    # If now looks like plain JSON, try to parse
+    # Fast path: try whole string first
     if (s.startswith("{") and s.endswith("}")) or (s.startswith("[") and s.endswith("]")):
         try:
-            return _coerce_json_strings(json.loads(s))
+            obj = _coerce_json_strings(json.loads(s))
+            results.append(obj)
+            return results
         except Exception:
             pass
 
-    # Attempt to locate a top-level JSON object by brace matching
-    def _scan_balanced(open_char: str, close_char: str) -> Any | None:
-        start = s.find(open_char)
-        if start == -1:
-            return None
-        depth = 0
-        for i in range(start, len(s)):
-            ch = s[i]
-            if ch == open_char:
-                depth += 1
-            elif ch == close_char:
-                depth -= 1
-                if depth == 0:
-                    candidate = s[start : i + 1]
-                    try:
-                        return _coerce_json_strings(json.loads(candidate))
-                    except Exception:
-                        return None
-        return None
+    # General scan: collect all balanced objects and arrays
+    def _collect_balanced(open_char: str, close_char: str):
+        start_idx = 0
+        while True:
+            start = s.find(open_char, start_idx)
+            if start == -1:
+                break
+            depth = 0
+            for i in range(start, len(s)):
+                ch = s[i]
+                if ch == open_char:
+                    depth += 1
+                elif ch == close_char:
+                    depth -= 1
+                    if depth == 0:
+                        candidate = s[start : i + 1]
+                        try:
+                            parsed = _coerce_json_strings(json.loads(candidate))
+                            results.append(parsed)
+                        except Exception:
+                            pass
+                        start_idx = i + 1
+                        break
+            else:
+                # Unbalanced - stop
+                break
 
-    # Try object first, then array
-    parsed = _scan_balanced("{", "}")
-    if parsed is not None:
-        return parsed
-    parsed = _scan_balanced("[", "]")
-    if parsed is not None:
-        return parsed
-
-    return None
+    _collect_balanced("{", "}")
+    _collect_balanced("[", "]")
+    return results
 
 
 class ChatResponseStructuredOutput(BaseModel):
@@ -190,20 +193,20 @@ class ChatResponseStructuredOutput(BaseModel):
                 try:
                     initial_data = json.loads(raw_data)
                 except json.JSONDecodeError:
-                    # Not valid JSON at top level, keep as string for model validation
+                    # Not valid JSON at top level, keep as string for extraction/validation
                     initial_data = raw_data
 
             # Step 2: Recursively normalize all nested JSON strings
             normalized_data = _coerce_json_strings(initial_data)
 
-            # Special case: if still a string, try to extract an embedded JSON block
+            # Special case: if still a string, try to extract embedded JSON blocks.
+            # If multiple are found (e.g., streaming concatenation), prefer the last.
             if isinstance(normalized_data, str):
-                extracted = _extract_json_from_text(normalized_data)
-                if extracted is not None:
-                    normalized_data = extracted
+                extracted_list = _extract_json_objects_from_text(normalized_data)
+                if extracted_list:
+                    normalized_data = extracted_list[-1]
                     logger.warning(
-                        "Input failed to load on json during structured output parsing, "
-                        "but a valid json was extracted from text"
+                        "Structured output text contained multiple JSON payloads; using the last parsed object"
                     )
 
             # Step 3: Get model class from config
@@ -228,17 +231,19 @@ class ChatResponseStructuredOutput(BaseModel):
                 except Exception as e:
                     logger.exception(f"Model validation error: {e}")
                     error = str(e)
-                    # Attempt model-level post-processing fallback if available
-                    try:
-                        post_fn = getattr(model_cls, "schema_post_process_on_error", None)
-                        if callable(post_fn):
-                            fallback_data = post_fn(normalized_data)
-                            parsed_data_pyd = model_cls.model_validate(fallback_data)
-                            parsed_data = parsed_data_pyd.model_dump()
-                            error = None
-                            post_processed = True
-                    except Exception as post_e:
-                        logger.warning(f"Post-process fallback failed: {post_e}")
+                    # Attempt model-level post-processing fallback if allowed
+                    allow_post =config.allow_post_process_on_error
+                    if allow_post:
+                        try:
+                            post_fn = getattr(model_cls, "schema_post_process_on_error", None)
+                            if callable(post_fn):
+                                fallback_data = post_fn(normalized_data)
+                                parsed_data_pyd = model_cls.model_validate(fallback_data)
+                                parsed_data = parsed_data_pyd.model_dump()
+                                error = None
+                                post_processed = True
+                        except Exception as post_e:
+                            logger.warning(f"Post-process fallback failed: {post_e}")
             else:
                 # No model class available, just return the normalized data
                 parsed_data = normalized_data
@@ -270,8 +275,8 @@ class ChatResponseStructuredOutput(BaseModel):
             if tool_call.arguments:
                 raw_response_to_parse = tool_call.arguments  # Get the dict directly
                 parsed_data, error, post_processed = cls._parse_and_validate(raw_response_to_parse, config)
-                # In case of error, keep the  orginal data
-                raw_data = raw_response if error is not None else None
+                # Always keep the original raw response for downstream use
+                raw_data = raw_response
             else:
                 parsed_data = None
                 error = tool_call.parse_error
