@@ -58,34 +58,41 @@ class AnthropicMessageConverter(BaseMessageConverter):
     ) -> list[ChatResponseContentItem]:
         if content_block.type == "text":
             text_value = getattr(content_block, "text", "")
-            if structured_output_config is not None:
-                # Parse structured output from plain text and retain original part for round-trip
-                parsed_data, error, post_processed = ChatResponseStructuredOutput._parse_and_validate(
-                    text_value,
-                    structured_output_config,
-                )
-                structured_output = ChatResponseStructuredOutput(
-                    config=structured_output_config,
-                    structured_data=parsed_data,
-                    raw_data=text_value,
-                    parse_error=error,
-                    post_processed=post_processed,
-                )
-                return [
-                    ChatResponseStructuredOutputContentItem(
-                        index=index,
-                        role=role,
-                        structured_output=structured_output,
-                        message_contents=[
-                            ChatMessageContentPart(
-                                type="text",
-                                text=text_value,
-                                annotations=None,
-                                metadata=None,
-                            )
-                        ],
-                    )
-                ]
+
+            # UPDATE: Anthropic does NOT return structured output via plain text. Only tool_use blocks carry
+            # structured payloads when we define a tool for structured output.
+            # Therefore, always treat text as plain text regardless of structured_output_config.
+            #
+            # OLD CODE --- IGNORE ---
+            # if structured_output_config is not None:
+            #     # Parse structured output from plain text and retain original part for round-trip
+            #     parsed_data, error, post_processed = ChatResponseStructuredOutput._parse_and_validate(
+            #         text_value,
+            #         structured_output_config,
+            #     )
+            #     structured_output = ChatResponseStructuredOutput(
+            #         config=structured_output_config,
+            #         structured_data=parsed_data,
+            #         raw_data=text_value,
+            #         parse_error=error,
+            #         post_processed=post_processed,
+            #     )
+            #     return [
+            #         ChatResponseStructuredOutputContentItem(
+            #             index=index,
+            #             role=role,
+            #             structured_output=structured_output,
+            #             message_contents=[
+            #                 ChatMessageContentPart(
+            #                     type="text",
+            #                     text=text_value,
+            #                     annotations=None,
+            #                     metadata=None,
+            #                 )
+            #             ],
+            #         )
+            #     ]
+
             return [
                 ChatResponseTextContentItem(
                     index=index,

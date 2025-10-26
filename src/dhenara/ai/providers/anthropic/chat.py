@@ -134,10 +134,10 @@ class AnthropicChat(AnthropicClientBase):
             )
             chat_args["tools"].append(structured_tool)
 
-            # Enforce this tool
+            # Enforce this tool (when thinking is not enabled; otherwise fall back to auto per API constraint)
             if max_reasoning_tokens is not None:
                 # TODO_FUTURE: Revisit this later if API improves in future
-                # Currently when enforced tool use in thiking mode,  API flags error as
+                # Currently when enforced tool use in thinking mode,  API flags error as
                 # 'Thinking may not be enabled when tool_choice forces tool use.'
                 # The irony is that they don't have a structured-output mode either
                 chat_args["tool_choice"] = {"type": "auto"}
@@ -151,7 +151,7 @@ class AnthropicChat(AnthropicClientBase):
             _tools = chat_args.get("tools", [])
             if max_reasoning_tokens is not None and _tools:
                 # TODO_FUTURE: Revisit this later if API improves in future
-                # Currently when enforced tool use in thiking mode,  API flags error as
+                # Currently when enforced tool use in thinking mode,  API flags error as
                 # 'Thinking may not be enabled when tool_choice forces tool use.'
                 # The irony is that they don't have a structured-output mode either
                 chat_args["tool_choice"] = {"type": "auto"}
