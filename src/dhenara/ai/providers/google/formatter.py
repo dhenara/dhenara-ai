@@ -35,6 +35,14 @@ class GoogleFormatter(BaseFormatter):
         PromptMessageRoleEnum.SYSTEM: "system",  # NOTE:  Don't care as system instructions are taken care separately
     }
 
+    @staticmethod
+    def _normalize_tool_response(payload: Any) -> dict[str, Any]:
+        """Ensure tool responses satisfy Google's expectation of dict payloads."""
+
+        if isinstance(payload, dict):
+            return payload
+        return {"result": payload}
+
     @classmethod
     def convert_prompt(
         cls,
@@ -135,15 +143,88 @@ class GoogleFormatter(BaseFormatter):
 
     # Tools & Structured output
     @classmethod
+    def _resolve_refs(cls, schema, root_schema):
+        """Recursively resolve $ref pointers in schema"""
+        if isinstance(schema, dict):
+            # If this is a $ref, replace it with the referenced definition
+            if "$ref" in schema:
+                ref_path = schema["$ref"]
+                # Handle #/$defs/DefinitionName format
+                if ref_path.startswith("#/"):
+                    parts = ref_path[2:].split("/")
+                    ref_target = root_schema
+                    for part in parts:
+                        ref_target = ref_target.get(part, {})
+                    # Return the resolved definition (recursively resolve it too)
+                    return cls._resolve_refs(ref_target.copy(), root_schema)
+                return schema
+
+            # Recursively resolve refs in all nested values
+            resolved = {}
+            for key, value in schema.items():
+                resolved[key] = cls._resolve_refs(value, root_schema)
+            return resolved
+
+        elif isinstance(schema, list):
+            return [cls._resolve_refs(item, root_schema) for item in schema]
+
+        return schema
+
+    @classmethod
+    def _clean_schema_for_google(cls, schema):
+        """Remove Google-incompatible fields from schema"""
+        if isinstance(schema, dict):
+            # Remove additionalProperties: false
+            if "additionalProperties" in schema and schema["additionalProperties"] is False:
+                del schema["additionalProperties"]
+
+            # Remove empty examples lists
+            if "examples" in schema and not schema["examples"]:
+                del schema["examples"]
+
+            # Remove $defs since all refs have been resolved
+            if "$defs" in schema:
+                del schema["$defs"]
+
+            # Process nested schemas
+            for _key, value in list(schema.items()):
+                if isinstance(value, (dict, list)):
+                    cls._clean_schema_for_google(value)
+
+        elif isinstance(schema, list):
+            for item in schema:
+                if isinstance(item, (dict, list)):
+                    cls._clean_schema_for_google(item)
+
+        return schema
+
+    @classmethod
     def convert_function_parameter(
         cls,
         param: FunctionParameter,
+        root_schema: dict | None = None,
         model_endpoint: AIModelEndpoint | None = None,
     ) -> dict[str, Any]:
-        """Convert FunctionParameter to Google format"""
-        result = param.model_dump(
-            exclude={"required", "allowed_values", "default"},
-        )
+        """Convert FunctionParameter to Google format (simple JSON Schema).
+
+        Keep this minimal: only emit standard JSON Schema fields the Gemini SDK expects.
+        We inline complex shapes upstream (runner) so no $ref resolution here.
+        """
+        result: dict[str, Any] = {
+            "type": param.type,
+        }
+        if getattr(param, "description", None):
+            result["description"] = param.description
+        # Array item schema (already inlined by runner if it originated from a $ref)
+        if getattr(param, "items", None):
+            result["items"] = param.items
+        # Enumerations (optional)
+        if getattr(param, "allowed_values", None):
+            result["enum"] = param.allowed_values
+        # Default (optional)
+        if getattr(param, "default", None) is not None:
+            result["default"] = param.default
+
         return result
 
     @classmethod
@@ -152,21 +233,22 @@ class GoogleFormatter(BaseFormatter):
         params: FunctionParameters,
         model_endpoint: AIModelEndpoint | None = None,
     ) -> dict[str, Any]:
-        """Convert FunctionParameters to Google format"""
-        # Create a new dictionary with transformed properties
+        """Convert FunctionParameters to Google format (simple JSON Schema)."""
         result = {
-            "type": params.type,
-            "properties": {name: cls.convert_function_parameter(param) for name, param in params.properties.items()},
+            "type": "object",
+            "properties": {
+                name: cls.convert_function_parameter(param)
+                for name, param in params.properties.items()
+            },
         }
-
-        # Auto-build the required list based on parameters marked as required
+        # Include required only when non-empty
         required_params = [name for name, param in params.properties.items() if param.required]
-
-        # Only include required field if there are required parameters
         if required_params:
             result["required"] = required_params
-        elif params.required:  # If manually specified required array exists
-            result["required"] = params.required
+        elif params.required:
+            # Fallback to any explicitly provided list
+            if params.required:
+                result["required"] = list(params.required)
 
         return result
 
@@ -226,34 +308,12 @@ class GoogleFormatter(BaseFormatter):
         model_endpoint: AIModelEndpoint | None = None,
     ) -> dict[str, Any]:
         """Convert StructuredOutputConfig to Google format"""
-        # return structured_output.output_schema
-
-        def _clean_schema_for_api(schema):
-            """Remove `additionalProperties` in nested list/dict"""
-            if isinstance(schema, dict):
-                # Remove additionalProperties: false
-                if "additionalProperties" in schema and schema["additionalProperties"] is False:
-                    del schema["additionalProperties"]
-
-                # Remove empty examples lists
-                if "examples" in schema and not schema["examples"]:
-                    del schema["examples"]
-
-                # Process nested schemas
-                for _key, value in list(schema.items()):
-                    if isinstance(value, (dict, list)):
-                        _clean_schema_for_api(value)
-
-            elif isinstance(schema, list):
-                for item in schema:
-                    if isinstance(item, (dict, list)):
-                        _clean_schema_for_api(item)
-
-            return schema
-
         # Get the original JSON schema from Pydantic or dict
         _schema = structured_output.get_schema()
-        return _clean_schema_for_api(_schema)
+        # First resolve all $ref pointers
+        _schema = cls._resolve_refs(_schema, _schema)
+        # Then clean up Google-incompatible fields
+        return cls._clean_schema_for_google(_schema)
 
     @classmethod
     def convert_dai_message_item_to_provider(
@@ -286,13 +346,14 @@ class GoogleFormatter(BaseFormatter):
         if isinstance(message_item, ToolCallResult):
             # Google/Gemini expects function responses in user role with function_response part:
             # {"role": "user", "parts": [{"function_response": {"name": "...", "response": {...}}}]}
+            response_payload = cls._normalize_tool_response(message_item.as_json())
             return {
                 "role": "user",
                 "parts": [
                     {
                         "function_response": {
                             "name": message_item.name or "unknown_function",
-                            "response": message_item.as_json(),
+                            "response": response_payload,
                         }
                     }
                 ],
@@ -306,7 +367,7 @@ class GoogleFormatter(BaseFormatter):
                     {
                         "function_response": {
                             "name": result.name or "unknown_function",
-                            "response": result.as_json(),
+                            "response": cls._normalize_tool_response(result.as_json()),
                         }
                     }
                     for result in message_item.results

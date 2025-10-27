@@ -107,17 +107,16 @@ class GoogleAIChat(GoogleAIClientBase):
         if self.config.tools:
             # NOTE: Google supports extra tools other than fns, so gather all fns together into function_declarations
             # --  _tools = [tool.to_google_format() for tool in self.config.tools]
+            function_declarations = [
+                self.formatter.convert_function_definition(
+                    func_def=tool.function,
+                    model_endpoint=self.model_endpoint,
+                )
+                for tool in self.config.tools
+            ]
             _tools = [
                 Tool(
-                    **{
-                        "function_declarations": [
-                            self.formatter.convert_function_definition(  # A bit wiered here
-                                func_def=tool.function,
-                                model_endpoint=self.model_endpoint,
-                            )
-                            for tool in self.config.tools
-                        ],
-                    }
+                    function_declarations=function_declarations,
                 )
             ]
             generate_config.tools = _tools
