@@ -335,12 +335,18 @@ class AIModelProviderClientBase(ABC):
             filename="dai_request.json",
         )
 
-        api_call_params = self.get_api_call_params(
+        try:
+            api_call_params = self.get_api_call_params(
             prompt=prompt,
             context=context,
             instructions=instructions,
             messages=messages,
         )
+        except Exception as e:
+            logger.exception(f"Error in get_api_call_params: {e}")
+            api_call_status = self._create_error_status(str(e))
+            self._capture_python_logs(when="error")
+            return AIModelCallResponse(status=api_call_status)
 
         logger.debug(f"generate_response: api_call_params: {api_call_params}")
 
@@ -432,14 +438,20 @@ class AIModelProviderClientBase(ABC):
             filename="dai_request.json",
         )
 
-        api_call_params = self.get_api_call_params(
-            prompt=prompt,
-            context=context,
-            instructions=instructions,
-            messages=messages,
-        )
+        try:
+            api_call_params = self.get_api_call_params(
+                prompt=prompt,
+                context=context,
+                instructions=instructions,
+                messages=messages,
+            )
+        except Exception as e:
+            logger.exception(f"Error in get_api_call_params: {e}")
+            api_call_status = self._create_error_status(str(e))
+            self._capture_python_logs(when="error")
+            return AIModelCallResponse(status=api_call_status)
 
-        logger.debug(f"generate_response: api_call_params: {api_call_params}")
+        logger.debug(f"generate_response_async: api_call_params: {api_call_params}")
 
         # Capture provider request format (already in provider-specific format)
         self._capture_artifacts(
