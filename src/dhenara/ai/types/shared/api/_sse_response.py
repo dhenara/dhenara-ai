@@ -41,7 +41,7 @@ class SSEErrorData(BaseModel):
     )
 
 
-class SSEResponse(BaseModel, Generic[T]):
+class SSEResponse(BaseModel, Generic[T]):  # noqa: UP046
     """Generic SSE response model supporting different data types"""
 
     event: SSEEventType = Field(

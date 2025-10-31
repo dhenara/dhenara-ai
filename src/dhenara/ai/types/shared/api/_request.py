@@ -27,7 +27,7 @@ class ApiRequestActionTypeEnum(BaseEnum):
 T = TypeVar("T", bound=BaseModel)
 
 
-class ApiRequest(BaseModel, Generic[T]):
+class ApiRequest(BaseModel, Generic[T]):  # noqa: UP046
     """
     Base arequest model for generic operations.
 

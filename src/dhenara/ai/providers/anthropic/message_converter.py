@@ -192,9 +192,13 @@ class AnthropicMessageConverter(BaseMessageConverter):
             if isinstance(content, ChatResponseTextContentItem):
                 # Replay message_contents if available for better round-tripping
                 if content.message_contents:
-                    for part in content.message_contents:
-                        if part.type == "text" and part.text:
-                            content_blocks.append(TextBlockParam(type="text", text=part.text))
+                    content_blocks.extend(
+                        [
+                            TextBlockParam(type="text", text=part.text)
+                            for part in content.message_contents
+                            if part.type == "text" and part.text
+                        ]
+                    )
                 elif content.text:
                     content_blocks.append(TextBlockParam(type="text", text=content.text))
             elif isinstance(content, ChatResponseReasoningContentItem):
@@ -243,9 +247,13 @@ class AnthropicMessageConverter(BaseMessageConverter):
             elif isinstance(content, ChatResponseStructuredOutputContentItem):
                 # Prefer replaying message_contents for round-trip fidelity
                 if content.message_contents:
-                    for part in content.message_contents:
-                        if part.type == "text" and part.text:
-                            content_blocks.append(TextBlockParam(type="text", text=part.text))
+                    content_blocks.extend(
+                        [
+                            TextBlockParam(type="text", text=part.text)
+                            for part in content.message_contents
+                            if part.type == "text" and part.text
+                        ]
+                    )
                 else:
                     # Fallback: serialize structured_data as JSON text
                     output = content.structured_output

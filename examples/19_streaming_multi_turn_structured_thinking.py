@@ -272,7 +272,7 @@ def run_streaming_multi_turn_structured_thinking():
     # Turn 4: Packing list with assumptions
     print("\n🔄 Turn 4: PackingList\n")
     t4_prompt = (
-        f"Create a PackingList for a {plan.days}-day trip to {plan.destination} focused on {', '.join(plan.interests)}. "
+        f"Create a PackingList for a {plan.days}-day trip to {plan.destination} focused on {', '.join(plan.interests)}."
         "Assume mild spring weather. Include weather-related assumptions in the 'assumptions' field. "
         "Only output JSON matching the schema."
     )

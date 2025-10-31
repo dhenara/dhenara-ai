@@ -164,7 +164,8 @@ class OpenAIResponses(OpenAIClientBase):
 
             # # Structured output for responses API had buidl in pyd support along with a dedicated parsing via
             # `response = self._client.responses.parse(**args)`
-            # But this will FAIL if the pyd mdoel is complex or has nested models or even defined outside of the current module it seems.
+            # But this will FAIL if the pyd mdoel is complex or has nested models or even defined outside of
+            # the current module it seems.
             # Thus, we always use JSON schema via text.format instead.
             #
             #
@@ -219,7 +220,8 @@ class OpenAIResponses(OpenAIClientBase):
         if self.model_endpoint.api.provider == AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
             raise ValueError("OpenAIResponses doens't supports AIModelAPIProviderEnum.MICROSOFT_AZURE_AI in Phase 1")
         else:
-            # Use create() for both streaming and non-streaming. We always pass text.format when structured output is requested.
+            # Use create() for both streaming and non-streaming.
+            # We always pass text.format when structured output is requested.
             response = self._client.responses.create(**args)
         return response
 
@@ -231,7 +233,8 @@ class OpenAIResponses(OpenAIClientBase):
         if self.model_endpoint.api.provider == AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
             raise ValueError("OpenAIResponses doens't supports AIModelAPIProviderEnum.MICROSOFT_AZURE_AI in Phase 1")
         else:
-            # Use create() for both streaming and non-streaming. We always pass text.format when structured output is requested.
+            # Use create() for both streaming and non-streaming.
+            # We always pass text.format when structured output is requested.
             response = await self._client.responses.create(**args)
         return response
 

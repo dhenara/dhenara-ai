@@ -73,7 +73,7 @@ T = TypeVar("T", bound=BaseModel)
 
 
 # -----------------------------------------------------------------------------
-class ApiResponse(BaseModel, Generic[T]):
+class ApiResponse(BaseModel, Generic[T]):  # noqa: UP046
     status: ApiResponseStatus
     messages: list[ApiResponseMessage] = Field(default_factory=list)
     data: T | dict[str, Any] | None = None
