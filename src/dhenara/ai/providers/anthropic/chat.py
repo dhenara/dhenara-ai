@@ -156,8 +156,6 @@ class AnthropicChat(AnthropicClientBase):
                 # The irony is that they don't have a structured-output mode either
                 chat_args["tool_choice"] = {"type": "auto"}
 
-
-
         return {"chat_args": chat_args}
 
     def do_api_call_sync(

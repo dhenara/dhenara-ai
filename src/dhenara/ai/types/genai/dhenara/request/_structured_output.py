@@ -40,10 +40,10 @@ class StructuredOutputConfig(BaseModel):
 
     # Controls whether the parser should attempt schema-level post-processing on validation error.
     allow_post_process_on_error: bool = Field(
-        default=False, # Do not set, as this has unexpected side effects
+        default=False,  # Do not set, as this has unexpected side effects
         description=(
             "If Enabled, calls schema_post_process_on_error fallback during structured output parsing. "
-            #"Use this when you want raw provider output to be preserved and handle coercion outside."
+            # "Use this when you want raw provider output to be preserved and handle coercion outside."
             "NOTE: Do NOT set this to True unless you have a specific need, as it may lead to unexpected behavior."
         ),
     )

@@ -22,7 +22,7 @@ import json
 import math
 import sys
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional
+from typing import Literal
 
 from include.console_renderer import StreamingRenderer, render_usage
 from include.shared_config import all_endpoints, create_artifact_config, generate_run_dirname, load_resource_config
@@ -32,7 +32,6 @@ from dhenara.ai import AIModelClient
 from dhenara.ai.types import AIModelCallConfig, AIModelEndpoint
 from dhenara.ai.types.genai.dhenara.request import MessageItem, Prompt
 
-
 # ------------------------
 # Pydantic schemas per turn
 # ------------------------
@@ -41,16 +40,16 @@ from dhenara.ai.types.genai.dhenara.request import MessageItem, Prompt
 class TravelPlan(BaseModel):
     destination: str
     days: int = Field(ge=1, le=14)
-    interests: List[str] = Field(min_length=1)
+    interests: list[str] = Field(min_length=1)
 
 
 class ItineraryDay(BaseModel):
     day: int = Field(ge=1)
-    activities: List[str] = Field(min_length=1)
+    activities: list[str] = Field(min_length=1)
 
 
 class Itinerary(BaseModel):
-    days: List[ItineraryDay] = Field(min_length=1)
+    days: list[ItineraryDay] = Field(min_length=1)
 
 
 class BudgetItem(BaseModel):
@@ -60,12 +59,12 @@ class BudgetItem(BaseModel):
 
 class Budget(BaseModel):
     currency: str
-    items: List[BudgetItem] = Field(min_length=1)
+    items: list[BudgetItem] = Field(min_length=1)
     total: float = Field(ge=0)
 
 
 class PackingList(BaseModel):
-    items: List[str] = Field(min_length=1)
+    items: list[str] = Field(min_length=1)
     assumptions: str
 
 
@@ -76,7 +75,7 @@ class RiskItem(BaseModel):
 
 
 class RiskAssessment(BaseModel):
-    risks: List[RiskItem] = Field(min_length=1)
+    risks: list[RiskItem] = Field(min_length=1)
 
 
 # ------------------------
@@ -86,11 +85,11 @@ class RiskAssessment(BaseModel):
 
 @dataclass
 class TestState:
-    plan: Optional[TravelPlan] = None
-    itinerary: Optional[Itinerary] = None
-    budget: Optional[Budget] = None
-    packing: Optional[PackingList] = None
-    risks: Optional[RiskAssessment] = None
+    plan: TravelPlan | None = None
+    itinerary: Itinerary | None = None
+    budget: Budget | None = None
+    packing: PackingList | None = None
+    risks: RiskAssessment | None = None
     errors: list[str] = field(default_factory=list)
 
     @property

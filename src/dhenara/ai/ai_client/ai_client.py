@@ -108,7 +108,7 @@ class AIModelClient:
         for attempt in range(self.config.retries):
             try:
                 return self._execute_with_timeout_sync(*args, **kwargs)
-            except TimeoutError as e:  # noqa: PERF203 # TODO
+            except TimeoutError as e:
                 last_exception = e
                 if attempt == self.config.retries - 1:
                     break
@@ -126,7 +126,7 @@ class AIModelClient:
         for attempt in range(self.config.retries):
             try:
                 return await self._execute_with_timeout_async(*args, **kwargs)
-            except asyncio.TimeoutError as e:  # noqa: PERF203 # TODO
+            except TimeoutError as e:  # TODO
                 last_exception = e
                 if attempt == self.config.retries - 1:
                     break

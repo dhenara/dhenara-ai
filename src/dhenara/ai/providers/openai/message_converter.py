@@ -214,7 +214,7 @@ class OpenAIMessageConverter(BaseMessageConverter):
                 structured_output = ChatResponseStructuredOutput(
                     config=structured_output_config,
                     structured_data=parsed_data,
-                    raw_data=text_joined, # Preserve combined text for error analysis
+                    raw_data=text_joined,  # Preserve combined text for error analysis
                     parse_error=error,
                     post_processed=post_processed,
                 )
@@ -384,7 +384,7 @@ class OpenAIMessageConverter(BaseMessageConverter):
 
                 else:
                     logger.warning(f"OpenAI: unsupported content item type: {type(item).__name__}")
-            except Exception as e:  # noqa: PERF203
+            except Exception as e:
                 logger.error(f"OpenAI: Validation error for item; {e}")
                 raise e
 

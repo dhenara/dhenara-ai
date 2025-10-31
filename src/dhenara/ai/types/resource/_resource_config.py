@@ -194,7 +194,7 @@ class ResourceConfig(BaseModel):
                 # If validation passes, add the endpint
                 self.model_apis.append(new_api)
 
-            except Exception as e:  # noqa: PERF203
+            except Exception as e:
                 logger.exception(f"Error initializing API for provider '{provider_str}': {e}")
 
     def _initialize_endpoints(self) -> None:

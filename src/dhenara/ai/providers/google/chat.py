@@ -348,7 +348,7 @@ class GoogleAIChat(GoogleAIClientBase):
             # If mapping-like, switch to dict getter
             if not hasattr(delta, "__dict__") and hasattr(delta, "get"):
 
-                def _get_attr(obj, attr, default=None):  # type: ignore[no-redef]
+                def _get_attr(obj, attr, default=None):
                     return obj.get(attr, default)
 
             # Reasoning/thought summary

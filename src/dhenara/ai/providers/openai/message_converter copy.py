@@ -380,7 +380,7 @@ class OpenAIMessageConverter(BaseMessageConverter):
 
                 else:
                     logger.warning(f"OpenAI: unsupported content item type: {type(item).__name__}")
-            except Exception as e:  # noqa: PERF203
+            except Exception as e:
                 logger.error(f"OpenAI: Validation error for item; {e}")
                 raise e
 

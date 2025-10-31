@@ -54,7 +54,7 @@ class ToolCallResult(BaseModel):
     def as_json(self) -> Any:
         """Render the output as a JSON-compatible object suitable for providers expecting dict/list."""
 
-        if isinstance(self.output, (dict, list)):  # type: ignore[arg-type]
+        if isinstance(self.output, (dict, list)):
             return self.output
         if isinstance(self.output, str):
             return {"result": self.output}

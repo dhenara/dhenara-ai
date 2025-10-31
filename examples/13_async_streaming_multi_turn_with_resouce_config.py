@@ -122,7 +122,7 @@ async def stream_turn(
     return node
 
 
-async def main():  # pragma: no cover - example script
+async def main():
     rc = build_resource_config()
     history: list[ConversationNode] = []
     queries = [

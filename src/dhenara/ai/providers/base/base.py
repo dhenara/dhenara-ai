@@ -197,7 +197,7 @@ class AIModelProviderClientBase(ABC):
                                 "message": record.getMessage(),
                             }
                         )
-                    except Exception:  # pragma: no cover - logging should not break flow
+                    except Exception:
                         pass
 
             buf: list[dict] = []
@@ -337,11 +337,11 @@ class AIModelProviderClientBase(ABC):
 
         try:
             api_call_params = self.get_api_call_params(
-            prompt=prompt,
-            context=context,
-            instructions=instructions,
-            messages=messages,
-        )
+                prompt=prompt,
+                context=context,
+                instructions=instructions,
+                messages=messages,
+            )
         except Exception as e:
             logger.exception(f"Error in get_api_call_params: {e}")
             api_call_status = self._create_error_status(str(e))

@@ -319,7 +319,7 @@ so the issue is likely in how you're handling these tokens after receiving them 
         self,
         stream_generator,
         model_endpoint: AIModelEndpoint,
-    ) -> Generator[tuple[StreamingChatResponse | SSEErrorResponse, AIModelCallResponse | None], None, None]:
+    ) -> Generator[tuple[StreamingChatResponse | SSEErrorResponse, AIModelCallResponse | None]]:
         """Handle synchronous streaming response"""
 
         try:
@@ -354,7 +354,7 @@ so the issue is likely in how you're handling these tokens after receiving them 
         self,
         stream_generator,
         model_endpoint: AIModelEndpoint,
-    ) -> AsyncGenerator[tuple[StreamingChatResponse | SSEErrorResponse, AIModelCallResponse | None], None]:
+    ) -> AsyncGenerator[tuple[StreamingChatResponse | SSEErrorResponse, AIModelCallResponse | None]]:
         """Handle asynchronous streaming response"""
 
         try:

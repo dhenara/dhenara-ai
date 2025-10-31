@@ -232,7 +232,7 @@ class ChatResponseStructuredOutput(BaseModel):
                     logger.exception(f"Model validation error: {e}")
                     error = str(e)
                     # Attempt model-level post-processing fallback if allowed
-                    allow_post =config.allow_post_process_on_error
+                    allow_post = config.allow_post_process_on_error
                     if allow_post:
                         try:
                             post_fn = getattr(model_cls, "schema_post_process_on_error", None)

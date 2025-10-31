@@ -236,10 +236,7 @@ class GoogleFormatter(BaseFormatter):
         """Convert FunctionParameters to Google format (simple JSON Schema)."""
         result = {
             "type": "object",
-            "properties": {
-                name: cls.convert_function_parameter(param)
-                for name, param in params.properties.items()
-            },
+            "properties": {name: cls.convert_function_parameter(param) for name, param in params.properties.items()},
         }
         # Include required only when non-empty
         required_params = [name for name, param in params.properties.items() if param.required]

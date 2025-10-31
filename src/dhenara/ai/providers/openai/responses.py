@@ -172,7 +172,6 @@ class OpenAIResponses(OpenAIClientBase):
             #     schema_pyd_model = self.config.structured_output.model_class_reference
             #     args["text_format"] = schema_pyd_model
 
-
             # Always use JSON schema via text.format for structured output.
             # This avoids SDK-specific pydantic integration differences and lets us enforce strict schemas.
             schema_dict = self.formatter.convert_structured_output(
