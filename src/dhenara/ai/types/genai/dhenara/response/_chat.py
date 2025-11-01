@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import Field
@@ -62,6 +62,7 @@ class ChatResponse(BaseModel):
     Contains the response content, usage statistics, and provider-specific metadata
     """
 
+    type: Literal["chat_response"] = "chat_response"
     model: str
     provider: AIModelProviderEnum
     api_provider: AIModelAPIProviderEnum | None = None

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field, field_validator
 
@@ -14,10 +14,7 @@ class ToolCallResult(BaseModel):
     message conventions.
     """
 
-    type: str = Field(
-        default="tool_result",
-        description="Discriminator to simplify downstream detection of tool call results.",
-    )
+    type: Literal["tool_result"] = "tool_result"
     call_id: str | None = Field(
         default=None,
         description=(
@@ -33,13 +30,6 @@ class ToolCallResult(BaseModel):
         default=None,
         description="Optional tool name hint (used by providers like Google Gemini).",
     )
-
-    @field_validator("type")
-    @classmethod
-    def _validate_type(cls, value: str) -> str:
-        if value != "tool_result":
-            raise ValueError("ToolCallResult.type must be 'tool_result'")
-        return value
 
     def as_text(self) -> str:
         """Render the output as a text snippet suitable for providers that expect string payloads."""
@@ -64,21 +54,11 @@ class ToolCallResult(BaseModel):
 class ToolCallResultsMessage(BaseModel):
     """Container that groups multiple tool results into a single conversation message."""
 
-    type: str = Field(
-        default="tool_results",
-        description="Discriminator identifying a grouped tool results message.",
-    )
+    type: Literal["tool_result_message"] = "tool_result_message"
     results: list[ToolCallResult] = Field(
         default_factory=list,
         description="Ordered list of tool call results that originated from the same assistant turn.",
     )
-
-    @field_validator("type")
-    @classmethod
-    def _validate_type(cls, value: str) -> str:
-        if value != "tool_results":
-            raise ValueError("ToolCallResultsMessage.type must be 'tool_results'")
-        return value
 
     @field_validator("results")
     @classmethod

@@ -1,3 +1,5 @@
+from typing import Literal
+
 from dhenara.ai.types.genai.ai_model import (
     AIModelProviderEnum,
     ImageResponseUsage,
@@ -35,6 +37,7 @@ class ImageResponse(BaseModel):
     Contains the generated images, usage information, and provider-specific metadata
     """
 
+    type: Literal["image_response"] = "image_response"
     model: str
     provider: AIModelProviderEnum
     usage: ImageResponseUsage | None

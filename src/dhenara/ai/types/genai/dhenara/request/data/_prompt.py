@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field, model_validator
 
@@ -80,6 +80,7 @@ class BaseTextPrompt(BaseModel):
 
 
 class Prompt(BaseTextPrompt):
+    type: Literal["prompt"] = "prompt"
     role: PromptMessageRoleEnum = Field(
         ...,
         description="Role",
