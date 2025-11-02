@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from openai.types.chat import ChatCompletionMessage
 from openai.types.responses import (
     ResponseFunctionToolCallParam,
     ResponseOutputMessageParam,
@@ -37,7 +36,7 @@ class OpenAIMessageConverter(BaseMessageConverter):
     @staticmethod
     def provider_message_to_dai_content_items(
         *,
-        message: ChatCompletionMessage,
+        message: Any,
         role: str,
         index_start: int,
         ai_model_provider: AIModelProviderEnum,
@@ -45,7 +44,7 @@ class OpenAIMessageConverter(BaseMessageConverter):
     ) -> list[ChatResponseContentItem]:
         content_index = index_start
         content_items: list[ChatResponseContentItem] = []
-        for item in message:  # message is `output` list
+        for item in message:  # message is `response.output` list
             converted = OpenAIMessageConverter.provider_message_item_to_dai_content_item(
                 message_item=item,
                 role="assistant",
@@ -63,7 +62,7 @@ class OpenAIMessageConverter(BaseMessageConverter):
     @staticmethod
     def provider_message_item_to_dai_content_item(
         *,
-        message_item: ChatCompletionMessage,
+        message_item: Any,
         role: str,
         index: int,
         ai_model_provider: AIModelProviderEnum,

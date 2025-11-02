@@ -34,6 +34,10 @@ class OpenAIChatLEGACY(OpenAIClientBase):
         instructions: dict | None = None,
         messages: list | None = None,
     ) -> AIModelCallResponse:
+        # HARD GUARD: This legacy client must never be used for OpenAI provider.
+        # The project has migrated to the Responses API; invoking this path for
+        # OpenAI is a configuration error and should fail fast.
+        raise RuntimeError("OpenAIChatLEGACY is disabled for provider=OPEN_AI. Use Responses API client instead.")
         if not self._client:
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
 
