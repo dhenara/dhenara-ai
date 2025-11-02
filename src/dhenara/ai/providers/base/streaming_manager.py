@@ -291,11 +291,15 @@ class StreamingManager:
                             if content_delta.type == ChatResponseContentItemType.TEXT:
                                 message_id = content_delta.message_id
                                 message_contents = content_delta.message_contents
+                                # Philosophy: avoid duplicating plain `text` when provider exposes
+                                # a message_contents array (e.g., OpenAI Responses API). In such
+                                # cases we store only message_contents and keep text=None, so
+                                # artifacts do not duplicate content in two places.
                                 matching_content = ChatResponseTextContentItem(
                                     index=content_delta.index,
                                     type=ChatResponseContentItemType.TEXT,
                                     role=content_delta.role,
-                                    text="",
+                                    text=(None if message_id or message_contents else ""),
                                     message_id=message_id,
                                     message_contents=message_contents,
                                     metadata=content_delta.metadata,
@@ -382,23 +386,53 @@ class StreamingManager:
                         # Update content based on delta type
                         if content_delta.type == ChatResponseContentItemType.TEXT:
                             delta_text = content_delta.get_text_delta()
-                            if delta_text:
-                                matching_content.text = (matching_content.text or "") + delta_text
 
-                            # Build up message_contents array for OpenAI round-tripping
-                            # This ensures that when we convert structured output items back to provider format,
-                            # we have the full content array structure with accumulated text
-                            if hasattr(matching_content, "message_id") and matching_content.message_id:
-                                if not matching_content.message_contents:
-                                    # Initialize with empty output_text part
-                                    matching_content.message_contents = [
-                                        ChatMessageContentPart(type="output_text", text="", annotations=[])
-                                    ]
-                                # Accumulate text in the first output_text part
-                                if delta_text and matching_content.message_contents:
+                            # If the provider starts sending message_id/message_contents mid-stream
+                            # (e.g., after an output_item.added), adopt that representation and
+                            # migrate previously accumulated plain text into the first output_text part.
+                            if (
+                                getattr(matching_content, "message_id", None) is None
+                                and getattr(content_delta, "message_id", None) is not None
+                            ):
+                                matching_content.message_id = content_delta.message_id
+                                if not getattr(matching_content, "message_contents", None):
+                                    if content_delta.message_contents:
+                                        matching_content.message_contents = content_delta.message_contents
+                                    else:
+                                        matching_content.message_contents = [
+                                            ChatMessageContentPart(type="output_text", text="", annotations=[])
+                                        ]
+                                # Migrate already accumulated `text` into message_contents and drop plain text
+                                if getattr(matching_content, "text", None):
+                                    try:
+                                        # Ensure first part exists
+                                        if not matching_content.message_contents:
+                                            matching_content.message_contents = [
+                                                ChatMessageContentPart(type="output_text", text="", annotations=[])
+                                            ]
+                                        matching_content.message_contents[0].text = (
+                                            matching_content.message_contents[0].text or ""
+                                        ) + (matching_content.text or "")
+                                    except Exception:
+                                        pass
+                                    finally:
+                                        # Set plain text to None to avoid duplication going forward
+                                        matching_content.text = None
+
+                            if delta_text:
+                                # If we have a provider content array (OpenAI Responses), append only there
+                                if getattr(matching_content, "message_id", None):
+                                    if not matching_content.message_contents:
+                                        # Initialize with empty output_text part
+                                        matching_content.message_contents = [
+                                            ChatMessageContentPart(type="output_text", text="", annotations=[])
+                                        ]
                                     matching_content.message_contents[0].text = (
                                         matching_content.message_contents[0].text or ""
                                     ) + delta_text
+                                else:
+                                    # Providers like Anthropic/Google: maintain plain text field
+                                    matching_content.text = (matching_content.text or "") + delta_text
 
                         elif content_delta.type == ChatResponseContentItemType.REASONING:
                             thinking_text_delta = content_delta.thinking_text_delta

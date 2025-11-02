@@ -335,7 +335,7 @@ class OpenAIMessageConverter(BaseMessageConverter):
                         # Convert ChatMessageContentPart back to plain dicts for provider
                         content = [
                             {
-                                "type": p.type,
+                                "type": p.type if same_provider else "output_text",
                                 "text": p.text,
                                 "annotations": p.annotations,
                             }
@@ -373,7 +373,9 @@ class OpenAIMessageConverter(BaseMessageConverter):
                     )
 
                     fn_call_param = ResponseFunctionToolCallParam(
-                        call_id=(tool_call.call_id if same_provider else None),
+                        # NOTE: Always pass the call_id, as it will be needed to map tool call even if provider differs
+                        # But do not pass any message-ids or similar
+                        call_id=tool_call.call_id,
                         id=(tool_call.id if same_provider else None),
                         type="function_call",
                         name=tool_call.name,
