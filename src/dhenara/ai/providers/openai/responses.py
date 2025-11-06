@@ -667,10 +667,54 @@ class OpenAIResponses(OpenAIClientBase):
                         self.streaming_manager.pending_message_content[output_index or 0] = content_array
 
                 elif item_type == "reasoning" and item_id:
-                    # Store reasoning ID and summary structure
+                    # Store reasoning ID
                     if not hasattr(self.streaming_manager, "pending_reasoning_ids"):
                         self.streaming_manager.pending_reasoning_ids = {}
                     self.streaming_manager.pending_reasoning_ids[output_index or 0] = item_id
+
+                    # Capture summary structure for round-tripping (even if empty list)
+                    summary = getattr(item, "summary", None)
+                    if not hasattr(self.streaming_manager, "pending_reasoning_summaries"):
+                        self.streaming_manager.pending_reasoning_summaries = {}
+                    if isinstance(summary, list):
+                        summary_array = []
+                        for s in summary:
+                            if hasattr(s, "model_dump"):
+                                summary_array.append(s.model_dump())
+                            elif isinstance(s, dict):
+                                summary_array.append(s)
+                        # Preserve empty list too (indicates present-but-empty)
+                        self.streaming_manager.pending_reasoning_summaries[output_index or 0] = summary_array
+                    else:
+                        # Could be None or a string; store as-is
+                        self.streaming_manager.pending_reasoning_summaries[output_index or 0] = summary
+
+                    # Instantiate a placeholder reasoning content item immediately so it exists
+                    # even if no subsequent summary/text deltas arrive.
+                    try:
+                        thinking_summary = self.streaming_manager.pending_reasoning_summaries.get(output_index or 0)
+                        content_delta = ChatResponseReasoningContentItemDelta(
+                            index=0,
+                            role="assistant",
+                            thinking_id=item_id,
+                            metadata={
+                                "output_index": output_index,
+                                "thinking_summary": thinking_summary,
+                            },
+                        )
+                        choice_delta = ChatResponseChoiceDelta(
+                            index=0,
+                            finish_reason=None,
+                            stop_sequence=None,
+                            content_deltas=[content_delta],
+                            metadata={},
+                        )
+                        response_chunk = self.streaming_manager.update(choice_deltas=[choice_delta])
+                        processed.append(StreamingChatResponse(id=getattr(chunk, "id", None), data=response_chunk))
+                    except Exception:
+                        # Non-fatal: continue streaming without placeholder
+                        pass
+
                 elif item_type in ("function_call", "custom_tool_call"):
                     # Store tool call identifiers (call_id may not be available yet)
                     if not hasattr(self.streaming_manager, "pending_tool_ids"):
@@ -683,23 +727,6 @@ class OpenAIResponses(OpenAIClientBase):
                         "call_id": call_id,
                         "name": name,
                     }
-
-                    # Capture summary structure for round-tripping
-                    summary = getattr(item, "summary", None)
-                    if summary:
-                        if not hasattr(self.streaming_manager, "pending_reasoning_summaries"):
-                            self.streaming_manager.pending_reasoning_summaries = {}
-                        # Store the summary structure (list[dict] or str)
-                        if isinstance(summary, list):
-                            summary_array = []
-                            for s in summary:
-                                if hasattr(s, "model_dump"):
-                                    summary_array.append(s.model_dump())
-                                elif isinstance(s, dict):
-                                    summary_array.append(s)
-                            self.streaming_manager.pending_reasoning_summaries[output_index or 0] = summary_array
-                        else:
-                            self.streaming_manager.pending_reasoning_summaries[output_index or 0] = summary
         elif event_type in ("response.output_item.done", "response.content_part.done"):
             # No-op currently
             pass
