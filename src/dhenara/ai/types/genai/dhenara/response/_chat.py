@@ -127,7 +127,7 @@ class ChatResponse(BaseModel):
     def text(self) -> str | None:
         "Returns the first text type content"
         text_item = self.first(ChatResponseContentItemType.TEXT)
-        return text_item.text if text_item else None
+        return text_item.get_text() if text_item else None  # NOTE: get_text() after introducing `message_contents`
 
     def reasoning(self) -> str | None:
         "Returns the first thinkning/reasoning type content"
