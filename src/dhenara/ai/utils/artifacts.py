@@ -44,8 +44,15 @@ class ArtifactWriter:
                 # Fallback to string representation
                 return str(obj)
 
-            with open(artifact_path, "w") as f:
-                json.dump(data, f, indent=2, default=_json_default)
+            # Write UTF-8 JSON, preserve unicode (ensure_ascii=False) for readability
+            with open(artifact_path, "w", encoding="utf-8") as f:
+                json.dump(
+                    data,
+                    f,
+                    indent=2,
+                    default=_json_default,
+                    ensure_ascii=False,  # keep characters like smart quotes unescaped
+                )
 
             logger.debug(f"Wrote artifact: {artifact_path}")
 
@@ -104,7 +111,15 @@ class ArtifactWriter:
             artifact_path = artifact_dir / filename
 
             # Pre-serialize rows to avoid exceptions in the tight write loop
-            serialized: list[str] = [json.dumps(row, default=str) for row in (rows or [])]
+            # Preserve unicode in JSONL lines as well
+            serialized: list[str] = [
+                json.dumps(
+                    row,
+                    default=str,
+                    ensure_ascii=False,
+                )
+                for row in (rows or [])
+            ]
 
             with open(artifact_path, "w", encoding="utf-8") as f:
                 for line in serialized:
