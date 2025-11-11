@@ -291,15 +291,16 @@ class StreamingManager:
                             if content_delta.type == ChatResponseContentItemType.TEXT:
                                 message_id = content_delta.message_id
                                 message_contents = content_delta.message_contents
-                                # Philosophy: avoid duplicating plain `text` when provider exposes
-                                # a message_contents array (e.g., OpenAI Responses API). In such
-                                # cases we store only message_contents and keep text=None, so
-                                # artifacts do not duplicate content in two places.
+                                # Always rely on message_contents; initialize with a single output_text part
+                                # if provider sends only text_delta increments.
+                                if not message_contents:
+                                    message_contents = [
+                                        ChatMessageContentPart(type="output_text", text="", annotations=None)
+                                    ]
                                 matching_content = ChatResponseTextContentItem(
                                     index=content_delta.index,
                                     type=ChatResponseContentItemType.TEXT,
                                     role=content_delta.role,
-                                    text=(None if message_id or message_contents else ""),
                                     message_id=message_id,
                                     message_contents=message_contents,
                                     metadata=content_delta.metadata,
@@ -307,15 +308,27 @@ class StreamingManager:
                                     custom_metadata=content_delta.custom_metadata,
                                 )
                             elif content_delta.type == ChatResponseContentItemType.REASONING:
-                                # Extract thinking_summary from metadata if present
+                                # Initialize reasoning item; summary is list[ChatMessageContentPart] or None
                                 thinking_id = content_delta.thinking_id
-                                thinking_summary = content_delta.metadata.get("thinking_summary")
+                                # Legacy hack removed: do NOT pull summary from metadata
+
+                                message_contents = None
+                                thinking_summary = None
+                                if content_delta.text_delta is not None:
+                                    message_contents = [
+                                        ChatMessageContentPart(type="thinking", text="", annotations=None)
+                                    ]
+                                if content_delta.thinking_summary_delta is not None:
+                                    thinking_summary = [
+                                        ChatMessageContentPart(type="summary_text", text="", annotations=None)
+                                    ]
+
                                 matching_content = ChatResponseReasoningContentItem(
                                     index=content_delta.index,
                                     type=ChatResponseContentItemType.REASONING,
                                     role=content_delta.role,
-                                    thinking_text="",
                                     thinking_id=thinking_id,
+                                    message_contents=message_contents,
                                     thinking_summary=thinking_summary,
                                     metadata=content_delta.metadata,
                                     storage_metadata=content_delta.storage_metadata,
@@ -385,70 +398,53 @@ class StreamingManager:
 
                         # Update content based on delta type
                         if content_delta.type == ChatResponseContentItemType.TEXT:
-                            delta_text = content_delta.get_text_delta()
-
-                            # If the provider starts sending message_id/message_contents mid-stream
-                            # (e.g., after an output_item.added), adopt that representation and
-                            # migrate previously accumulated plain text into the first output_text part.
-                            if (
-                                getattr(matching_content, "message_id", None) is None
-                                and getattr(content_delta, "message_id", None) is not None
-                            ):
-                                matching_content.message_id = content_delta.message_id
-                                if not getattr(matching_content, "message_contents", None):
-                                    if content_delta.message_contents:
-                                        matching_content.message_contents = content_delta.message_contents
-                                    else:
-                                        matching_content.message_contents = [
-                                            ChatMessageContentPart(type="output_text", text="", annotations=[])
-                                        ]
-                                # Migrate already accumulated `text` into message_contents and drop plain text
-                                if getattr(matching_content, "text", None):
-                                    try:
-                                        # Ensure first part exists
-                                        if not matching_content.message_contents:
-                                            matching_content.message_contents = [
-                                                ChatMessageContentPart(type="output_text", text="", annotations=[])
-                                            ]
-                                        matching_content.message_contents[0].text = (
-                                            matching_content.message_contents[0].text or ""
-                                        ) + (matching_content.text or "")
-                                    except Exception:
-                                        pass
-                                    finally:
-                                        # Set plain text to None to avoid duplication going forward
-                                        matching_content.text = None
-
-                            if delta_text:
-                                # If we have a provider content array (OpenAI Responses), append only there
-                                if getattr(matching_content, "message_id", None):
-                                    if not matching_content.message_contents:
-                                        # Initialize with empty output_text part
-                                        matching_content.message_contents = [
-                                            ChatMessageContentPart(type="output_text", text="", annotations=[])
-                                        ]
-                                    matching_content.message_contents[0].text = (
-                                        matching_content.message_contents[0].text or ""
-                                    ) + delta_text
-                                else:
-                                    # Providers like Anthropic/Google: maintain plain text field
-                                    matching_content.text = (matching_content.text or "") + delta_text
+                            # Otherwise, append raw text_delta into the first output_text part
+                            if content_delta.text_delta:
+                                if not matching_content.message_contents:
+                                    matching_content.message_contents = [
+                                        ChatMessageContentPart(type="output_text", text="", annotations=None)
+                                    ]
+                                # Ensure we have at least one writable text part
+                                if not matching_content.message_contents:
+                                    matching_content.message_contents.append(
+                                        ChatMessageContentPart(type="output_text", text="", annotations=None)
+                                    )
+                                # Append to the first text-bearing part
+                                matching_content.message_contents[0].text = (
+                                    matching_content.message_contents[0].text or ""
+                                ) + content_delta.text_delta
 
                         elif content_delta.type == ChatResponseContentItemType.REASONING:
-                            thinking_text_delta = content_delta.thinking_text_delta
-                            thinking_summary_delta = content_delta.thinking_summary_delta
+                            # Append reasoning deltas into message_contents or thinking_summary list parts
                             thinking_id = content_delta.thinking_id
                             thinking_signature = content_delta.thinking_signature
 
-                            if thinking_text_delta:
-                                matching_content.thinking_text = (
-                                    matching_content.thinking_text or ""
-                                ) + thinking_text_delta
+                            # Reasoning text goes into message_contents parts
+                            if content_delta.text_delta:
+                                if not matching_content.message_contents:
+                                    matching_content.message_contents = [
+                                        ChatMessageContentPart(type="thinking", text="", annotations=None)
+                                    ]
+                                matching_content.message_contents[0].text = (
+                                    matching_content.message_contents[0].text or ""
+                                ) + content_delta.text_delta
 
-                            if thinking_summary_delta:
-                                matching_content.thinking_summary = (
-                                    matching_content.thinking_summary or ""
-                                ) + thinking_summary_delta
+                            # Streamed thinking summary accumulation
+                            elif content_delta.thinking_summary_delta:
+                                if not matching_content.thinking_summary:
+                                    matching_content.thinking_summary = [
+                                        ChatMessageContentPart(type="summary_text", text="", annotations=None)
+                                    ]
+
+                                # Append to first thinking part
+                                matching_content.thinking_summary[0].text = (
+                                    matching_content.thinking_summary[0].text or ""
+                                ) + content_delta.thinking_summary_delta
+
+                            else:
+                                logger.warning(
+                                    "stream_manager: reasoning delta without text or summary; ignoring incremental"
+                                )
 
                             if thinking_id:
                                 matching_content.thinking_id = thinking_id

@@ -347,7 +347,7 @@ class OpenAIChatLEGACY(OpenAIClientBase):
                     return ChatResponseReasoningContentItemDelta(
                         index=index,
                         role=role,
-                        thinking_text_delta=reasoning_part,
+                        text_delta=reasoning_part,
                     )
 
                 # If we see an end tag, everything before it goes to reasoning
@@ -358,7 +358,7 @@ class OpenAIChatLEGACY(OpenAIClientBase):
                         ChatResponseReasoningContentItemDelta(
                             index=index,
                             role=role,
-                            thinking_text_delta=reasoning_part,
+                            text_delta=reasoning_part,
                         )
                         if reasoning_part
                         else ChatResponseTextContentItemDelta(
@@ -373,7 +373,7 @@ class OpenAIChatLEGACY(OpenAIClientBase):
                     return ChatResponseReasoningContentItemDelta(
                         index=index,
                         role=role,
-                        thinking_text_delta=content,
+                        text_delta=content,
                     )
 
                 # Otherwise it's regular text content

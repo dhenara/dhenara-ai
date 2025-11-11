@@ -68,10 +68,16 @@ class GoogleMessageConverter(BaseMessageConverter):
                 pass
 
         if thought:
+            # Treat provider 'thought' text as reasoning tokens in message_contents (type="thinking").
+            message_contents = None
+            if text is not None:
+                message_contents = [ChatMessageContentPart(type="thinking", text=text, annotations=None, metadata=None)]
             return ChatResponseReasoningContentItem(
                 index=index,
                 role=role,
-                thinking_summary=text,
+                message_id=part_id,
+                message_contents=message_contents,
+                thinking_summary=None,
                 thinking_signature=thought_signature,
                 thinking_id=part_id,
             )
@@ -184,7 +190,6 @@ class GoogleMessageConverter(BaseMessageConverter):
             return ChatResponseTextContentItem(
                 index=index,
                 role=role,
-                text=text,
                 message_id=part_id,
                 message_contents=[
                     ChatMessageContentPart(
@@ -249,8 +254,19 @@ class GoogleMessageConverter(BaseMessageConverter):
                 extra_kv = {}
 
             for p in message_contents:
+                # Plain assistant/user text
                 if p.type in ("text", "output_text") and p.text is not None:
                     parts.append({"text": p.text, **extra_kv})
+                # Reasoning/thinking tokens captured as message_contents
+                elif p.type == "thinking" and p.text is not None:
+                    # Google expects thought blocks as {text, thought: True}
+                    parts.append(
+                        {
+                            "text": p.text,
+                            "thought": True,
+                            **{k: v for k, v in extra_kv.items() if k != "thought"},
+                        }
+                    )
                 elif p.type == "inline_data" and p.metadata is not None:
                     parts.append({"inline_data": p.metadata, **extra_kv})
                 else:
@@ -264,36 +280,38 @@ class GoogleMessageConverter(BaseMessageConverter):
             if isinstance(content, ChatResponseTextContentItem):
                 if content.message_contents:
                     _replay_message_contents(content.message_contents)
-                elif content.text is not None:
-                    parts.append({"text": content.text})
+                else:
+                    logger.warning("GoogleMessageConverter: TextContentItem has no message_contents;")
                 continue
 
             if isinstance(content, ChatResponseReasoningContentItem):
-                # Prefer preserved summary text if string, else fallback to thinking_text
-                text_content = None
-                if isinstance(content.thinking_summary, str):
-                    text_content = content.thinking_summary
-                elif isinstance(content.thinking_summary, list):  # list of ChatMessageContentPart
+                # Prefer explicit reasoning message_contents (type="thinking").
+                if content.message_contents:
+                    parts.extend(
+                        [
+                            {
+                                "text": p.text,
+                                "thought": True,
+                            }
+                            for p in content.message_contents
+                            # if getattr(p, "type", None) in ("thinking", "text")
+                            # and getattr(p, "text", None) is not None
+                        ]
+                    )
+                    continue
+
+                # Fallback: if only summary available, replay as thought text
+                if isinstance(content.thinking_summary, list):
                     _replay_message_contents(
                         content.thinking_summary,
                         extra_kv={
-                            # "thought_signature": content.thinking_signature,
                             "thought": True,
                         },
                     )
                     continue
-                elif content.thinking_text is not None:
-                    text_content = content.thinking_text
 
-                # NOTE: Google sends thought_signature ONLY with function calls
-                parts.append(
-                    {
-                        "text": text_content or "",
-                        "thought": True,
-                        # "thought_signature": content.thinking_signature if same_provider else None,
-                    }
-                )
-
+                # Last resort empty thought block to preserve structure
+                parts.append({"text": "", "thought": True})
                 continue
 
             if isinstance(content, ChatResponseToolCallContentItem) and content.tool_call is not None:

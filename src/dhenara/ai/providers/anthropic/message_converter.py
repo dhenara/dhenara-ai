@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from anthropic.types import ContentBlock, Message
 from anthropic.types.redacted_thinking_block_param import RedactedThinkingBlockParam
@@ -24,6 +25,8 @@ from dhenara.ai.types.genai.ai_model import AIModelEndpoint, AIModelProviderEnum
 from dhenara.ai.types.genai.dhenara import ChatResponseToolCall
 from dhenara.ai.types.genai.dhenara.request import StructuredOutputConfig
 from dhenara.ai.types.genai.dhenara.response import ChatResponse, ChatResponseChoice
+
+logger = logging.getLogger(__name__)
 
 
 class AnthropicMessageConverter(BaseMessageConverter):
@@ -97,7 +100,6 @@ class AnthropicMessageConverter(BaseMessageConverter):
                 ChatResponseTextContentItem(
                     index=index,
                     role=role,
-                    text=text_value,
                     message_contents=[
                         ChatMessageContentPart(
                             type="text",
@@ -110,14 +112,17 @@ class AnthropicMessageConverter(BaseMessageConverter):
             ]
 
         if content_block.type == "thinking":
-            # Preserve thinking_text; Anthropic has signature and id
+            # Preserve thinking via message_contents with a thinking part; keep signature/id
+            thinking_text = getattr(content_block, "thinking", "")
             return [
                 ChatResponseReasoningContentItem(
                     index=index,
                     role=role,
-                    thinking_text=getattr(content_block, "thinking", ""),
                     thinking_signature=getattr(content_block, "signature", None),
                     thinking_id=getattr(content_block, "id", None),
+                    message_contents=[
+                        ChatMessageContentPart(type="thinking", text=thinking_text, annotations=None, metadata=None)
+                    ],
                 )
             ]
 
@@ -189,51 +194,84 @@ class AnthropicMessageConverter(BaseMessageConverter):
         same_provider = True if str(source_provider) == str(model_endpoint.ai_model.provider) else False
 
         for content in choice.contents:
-            if isinstance(content, ChatResponseTextContentItem):
-                # Replay message_contents if available for better round-tripping
-                if content.message_contents:
-                    content_blocks.extend(
-                        [
-                            TextBlockParam(type="text", text=part.text)
-                            for part in content.message_contents
-                            if part.type == "text" and part.text
-                        ]
-                    )
-                elif content.text:
-                    content_blocks.append(TextBlockParam(type="text", text=content.text))
-            elif isinstance(content, ChatResponseReasoningContentItem):
+            # IMPORTANT: ChatResponseReasoningContentItem subclasses ChatResponseTextContentItem.
+            # We must handle reasoning BEFORE generic text; otherwise reasoning items will be treated as plain text
+            # and their thinking blocks/signatures won't round-trip.
+            if isinstance(content, ChatResponseReasoningContentItem):
                 # Anthropic thinking blocks require thinking text + signature
-                if content.thinking_text and content.thinking_signature:
+                # Prefer message_contents parts of type 'thinking' when present.
+                thinking_text = None
+                if content.message_contents:
+                    parts = content.message_contents
+                    texts = [p.text for p in parts if getattr(p, "text", None)]
+                    if texts:
+                        thinking_text = "".join(texts)
+
+                if thinking_text and content.thinking_signature:
                     # Proper thinking block with signature
                     content_blocks.append(
                         ThinkingBlockParam(
                             type="thinking",
-                            thinking=content.thinking_text,
+                            thinking=thinking_text,
                             signature=content.thinking_signature if same_provider else None,
                         )
                     )
                 elif content.thinking_summary:
                     # Redacted thinking (when signature but no text)
                     # If represented as summary parts, try to map redacted_thinking type to redacted block
-                    rt = next(
-                        (p for p in content.thinking_summary if getattr(p, "type", "") == "redacted_thinking"),
-                        None,
-                    )
-                    if rt is not None:
-                        content_blocks.append(
-                            RedactedThinkingBlockParam(type="redacted_thinking", data=getattr(rt, "metadata", None))
+                    if isinstance(content.thinking_summary, list):
+                        rt = next(
+                            (p for p in content.thinking_summary if getattr(p, "type", "") == "redacted_thinking"),
+                            None,
                         )
-                    elif content.thinking_text:
+                        if rt is not None:
+                            content_blocks.append(
+                                RedactedThinkingBlockParam(
+                                    type="redacted_thinking",
+                                    data=getattr(rt, "metadata", None),
+                                )
+                            )
+                            # handled as redacted
+                            continue
+
+                    # If no redacted part but a textual summary exists, fallback to text emission
+                    summary_text = None
+                    if isinstance(content.thinking_summary, list):
+                        summary_texts = [p.text for p in content.thinking_summary if getattr(p, "text", None)]
+                        summary_text = "".join(summary_texts) if summary_texts else None
+
+                    if summary_text:
+                        if same_provider and not content.thinking_signature:
+                            raise ValueError(
+                                "Anthropic: missing thinking signature for reasoning content in strict mode.",
+                            )
+                        content_blocks.append(TextBlockParam(type="text", text=summary_text))
+                    elif thinking_text:
+                        # No signature present: only allowed for cross-provider replay
                         if same_provider:
                             raise ValueError(
-                                "Anthropic: missing thinking signature for reasoning content in strict mode."
+                                "Anthropic: missing thinking signature for reasoning content in strict mode.",
                             )
-                        content_blocks.append(TextBlockParam(type="text", text=content.thinking_text))
-                elif content.thinking_text:
-                    if same_provider:
-                        raise ValueError("Anthropic: missing thinking signature for reasoning content in strict mode.")
-                    # Fallback: if no signature, emit as text (cross-provider compatibility)
-                    content_blocks.append(TextBlockParam(type="text", text=content.thinking_text))
+                        content_blocks.append(TextBlockParam(type="text", text=thinking_text))
+                else:
+                    # No text, no summary; skip silently (encrypted-only with missing parts)
+                    logger.warning("AnthropicMessageConverter: reasoning item had neither text nor summary")
+
+            elif isinstance(content, ChatResponseTextContentItem):
+                # Replay message_contents if available for better round-tripping
+                if content.message_contents:
+                    # Accept both legacy 'text' and unified 'output_text' part types
+                    text_parts = [
+                        part.text
+                        for part in content.message_contents
+                        # if getattr(part, "text", None) and getattr(part, "type", None) in ("text", "output_text")
+                    ]
+                    content_blocks.extend([TextBlockParam(type="text", text=tp) for tp in text_parts if tp])
+
+                else:
+                    # content_blocks.append(TextBlockParam(type="text", text=content.text))
+                    logger.warning("AnthropicMessageConverter: TextContentItem has no message_contents")
+
             elif isinstance(content, ChatResponseToolCallContentItem) and content.tool_call:
                 tool_call = content.tool_call
                 content_blocks.append(
@@ -244,6 +282,7 @@ class AnthropicMessageConverter(BaseMessageConverter):
                         input=tool_call.arguments,
                     )
                 )
+
             elif isinstance(content, ChatResponseStructuredOutputContentItem):
                 # Prefer replaying message_contents for round-trip fidelity
                 if content.message_contents:

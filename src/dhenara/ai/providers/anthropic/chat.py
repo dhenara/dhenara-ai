@@ -503,7 +503,7 @@ class AnthropicChat(AnthropicClientBase):
             return ChatResponseReasoningContentItemDelta(
                 index=index,
                 role=role,
-                thinking_text_delta=delta.thinking,
+                text_delta=delta.thinking,
                 thinking_signature=None,
                 metadata={},
             )
@@ -511,7 +511,7 @@ class AnthropicChat(AnthropicClientBase):
             return ChatResponseReasoningContentItemDelta(
                 index=index,
                 role=role,
-                thinking_text_delta="",
+                text_delta="",
                 thinking_signature=delta.signature,
                 metadata={},
             )

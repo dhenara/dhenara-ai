@@ -461,7 +461,8 @@ class OpenAIResponses(OpenAIClientBase):
                     role="assistant",
                     text_delta=delta_text,
                     message_id=message_id,
-                    message_contents=message_contents if message_id else {},
+                    # Only pass message_contents when we have a valid message_id snapshot
+                    message_contents=message_contents if message_id else None,
                 )
                 choice_delta = ChatResponseChoiceDelta(
                     index=0,
@@ -482,23 +483,19 @@ class OpenAIResponses(OpenAIClientBase):
             output_index = getattr(chunk, "output_index", None)
             if delta_text:
                 # Use captured item_id if available, or fall back to chunk's item_id
-                if not item_id and hasattr(self.streaming_manager, "pending_reasoning_ids"):
-                    item_id = self.streaming_manager.pending_reasoning_ids.get(output_index or 0)
-
-                # Get captured summary structure
-                thinking_summary = None
-                if hasattr(self.streaming_manager, "pending_reasoning_summaries"):
-                    thinking_summary = self.streaming_manager.pending_reasoning_summaries.get(output_index or 0)
+                if not item_id and hasattr(self.streaming_manager, "oai_pending_reasoning_ids"):
+                    item_id = self.streaming_manager.oai_pending_reasoning_ids.get(output_index or 0)
 
                 content_delta = ChatResponseReasoningContentItemDelta(
                     index=0,
                     role="assistant",
-                    thinking_text_delta=delta_text,
+                    text_delta=delta_text,
+                    thinking_summary_delta=None,
                     thinking_id=item_id,
                     metadata={
                         "output_index": output_index,
                         "content_index": content_index,
-                        "thinking_summary": thinking_summary,
+                        # "thinking_summary": thinking_summary,
                     },
                 )
                 choice_delta = ChatResponseChoiceDelta(
@@ -519,12 +516,13 @@ class OpenAIResponses(OpenAIClientBase):
             output_index = getattr(chunk, "output_index", None)
             if delta_text:
                 # Use captured item_id if available
-                if not item_id and hasattr(self.streaming_manager, "pending_reasoning_ids"):
-                    item_id = self.streaming_manager.pending_reasoning_ids.get(output_index or 0)
+                if not item_id and hasattr(self.streaming_manager, "oai_pending_reasoning_ids"):
+                    item_id = self.streaming_manager.oai_pending_reasoning_ids.get(output_index or 0)
 
                 content_delta = ChatResponseReasoningContentItemDelta(
                     index=0,
                     role="assistant",
+                    text_delta=None,
                     thinking_summary_delta=delta_text,
                     thinking_id=item_id,
                     metadata={
@@ -667,53 +665,10 @@ class OpenAIResponses(OpenAIClientBase):
                         self.streaming_manager.pending_message_content[output_index or 0] = content_array
 
                 elif item_type == "reasoning" and item_id:
-                    # Store reasoning ID
-                    if not hasattr(self.streaming_manager, "pending_reasoning_ids"):
-                        self.streaming_manager.pending_reasoning_ids = {}
-                    self.streaming_manager.pending_reasoning_ids[output_index or 0] = item_id
-
-                    # Capture summary structure for round-tripping (even if empty list)
-                    summary = getattr(item, "summary", None)
-                    if not hasattr(self.streaming_manager, "pending_reasoning_summaries"):
-                        self.streaming_manager.pending_reasoning_summaries = {}
-                    if isinstance(summary, list):
-                        summary_array = []
-                        for s in summary:
-                            if hasattr(s, "model_dump"):
-                                summary_array.append(s.model_dump())
-                            elif isinstance(s, dict):
-                                summary_array.append(s)
-                        # Preserve empty list too (indicates present-but-empty)
-                        self.streaming_manager.pending_reasoning_summaries[output_index or 0] = summary_array
-                    else:
-                        # Could be None or a string; store as-is
-                        self.streaming_manager.pending_reasoning_summaries[output_index or 0] = summary
-
-                    # Instantiate a placeholder reasoning content item immediately so it exists
-                    # even if no subsequent summary/text deltas arrive.
-                    try:
-                        thinking_summary = self.streaming_manager.pending_reasoning_summaries.get(output_index or 0)
-                        content_delta = ChatResponseReasoningContentItemDelta(
-                            index=0,
-                            role="assistant",
-                            thinking_id=item_id,
-                            metadata={
-                                "output_index": output_index,
-                                "thinking_summary": thinking_summary,
-                            },
-                        )
-                        choice_delta = ChatResponseChoiceDelta(
-                            index=0,
-                            finish_reason=None,
-                            stop_sequence=None,
-                            content_deltas=[content_delta],
-                            metadata={},
-                        )
-                        response_chunk = self.streaming_manager.update(choice_deltas=[choice_delta])
-                        processed.append(StreamingChatResponse(id=getattr(chunk, "id", None), data=response_chunk))
-                    except Exception:
-                        # Non-fatal: continue streaming without placeholder
-                        pass
+                    # Store reasoning ID for potential association with reasoning deltas
+                    if not hasattr(self.streaming_manager, "oai_pending_reasoning_ids"):
+                        self.streaming_manager.oai_pending_reasoning_ids = {}
+                    self.streaming_manager.oai_pending_reasoning_ids[output_index or 0] = item_id
 
                 elif item_type in ("function_call", "custom_tool_call"):
                     # Store tool call identifiers (call_id may not be available yet)

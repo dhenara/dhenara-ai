@@ -59,12 +59,12 @@ def render_content_item(content_item, choice_index: int = 0) -> str:
             output.append(text)
 
     elif content_type == ChatResponseContentItemType.REASONING:
-        thinking_text = content_item.thinking_text
+        reasoning_text = content_item.get_text() if hasattr(content_item, "get_text") else None
         thinking_id = getattr(content_item, "thinking_id", None)
         thinking_summary = content_item.thinking_summary
         has_signature = content_item.thinking_signature is not None
 
-        any_thinking = thinking_text or thinking_summary or has_signature or thinking_id
+        any_thinking = bool(reasoning_text) or bool(thinking_summary) or has_signature or bool(thinking_id)
         if any_thinking:
             header = (
                 f"{ConsoleColors.CYAN}{ConsoleColors.BOLD}🧠 Reasoning/Thinking "
@@ -75,8 +75,8 @@ def render_content_item(content_item, choice_index: int = 0) -> str:
             if thinking_id:
                 output.append(f"ID: {thinking_id}")
 
-        if thinking_text:
-            output.append(thinking_text)
+        if reasoning_text:
+            output.append(reasoning_text)
 
         if thinking_summary is not None:
             header = (
@@ -84,18 +84,19 @@ def render_content_item(content_item, choice_index: int = 0) -> str:
                 f"[{choice_index}.{content_index}]:{ConsoleColors.RESET}{ConsoleColors.MAGENTA}"
             )
             output.append(header)
-            # Handle both string and list[dict] formats
-            if isinstance(thinking_summary, str):
-                output.append(thinking_summary)
-            elif isinstance(thinking_summary, list) and thinking_summary:
-                # Extract text from list of summary dicts
+            # thinking_summary is always list[ChatMessageContentPart] | None
+            if isinstance(thinking_summary, list) and thinking_summary:
+                # Extract text from list of summary parts
                 summary_texts = []
                 for item in thinking_summary:
-                    if isinstance(item, dict) and "text" in item:
+                    # item may be ChatMessageContentPart or dict
+                    if hasattr(item, "text"):
+                        summary_texts.append(item.text)
+                    elif isinstance(item, dict) and "text" in item:
                         summary_texts.append(item["text"])
                     else:
                         summary_texts.append(str(item))
-                output.append("\n".join(summary_texts))
+                output.append("\n".join([s for s in summary_texts if s]))
             elif isinstance(thinking_summary, list) and not thinking_summary:
                 # Empty summary list - reasoning occurred but no summary available
                 output.append(f"{ConsoleColors.GRAY}[No summary available]{ConsoleColors.RESET}")
@@ -335,8 +336,9 @@ class StreamingRenderer:
                 self.full_response_text += text_delta
 
         elif content_type == ChatResponseContentItemType.REASONING:
-            thinking_delta = content_delta.thinking_text_delta
-            summary_delta = content_delta.thinking_summary_delta
+            # Use get_text_delta() for streamed reasoning tokens; fall back to explicit summary delta
+            thinking_delta = content_delta.get_text_delta() if hasattr(content_delta, "get_text_delta") else None
+            summary_delta = getattr(content_delta, "thinking_summary_delta", None)
             if thinking_delta:
                 print(f"{ConsoleColors.CYAN}{thinking_delta}{ConsoleColors.RESET}", end="", flush=True)
 

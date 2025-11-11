@@ -132,7 +132,7 @@ class ChatResponse(BaseModel):
     def reasoning(self) -> str | None:
         "Returns the first thinkning/reasoning type content"
         reasoning_item = self.first(ChatResponseContentItemType.REASONING)
-        return reasoning_item.thinking_text if reasoning_item else None
+        return reasoning_item.get_text() if reasoning_item else None
 
     def tools(self) -> list[ChatResponseToolCall]:
         "Returns all tool type content"

@@ -45,44 +45,34 @@ class ChatMessageContentPart(BaseModel):
 
 
 class ChatResponseTextContentItem(BaseChatResponseContentItem):
-    """Content item specific to chat responses
+    """Content item for assistant/user text leveraging provider `message_contents` exclusively.
 
-    Contains the role, text content, and optional function calls for chat interactions
-
-    Attributes:
-        role: The role of the message sender (system, user, assistant, or function)
-        text: The actual text content of the message
-        function_call: Optional function call details if the message involves function calling
-        message_id: Provider-specific message ID (for OpenAI Responses API round-tripping)
-        message_contents: Provider-specific full content array (for OpenAI Responses API round-tripping)
+    CHANGE: Removed legacy plain `text` storage. All textual content must be present inside
+    `message_contents` parts (e.g., OpenAI output_text, Anthropic text, Google text parts).
+    This guarantees a single source of truth for unified streaming and avoids divergence
+    between incremental deltas and final aggregation.
     """
 
     type: ChatResponseContentItemType = ChatResponseContentItemType.TEXT
 
-    text: str | None = Field(
-        None,
-        description="Plain text content of the message for chat interaction (without reasoning)",
-    )
-
-    # Provider-specific fields for round-tripping (e.g., OpenAI Responses API)
+    # Provider-specific message id (e.g., OpenAI Responses API item id)
     message_id: str | None = Field(
         None,
-        description="Provider-specific message ID for round-tripping",
+        description="Provider-specific message/content identifier for round-tripping",
     )
+    # Unified list of provider content parts (output_text, text, etc.)
     message_contents: list[ChatMessageContentPart] | None = Field(
         None,
-        description="Provider-specific full content array for round-tripping (e.g., OpenAI output_text items)",
+        description=(
+            "Unified provider content parts array (e.g., output_text entries). Required for text reconstruction."
+        ),
     )
 
     def get_text(self) -> str:
-        if self.text:
-            return self.text
         if self.message_contents:
-            # Prefer concatenating text fields from output_text parts
-            texts = [p.text for p in self.message_contents if getattr(p, "type", None) == "output_text" and p.text]
+            texts = [p.text for p in self.message_contents if getattr(p, "text", None)]
             if texts:
                 return "".join(texts)
-            return str([p.model_dump() for p in self.message_contents])
         return ""
 
 
@@ -101,21 +91,30 @@ class ChatResponseStructuredOutputContentItem(ChatResponseTextContentItem):
         return str(self.metadata)
 
 
-class ChatResponseReasoningContentItem(BaseChatResponseContentItem):
-    type: ChatResponseContentItemType = ChatResponseContentItemType.REASONING
+class ChatResponseReasoningContentItem(ChatResponseTextContentItem):
+    """Reasoning content item extending text item.
 
-    thinking_text: str | None = Field(
-        None,
-        description="Thinking text content, for reasoning mode",
-    )
+    CHANGE: Removed standalone `thinking_text`; reasoning textual tokens are now
+    stored inside `message_contents` parts (e.g., type="thinking" or provider-specific types).
+    We retain summary/signature/id/status metadata for higher-level introspection.
+    """
+
+    type: ChatResponseContentItemType = ChatResponseContentItemType.REASONING
     thinking_id: str | None = None
-    thinking_summary: str | list[ChatMessageContentPart] | None = None
+    thinking_summary: list[ChatMessageContentPart] | None = None  # NOTE: Only applicable for OpenAI SDK
     thinking_signature: str | None = None
-    thinking_status: str | None = None  # OpenAI provides status as in_progress, completed, or incomplete
+    thinking_status: str | None = None  # Provider status (in_progress, completed, etc.)
     metadata: dict | None = None
 
     def get_text(self) -> str:
-        return self.thinking_text or self.thinking_summary or None
+        # Prefer reconstructed message_contents text; fallback to summary when present.
+        base = super().get_text()
+        if base:
+            return base
+        if isinstance(self.thinking_summary, list):
+            parts = [p.text for p in self.thinking_summary if getattr(p, "text", None)]
+            return "".join(parts)
+        return ""
 
 
 class ChatResponseToolCallContentItem(BaseChatResponseContentItem):
@@ -161,33 +160,36 @@ class BaseChatResponseContentItemDelta(BaseResponseContentItem):
 class ChatResponseTextContentItemDelta(BaseChatResponseContentItemDelta):
     type: ChatResponseContentItemType = ChatResponseContentItemType.TEXT
 
-    text_delta: str | None = Field(
-        None,
-    )
-    # Provider-specific fields for round-tripping (e.g., OpenAI Responses API)
-    message_id: str | None = Field(
-        None,
-        description="Provider-specific message ID for round-tripping",
-    )
+    # Unified incremental text delta (was `text_delta`); keep name for backward compat but treat as raw append
+    text_delta: str | None = Field(None, description="Incremental text delta append for streaming")
+    # Provider may start emitting full `message_contents` array mid-stream; we adopt it immediately.
+    message_id: str | None = Field(None, description="Provider-specific message content identifier")
     message_contents: list[ChatMessageContentPart] | None = Field(
         None,
-        description="Provider-specific full content array for round-tripping (e.g., OpenAI output_text items)",
+        description="Full provider content parts snapshot when available (supersedes text_delta accumulation).",
     )
 
     def get_text_delta(self) -> str:
-        return self.text_delta
+        return self.text_delta or ""
 
 
-class ChatResponseReasoningContentItemDelta(BaseChatResponseContentItemDelta):
+class ChatResponseReasoningContentItemDelta(ChatResponseTextContentItemDelta):
     type: ChatResponseContentItemType = ChatResponseContentItemType.REASONING
 
-    thinking_text_delta: str | None = None
-    thinking_summary_delta: str | None = None  # Some models may provide a summary
+    # Reasoning now appends tokens via message_contents-like representation; keep delta for summaries/signature
+    thinking_summary_delta: str | None = None
     thinking_id: str | None = None
     thinking_signature: str | None = None
 
     def get_text_delta(self) -> str:
-        return self.thinking_text_delta or self.thinking_summary_delta or None
+        return self.text_delta or ""
+
+    # NOTE: Do NOT shadow the field name with a method of the same name.
+    # Historically a method named `thinking_summary_delta()` existed here,
+    # which overwrote the dataclass field on instances, causing the value
+    # to become a function object at runtime.
+    def get_thinking_summary_delta(self) -> str:
+        return self.thinking_summary_delta or ""
 
 
 # Tool call streaming: Providers may emit incremental tool arguments deltas and/or

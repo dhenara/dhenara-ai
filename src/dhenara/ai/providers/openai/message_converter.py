@@ -92,14 +92,7 @@ class OpenAIMessageConverter(BaseMessageConverter):
             summary_obj = _get(output_item, "summary", None)
             content_obj = _get(output_item, "content", None)
 
-            # Extract text for display, but PRESERVE original structure for round-tripping
-            if isinstance(content_obj, list):
-                content_text = " ".join(filter(None, (_get(c, "text", "") for c in content_obj))) or None
-            else:
-                content_text = _get(content_obj, "text", None)
-
-            # IMPORTANT: Store thinking_summary as list[ChatMessageContentPart] | str | None
-            # Convert OpenAI summary list items to ChatMessageContentPart for predictable handling
+            # Convert OpenAI reasoning summary to list[ChatMessageContentPart] | None
             if isinstance(summary_obj, list):
                 summary_list: list[ChatMessageContentPart] = []
                 for s in summary_obj:
@@ -122,14 +115,38 @@ class OpenAIMessageConverter(BaseMessageConverter):
             else:
                 thinking_summary = None
 
+            # Extract text for display, but PRESERVE original structure for round-tripping
+            if isinstance(content_obj, list):
+                content_text = " ".join(filter(None, (_get(c, "text", "") for c in content_obj))) or None
+            else:
+                content_text = _get(content_obj, "text", None)
+
+            # Build message_contents from content_obj when possible to preserve parts
+            message_contents = None
+            if isinstance(content_obj, list):
+                message_contents = [
+                    ChatMessageContentPart(
+                        type=_get(c, "type", "thinking"),
+                        text=_get(c, "text", None),
+                        annotations=None,
+                        metadata=None,
+                    )
+                    for c in content_obj
+                ]
+            else:
+                if content_text:
+                    message_contents = [
+                        ChatMessageContentPart(type="thinking", text=content_text, annotations=None, metadata=None)
+                    ]
+
             ci = ChatResponseReasoningContentItem(
                 index=index,
                 role=role,
                 thinking_id=thinking_id,
-                thinking_text=content_text,
-                thinking_summary=thinking_summary,  # Preserved original structure
+                thinking_summary=thinking_summary,  # list[ChatMessageContentPart] | None
                 thinking_signature=signature,
                 thinking_status=status,
+                message_contents=message_contents,
             )
             return ci
 
@@ -225,11 +242,10 @@ class OpenAIMessageConverter(BaseMessageConverter):
                     message_contents=parts,
                 )
 
-            # Otherwise, emit a single Text item carrying original parts
+            # Otherwise, emit a single Text item carrying original parts (no plain `text` field)
             return ChatResponseTextContentItem(
                 index=index,
                 role=role,
-                text=None,  # For openai, use message_contents array instead of text
                 message_id=message_id,
                 message_contents=parts,
             )
@@ -294,7 +310,7 @@ class OpenAIMessageConverter(BaseMessageConverter):
                     if same_provider and item.thinking_id:
                         param_data["id"] = item.thinking_id
 
-                    # Use preserved summary structure (list[dict] or str) if available
+                    # Use preserved summary structure (list[dict]) if available
                     if item.thinking_summary is not None:
                         if isinstance(item.thinking_summary, list):
                             # Convert ChatMessageContentPart list to OpenAI summary list[dict]
@@ -306,17 +322,14 @@ class OpenAIMessageConverter(BaseMessageConverter):
                                 for p in item.thinking_summary
                             ]
                             param_data["summary"] = summary_list
-                        elif isinstance(item.thinking_summary, str):
-                            param_data["summary"] = [{"type": "summary_text", "text": item.thinking_summary}]
                         else:
                             logger.error(f"OpenAI: Unsupported thinking_summary type; {type(item.thinking_summary)}")
-                    elif item.thinking_text is not None:
+                    elif item.message_contents:
                         # May be from other providers
                         # Convert string to OpenAI format
-                        param_data["summary"] = [{"type": "summary_text", "text": item.thinking_text}]
+                        param_data["summary"] = [{"type": "summary_text", "text": item.get_text()}]
                     else:
-                        logger.error("OpenAI: No thinking_summary or thinking_text available")
-                        # Fallback to empty summary
+                        logger.error("OpenAI: No thinking_summary or message_contents available")
                         param_data["summary"] = [{"type": "summary_text", "text": ""}]
 
                     # Note: For input, 'content' is NOT typically included for reasoning items
@@ -341,8 +354,6 @@ class OpenAIMessageConverter(BaseMessageConverter):
                             }
                             for p in item.message_contents
                         ]
-                    elif item.text is not None:
-                        content.append({"type": "output_text", "text": item.text, "annotations": []})
                     else:
                         logger.error("OpenAI: TextContentItem has no message_contents or message_contents")
                         # Fallback:

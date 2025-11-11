@@ -51,7 +51,12 @@ class OpenAIMessageConverterCHATAPI:
                             ChatResponseReasoningContentItem(
                                 index=index_start,
                                 role=role,
-                                thinking_text=reasoning_content,
+                                message_contents=[
+                                    {
+                                        "type": "thinking",
+                                        "text": reasoning_content,
+                                    }
+                                ],
                             )
                         )
                     answer_content = re.sub(r"<think>.*?</think>", "", content_text, flags=re.DOTALL).strip()
@@ -85,7 +90,7 @@ class OpenAIMessageConverterCHATAPI:
                     ChatResponseTextContentItem(
                         index=index_start,
                         role=role,
-                        text=content_text,
+                        message_contents=[{"type": "text", "text": content_text}],
                     )
                 )
 
@@ -132,11 +137,13 @@ class OpenAIMessageConverterCHATAPI:
 
         for content in choice.contents:
             if isinstance(content, ChatResponseTextContentItem):
-                if content.text:
-                    text_parts.append(content.text)
+                t = content.get_text() if hasattr(content, "get_text") else None
+                if t:
+                    text_parts.append(t)
             elif isinstance(content, ChatResponseReasoningContentItem):
-                if content.thinking_text:
-                    reasoning_parts.append(content.thinking_text)
+                t = content.get_text() if hasattr(content, "get_text") else None
+                if t:
+                    reasoning_parts.append(t)
             elif isinstance(content, ChatResponseToolCallContentItem):
                 tool_call = content.tool_call
                 tool_calls_payload.append(

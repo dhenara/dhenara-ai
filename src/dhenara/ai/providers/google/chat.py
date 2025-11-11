@@ -351,9 +351,9 @@ class GoogleAIChat(GoogleAIClientBase):
                 def _get_attr(obj, attr, default=None):
                     return obj.get(attr, default)
 
-            # Reasoning/thought summary
+            # Reasoning/thought text: stream as text_delta into message_contents (type="thinking")
             if _get_attr(delta, "thought", default=False) is True:
-                thinking_summary_delta = _get_attr(delta, "text", None)
+                delta_text = _get_attr(delta, "text", None)
                 thought_signature = _get_attr(delta, "thought_signature", None)
                 # Stash signature for upcoming function_call if present
                 try:
@@ -364,7 +364,8 @@ class GoogleAIChat(GoogleAIClientBase):
                 return ChatResponseReasoningContentItemDelta(
                     index=index,
                     role=role,
-                    thinking_summary_delta=thinking_summary_delta,
+                    text_delta=delta_text,  # append into reasoning.message_contents (thinking)
+                    thinking_summary_delta=None,
                     thinking_signature=_process_thought_signature(thought_signature),
                 )
 
