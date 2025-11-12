@@ -157,6 +157,29 @@ class AIModelProviderClientBase(ABC):
             prefix=combined_prefix,
         )
 
+    def _dump_dai_response_without_provider_response(self, ai_response: Any) -> Any:
+        """Serialize AIModelCallResponse excluding nested provider_response fields.
+
+        We want dai_response.json to omit provider_response since it's already
+        captured in dai_provider_response.json. This removes:
+          - chat_response.provider_response
+          - image_response.provider_response
+        """
+        try:
+            if hasattr(ai_response, "model_dump"):
+                # Pydantic v2 nested exclude format
+                return ai_response.model_dump(
+                    exclude={
+                        # "provider_response": True,
+                        "chat_response": {"provider_response"},
+                        "image_response": {"provider_response"},
+                    }
+                )
+            return str(ai_response)
+        except Exception:
+            # Fall back to string if any serialization error occurs
+            return str(ai_response)
+
     def _capture_python_logs(self, when: str) -> None:
         """Start/stop capturing Python logs for this call into dai artifacts as JSONL.
 
@@ -404,7 +427,7 @@ class AIModelProviderClientBase(ABC):
             # Capture dhenara response format
             self._capture_artifacts(
                 stage="dhenara_response",
-                data=ai_response.model_dump() if hasattr(ai_response, "model_dump") else str(ai_response),
+                data=self._dump_dai_response_without_provider_response(ai_response),
                 filename="dai_response.json",
             )
             # Flush Python logs for this call
@@ -507,7 +530,7 @@ class AIModelProviderClientBase(ABC):
             # Capture dhenara response format
             self._capture_artifacts(
                 stage="dhenara_response",
-                data=ai_response.model_dump() if hasattr(ai_response, "model_dump") else str(ai_response),
+                data=self._dump_dai_response_without_provider_response(ai_response),
                 filename="dai_response.json",
             )
             # Flush Python logs for this call
@@ -675,7 +698,7 @@ class AIModelProviderClientBase(ABC):
             try:
                 self._capture_artifacts(
                     stage="dhenara_response",
-                    data=final_response.model_dump() if hasattr(final_response, "model_dump") else str(final_response),
+                    data=self._dump_dai_response_without_provider_response(final_response),
                     filename="dai_response.json",
                 )
             except Exception as e:
@@ -750,7 +773,7 @@ class AIModelProviderClientBase(ABC):
             try:
                 self._capture_artifacts(
                     stage="dhenara_response",
-                    data=final_response.model_dump() if hasattr(final_response, "model_dump") else str(final_response),
+                    data=self._dump_dai_response_without_provider_response(final_response),
                     filename="dai_response.json",
                 )
             except Exception as e:
