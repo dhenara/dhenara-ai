@@ -724,7 +724,20 @@ class OpenAIResponses(OpenAIClientBase):
                 processed.append(StreamingChatResponse(id=getattr(chunk, "id", None), data=response_chunk))
 
         elif event_type == "response.completed":
-            # Completion event - usage already handled
+            # If the SDK supplies a full aggregated response here, convert it and store an
+            # override so StreamingManager can return it directly.
+            try:
+                final_resp = getattr(chunk, "response", None)
+                if final_resp is not None:
+                    # Convert provider-native response using existing parser
+                    final_chat = self.parse_response(final_resp)
+                    self.streaming_manager.native_final_response_sdk = final_resp
+                    self.streaming_manager.native_final_response_dai = final_chat
+                else:
+                    logger.error("oai_stream_chunk: response.completed has no final response object")
+            except Exception as _e:
+                logger.error(f"oai_stream_chunk: unable to attach final aggregated response: {_e}")
+
             processed.append(self.streaming_manager.get_streaming_done_chunk())
 
         # 5) Error

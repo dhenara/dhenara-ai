@@ -649,14 +649,20 @@ class AIModelProviderClientBase(ABC):
 
             # Capture provider-level streaming summary as provider_response
             try:
-                # Persist a compact provider_response built from consolidated choices and metadata
                 chat = final_response.chat_response
-                provider_payload = {
-                    "usage": (chat.usage.model_dump() if chat and chat.usage else None),
-                    "usage_charge": (chat.usage_charge.model_dump() if chat and chat.usage_charge else None),
-                    "choices": ([c.model_dump() for c in (chat.choices or [])] if chat else []),
-                    "metadata": (chat.metadata.model_dump() if chat and chat.metadata else {}),
-                }
+                # Prefer native provider payload when available (thanks to provider final override)
+                provider_payload = None
+                if chat and getattr(chat, "provider_response", None):
+                    provider_payload = chat.provider_response
+                else:
+                    # Fallback: synthesize from consolidated DAI response
+                    provider_payload = {
+                        "usage": (chat.usage.model_dump() if chat and chat.usage else None),
+                        "usage_charge": (chat.usage_charge.model_dump() if chat and chat.usage_charge else None),
+                        "choices": ([c.model_dump() for c in (chat.choices or [])] if chat else []),
+                        "metadata": (chat.metadata.model_dump() if chat and chat.metadata else {}),
+                    }
+
                 self._capture_artifacts(
                     stage="provider_response",
                     data=provider_payload,
@@ -722,12 +728,16 @@ class AIModelProviderClientBase(ABC):
             # Capture provider-level streaming summary as provider_response
             try:
                 chat = final_response.chat_response
-                provider_payload = {
-                    "usage": (chat.usage.model_dump() if chat and chat.usage else None),
-                    "usage_charge": (chat.usage_charge.model_dump() if chat and chat.usage_charge else None),
-                    "choices": ([c.model_dump() for c in (chat.choices or [])] if chat else []),
-                    "metadata": (chat.metadata.model_dump() if chat and chat.metadata else {}),
-                }
+                provider_payload = None
+                if chat and getattr(chat, "provider_response", None):
+                    provider_payload = chat.provider_response
+                else:
+                    provider_payload = {
+                        "usage": (chat.usage.model_dump() if chat and chat.usage else None),
+                        "usage_charge": (chat.usage_charge.model_dump() if chat and chat.usage_charge else None),
+                        "choices": ([c.model_dump() for c in (chat.choices or [])] if chat else []),
+                        "metadata": (chat.metadata.model_dump() if chat and chat.metadata else {}),
+                    }
                 self._capture_artifacts(
                     stage="provider_response",
                     data=provider_payload,
@@ -814,10 +824,6 @@ class AIModelProviderClientBase(ABC):
         pass
 
     def serialize_provider_response(self, response: object) -> dict | None:
-        # INFO: Keep this disabled so that we get consistent outputs across streamoing and non-streaming
-        # paths. For streaming cases, we can't get a tru e provider response object anyway.
-        return None
-
         # Serialize content blocks for provider_message using SDK Pydantic validation
         if hasattr(response, "model_dump"):
             return response.model_dump()

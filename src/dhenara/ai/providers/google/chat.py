@@ -273,6 +273,10 @@ class GoogleAIChat(GoogleAIClientBase):
                 usage = self._get_usage_from_provider_response(chunk)
                 self.streaming_manager.update_usage(usage)
 
+                # TODO: # Investigate if Google provides a final
+                # aggregated response natively either via fn or via chunks
+                # and plug in into streaming_manager.native_final_response_dai/sdk
+
         return processed_chunks
 
     def _get_usage_from_provider_response(

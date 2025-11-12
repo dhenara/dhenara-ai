@@ -69,6 +69,11 @@ class StreamingManager:
         self.anthropic_tool_use_indices = set()
         self.persistant_choice_metadata_list = []  # OpenAI
 
+        # Accumulated final response coming out of SDKs natively.
+        # When set, we prefer this response over incremental reconstruction.
+        self.native_final_response_dai: ChatResponse | None = None
+        self.native_final_response_sdk: dict | None = None
+
         start_time = datetime_type.now()
         # TODO_FUTURE: Create progress per choices ?
         self.progress = INTStreamingProgress(
@@ -96,7 +101,25 @@ class StreamingManager:
 
     def get_final_response(self) -> AIModelCallResponse:
         """Convert streaiming progress to ChatResponse format"""
+        # If a provider supplied a native final response, honor it to ensure
+        # exact fidelity (including provider_response and structured content).
+        if self.native_final_response_dai is not None:
+            api_call_status = ExternalApiCallStatus(
+                status=ExternalApiCallStatusEnum.RESPONSE_RECEIVED_SUCCESS,
+                model=self.model_endpoint.ai_model.model_name,
+                api_provider=self.model_endpoint.api.provider,
+                message="Streaming Completed",
+                code="success",
+                http_status_code=200,
+            )
 
+            return AIModelCallResponse(
+                status=api_call_status,
+                chat_response=self.native_final_response_dai,
+                image_response=None,
+            )
+
+        # Fall back to legacy reconstruction
         chat_response = None
 
         # If structured output was requested, derive it from accumulated text items
