@@ -317,8 +317,8 @@ class OpenAIMessageConverter(BaseMessageConverter):
                             # Convert ChatMessageContentPart list to OpenAI summary list[dict]
                             summary_list = [
                                 {
-                                    "type": getattr(p, "type", "summary_text"),
-                                    "text": getattr(p, "text", None),
+                                    "type": p.type,
+                                    "text": p.text,
                                 }
                                 for p in item.thinking_summary
                             ]

@@ -1,3 +1,4 @@
+import logging
 from typing import Any, Literal
 
 from pydantic import BaseModel as PydanticBaseModel
@@ -18,9 +19,16 @@ from ._content_items._chat_items import (
     ChatResponseContentItem,
     ChatResponseContentItemDelta,
     ChatResponseContentItemType,
+    ChatResponseGenericContentItem,
+    ChatResponseReasoningContentItem,
+    ChatResponseStructuredOutputContentItem,
+    ChatResponseTextContentItem,
     ChatResponseToolCall,
+    ChatResponseToolCallContentItem,
 )
 from ._metadata import AIModelCallResponseMetaData
+
+logger = logging.getLogger(__name__)
 
 
 class ChatResponseChoice(BaseModel):
@@ -134,6 +142,30 @@ class ChatResponse(BaseModel):
         reasoning_item = self.first(ChatResponseContentItemType.REASONING)
         return reasoning_item.get_text() if reasoning_item else None
 
+    def as_text(self, content_types: list[ChatResponseContentItemType | str] | None = None) -> str | None:
+        "Returns the concatenated text of all matching content types"
+
+        if content_types is None:
+            content_types = ["text", "reasoning", "structured_output", "tool_call", "generic"]
+        else:
+            # Ensure content_types is a list
+            if not isinstance(content_types, list):
+                raise ValueError("content_types must be a list of ChatResponseContentItemType")
+        try:
+            content_types_enum = [
+                ChatResponseContentItemType(ct) if isinstance(ct, str) else ct for ct in content_types
+            ]
+        except ValueError as e:
+            raise ValueError(f"Invalid content type in content_types: {e}")
+
+        text_parts = [
+            content.get_text()
+            for choice in self.choices
+            for content in choice.contents
+            if content.type in content_types_enum
+        ]
+        return "\n\n".join(text_parts) if text_parts else None
+
     def tools(self) -> list[ChatResponseToolCall]:
         "Returns all tool type content"
         tools = [
@@ -202,6 +234,73 @@ class ChatResponse(BaseModel):
             return choice_copy
 
         return choice
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ChatResponse":
+        """Restore ChatResponse from a dict/JSON artifact with proper content item reconstruction.
+
+        This method fixes deserialization issues where Pydantic's discriminated union
+        creates the wrong content item class when JSON has incomplete data
+        (e.g., type="reasoning" but missing thinking_summary/thinking_signature).
+
+        Args:
+            data: Dict representation of ChatResponse (e.g., from dai_response.json)
+
+        Returns:
+            ChatResponse with properly reconstructed content items
+        """
+        # Make a deep copy to avoid mutating the input
+        data_copy = data.copy() if isinstance(data, dict) else data
+
+        # Process choices to reconstruct content items properly
+        if "choices" in data_copy:
+            reconstructed_choices = []
+            for choice_data in data_copy["choices"]:
+                if choice_data.get("contents"):
+                    reconstructed_contents = []
+                    for content_data in choice_data["contents"]:
+                        # Reconstruct the appropriate content item class based on available fields
+                        content_item = cls._reconstruct_content_item(content_data)
+                        reconstructed_contents.append(content_item)
+                    choice_data["contents"] = reconstructed_contents
+                reconstructed_choices.append(ChatResponseChoice(**choice_data))
+            data_copy["choices"] = reconstructed_choices
+
+        # Use standard Pydantic construction for the rest
+        return cls(**data_copy)
+
+    @staticmethod
+    def _reconstruct_content_item(content_data: dict) -> ChatResponseContentItem:
+        """Reconstruct the correct content item class based on available fields.
+
+        Args:
+            content_data: Dict representation of a content item
+
+        Returns:
+            Properly typed content item instance
+        """
+        content_type = content_data.get("type")
+
+        item_map = {
+            "text": ChatResponseTextContentItem,
+            "reasoning": ChatResponseReasoningContentItem,
+            "structured_output": ChatResponseStructuredOutputContentItem,
+            "tool_call": ChatResponseToolCallContentItem,
+            "generic": ChatResponseGenericContentItem,
+        }
+
+        item_type = item_map.get(content_type)
+        if item_type:
+            try:
+                return item_type(**content_data)
+            except Exception as e:
+                logger.error(f"Error reconstructing content item of type {content_type}: {e}")
+        else:
+            logger.error(f"Unknown content item type: {content_type}, defaulting to Generic")
+
+        return ChatResponseGenericContentItem(**content_data)
+
+        # Check for reasoning-specific fields to determine if it's truly a reasoning item
 
     def preview_dict(self):
         """

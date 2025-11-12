@@ -289,8 +289,7 @@ class GoogleMessageConverter(BaseMessageConverter):
                                 "thought_signature": content.thinking_signature,
                             }
                             for p in content.message_contents
-                            # if getattr(p, "type", None) in ("thinking", "text")
-                            # and getattr(p, "text", None) is not None
+                            # if p.type in ("thinking", "text") and p.text is not None
                         ]
                     )
                     continue
@@ -313,7 +312,7 @@ class GoogleMessageConverter(BaseMessageConverter):
                 tool_call = content.tool_call
                 # Preserve Google thought_signature on function_call parts when continuing with the same provider
                 thought_sig = None
-                if same_provider and getattr(content, "metadata", None):
+                if same_provider and content.metadata is not None:
                     thought_sig = content.metadata.get("thought_signature")
 
                 part_obj: dict[str, Any] = {

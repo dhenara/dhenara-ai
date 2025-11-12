@@ -204,7 +204,7 @@ class AnthropicMessageConverter(BaseMessageConverter):
                 thinking_text = None
                 if content.message_contents:
                     parts = content.message_contents
-                    texts = [p.text for p in parts if getattr(p, "text", None)]
+                    texts = [p.text for p in parts if p.text]
                     if texts:
                         thinking_text = "".join(texts)
 
@@ -222,14 +222,14 @@ class AnthropicMessageConverter(BaseMessageConverter):
                     # If represented as summary parts, try to map redacted_thinking type to redacted block
                     if isinstance(content.thinking_summary, list):
                         rt = next(
-                            (p for p in content.thinking_summary if getattr(p, "type", "") == "redacted_thinking"),
+                            (p for p in content.thinking_summary if p.type == "redacted_thinking"),
                             None,
                         )
                         if rt is not None:
                             content_blocks.append(
                                 RedactedThinkingBlockParam(
                                     type="redacted_thinking",
-                                    data=getattr(rt, "metadata", None),
+                                    data=rt.metadata,
                                 )
                             )
                             # handled as redacted
@@ -238,7 +238,7 @@ class AnthropicMessageConverter(BaseMessageConverter):
                     # If no redacted part but a textual summary exists, fallback to text emission
                     summary_text = None
                     if isinstance(content.thinking_summary, list):
-                        summary_texts = [p.text for p in content.thinking_summary if getattr(p, "text", None)]
+                        summary_texts = [p.text for p in content.thinking_summary if p.text]
                         summary_text = "".join(summary_texts) if summary_texts else None
 
                     if summary_text:
