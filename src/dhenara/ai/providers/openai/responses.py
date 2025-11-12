@@ -642,6 +642,27 @@ class OpenAIResponses(OpenAIClientBase):
                     if not hasattr(self.streaming_manager, "oai_pending_reasoning_ids"):
                         self.streaming_manager.oai_pending_reasoning_ids = {}
                     self.streaming_manager.oai_pending_reasoning_ids[output_index or 0] = item_id
+
+                    # CRITICAL FIX: Initialize reasoning content item when reasoning output_item is added
+                    # Without this, reasoning deltas arrive but have no content item to attach to
+                    # This matches the behavior in non-streaming where reasoning item is created upfront
+                    content_delta = ChatResponseReasoningContentItemDelta(
+                        index=0,
+                        role="assistant",
+                        text_delta=None,  # No text yet, just initializing the item
+                        thinking_summary_delta=None,
+                        thinking_id=item_id,
+                        metadata={"output_index": output_index},
+                    )
+                    choice_delta = ChatResponseChoiceDelta(
+                        index=0,
+                        finish_reason=None,
+                        stop_sequence=None,
+                        content_deltas=[content_delta],
+                        metadata={},
+                    )
+                    response_chunk = self.streaming_manager.update(choice_deltas=[choice_delta])
+                    processed.append(StreamingChatResponse(id=getattr(chunk, "id", None), data=response_chunk))
                 elif item_type in ("function_call", "custom_tool_call"):
                     # Store tool call identifiers (call_id may not be available yet)
                     if not hasattr(self.streaming_manager, "pending_tool_ids"):
