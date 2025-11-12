@@ -1,5 +1,6 @@
 import json
 import logging
+from collections.abc import AsyncGenerator, Generator
 
 from anthropic.types import (
     ContentBlock,
@@ -179,16 +180,60 @@ class AnthropicChat(AnthropicClientBase):
         api_call_params,
     ) -> AIModelCallResponse:
         chat_args = api_call_params["chat_args"]
-        stream = self._client.messages.create(**chat_args)
-        return stream
+
+        def _wrapper() -> Generator:
+            # Use SDK stream context to access final aggregated message
+            _args = dict(chat_args)
+            _args.pop("stream", None)
+            with self._client.messages.stream(**_args) as stream:
+                yield from stream
+                try:
+                    # Get native final message and prefer it for finalization
+                    final_msg = stream.get_final_message()
+                    self._set_native_final_from_message(final_msg)
+                except Exception:
+                    # Fallback to legacy reconstruction
+                    pass
+
+        return _wrapper()
 
     async def do_streaming_api_call_async(
         self,
         api_call_params,
     ) -> AIModelCallResponse:
         chat_args = api_call_params["chat_args"]
-        stream = await self._client.messages.create(**chat_args)
-        return stream
+
+        async def _awrapper() -> AsyncGenerator:
+            # Use SDK async stream context to access final aggregated message
+            _args = dict(chat_args)
+            _args.pop("stream", None)
+            async with self._client.messages.stream(**_args) as stream:
+                async for event in stream:
+                    yield event
+                try:
+                    final_msg = await stream.get_final_message()
+                    self._set_native_final_from_message(final_msg)
+                except Exception:
+                    pass
+
+        return _awrapper()
+
+    def _set_native_final_from_message(self, final_msg: Message) -> None:
+        """Single source of truth: prefer Anthropic SDK final message for artifacts.
+
+        Stores both the provider-native payload (for dai_provider_response.json)
+        and the normalized DAI ChatResponse (for dai_response.json via StreamingManager).
+        """
+        # Store native SDK payload for diagnostics and provenance
+        try:
+            self.streaming_manager.native_final_response_sdk = (
+                final_msg.model_dump() if hasattr(final_msg, "model_dump") else None
+            )
+        except Exception:
+            self.streaming_manager.native_final_response_sdk = None
+
+        # Parse to our canonical ChatResponse (includes provider_response for artifacts writer)
+        self.streaming_manager.native_final_response_dai = self.parse_response(final_msg)
 
     def parse_stream_chunk(
         self,
