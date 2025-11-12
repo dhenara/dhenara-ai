@@ -108,11 +108,65 @@ class StreamingManager:
                     items_to_add = []
 
                     for i, content in enumerate(choice.contents or []):
-                        # Only derive from text items; replace them with structured items
-                        if isinstance(content, ChatResponseTextContentItem):
+                        # Reasoning should not be parsed as structured output
+                        if content.type == ChatResponseContentItemType.REASONING:
+                            continue
+
+                        # For Anthropic: structured output is delivered as tool_use blocks
+                        # Convert ChatResponseToolCallContentItem to ChatResponseStructuredOutputContentItem
+                        if content.type == ChatResponseContentItemType.TOOL_CALL:
+                            if content.tool_call:
+                                # CRITICAL: Build the complete raw_response structure for round-tripping
+                                # This is especially important for Anthropic where structured output
+                                # needs to be converted back to tool_use block format with id/name/type/input
+                                # This ensure message conversion back to anthropic is unifrom across
+                                # streaming and non-streaming cases
+                                raw_resp_synth = {
+                                    "type": "tool_use",
+                                    "id": content.tool_call.call_id,
+                                    "name": content.tool_call.name,
+                                    "input": content.tool_call.arguments,
+                                }
+
+                                structured = ChatResponseStructuredOutput.from_tool_call(
+                                    raw_response=raw_resp_synth,
+                                    tool_call=content.tool_call,
+                                    config=self.structured_output_config,
+                                )
+                                items_to_add.append(
+                                    ChatResponseStructuredOutputContentItem(
+                                        index=content.index,
+                                        type=ChatResponseContentItemType.STRUCTURED_OUTPUT,
+                                        role=getattr(content, "role", None),
+                                        message_id=getattr(content, "message_id", None),
+                                        message_contents=getattr(content, "message_contents", None),
+                                        structured_output=structured,
+                                    )
+                                )
+                                items_to_remove.append(i)
+                            continue
+
+                        # For OpenAI/Google: structured output is delivered as text
+                        # Convert ChatResponseTextContentItem to ChatResponseStructuredOutputContentItem
+                        if content.type == ChatResponseContentItemType.TEXT:
                             raw_text = content.get_text()
                             if raw_text is None:
                                 continue
+
+                            # CRITICAL FIX: Only attempt to parse text that looks like JSON.
+                            # With reasoning models, we may get multiple text items:
+                            # 1. Reasoning/thinking text (e.g., "**Crafting JSON...**")
+                            # 2. The actual JSON output (e.g., '{"key": "value"}')
+                            # We should only parse items that start with { or [ after stripping.
+                            stripped = raw_text.strip()
+                            if not (stripped.startswith("{") or stripped.startswith("[")):
+                                # This is likely reasoning text or other non-JSON content
+                                # Skip parsing and leave as-is
+                                logger.debug(
+                                    f"Skipping structured output parsing for text item {i} (does not look like JSON)"
+                                )
+                                continue
+
                             parsed_data, error, post_processed = ChatResponseStructuredOutput._parse_and_validate(
                                 raw_data=raw_text,
                                 config=self.structured_output_config,
@@ -500,9 +554,6 @@ class StreamingManager:
                                         except Exception as e:
                                             parsed = {}
                                             parse_error = str(e)
-                                            # Keep raw data for debugging
-                                            if hasattr(matching_content, "tool_call") and matching_content.tool_call:
-                                                matching_content.tool_call.raw_data = raw_buf
 
                                         # Ensure tool_call exists
                                         if not getattr(matching_content, "tool_call", None):

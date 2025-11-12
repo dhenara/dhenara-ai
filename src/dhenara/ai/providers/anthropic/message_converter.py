@@ -256,7 +256,7 @@ class AnthropicMessageConverter(BaseMessageConverter):
                         content_blocks.append(TextBlockParam(type="text", text=thinking_text))
                 else:
                     # No text, no summary; skip silently (encrypted-only with missing parts)
-                    logger.warning("AnthropicMessageConverter: reasoning item had neither text nor summary")
+                    logger.warning("ant_convert: reasoning item had neither text nor summary")
 
             elif content.type == ChatResponseContentItemType.TEXT:
                 # Replay message_contents if available for better round-tripping
@@ -271,7 +271,7 @@ class AnthropicMessageConverter(BaseMessageConverter):
 
                 else:
                     # content_blocks.append(TextBlockParam(type="text", text=content.text))
-                    logger.warning("AnthropicMessageConverter: TextContentItem has no message_contents")
+                    logger.warning("ant_convert: TextContentItem has no message_contents")
 
             elif content.type == ChatResponseContentItemType.TOOL_CALL:
                 tool_call = content.tool_call
@@ -286,38 +286,45 @@ class AnthropicMessageConverter(BaseMessageConverter):
 
             elif content.type == ChatResponseContentItemType.STRUCTURED_OUTPUT:
                 if same_provider:
-                    # INFO: Anthropic structured output is generated via tool use,
-                    # so its message_contents will be be empty.
-                    # Thus we must send the tool use block again.
+                    # INFO:
+                    # Anthropic structured output is generated via tool use, so its message_contents will be be empty.
+                    # Thus structured must be paut back as text by removing 'id' for round-trip.
+                    # NOTE:
+                    # Do NOT try to convert it as ToolBlock, else API will fail expecting a `result` for the tool_call
+                    # Live with this dirty workaround until Anthropic natively supports structured output blocks in API
 
                     raw_data = content.structured_output.raw_data
-                    if isinstance(raw_data, dict) and "id" in raw_data and "input" in raw_data:
-                        # content_blocks.append(ToolUseBlockParam(**raw_data))
-                        #
-                        # INFO:
-                        # Ideally this shoul have been restored as a ToolUseBlockParam directly,
-                        # but evey tool user block required to be followd by a tool_result block else API flag error.
-                        # Thus live with this dirty hack until anthropic SDK supports structured output natively.
+                    if raw_data:
+                        try:
+                            # # Make a copy to avoid mutating the original
+                            # raw_data_copy = dict(raw_data)
+                            # raw_data_copy.pop("id", None)  # Remove 'id` for more native text block
+                            # content_blocks.append(
+                            #     TextBlockParam(
+                            #         type="text",
+                            #         text=json.dumps(raw_data_copy),
+                            #     )
+                            # )
 
-                        # Just send back the actual structued field which is present in tool use's input
-                        _input = raw_data.get("input", {})
-                        content_blocks.append(
-                            TextBlockParam(
-                                type="text",
-                                text=json.dumps(_input),
+                            # Just return the fn args to look like a pure text block with only structured args
+                            fn_args = raw_data.get("input")
+                            content_blocks.append(
+                                TextBlockParam(
+                                    type="text",
+                                    text=json.dumps(fn_args),
+                                )
                             )
-                        )
-                    else:
-                        logger.warning(
-                            "AnthropicMessageConverter: StructuredOutputContentItem missing  "
-                            "tool use raw_data for round-trip.",
-                        )
-                        # Fallback as anyway we cannot reconstruct tool use block
-                        raw_data.pop("id", None)  # Remove 'id` for more native text block
+                            continue  # Proceed to next content item
+                        except Exception as e:
+                            logger.warning(f"ant_convert: Failed to serialize structured output raw_data to text: {e}")
+
+                    # Fallback: serialize structured_data as JSON text
+                    output = content.structured_output
+                    if output and output.structured_data:
                         content_blocks.append(
                             TextBlockParam(
                                 type="text",
-                                text=json.dumps(raw_data),
+                                text=json.dumps(output.structured_data),
                             )
                         )
 
@@ -344,7 +351,7 @@ class AnthropicMessageConverter(BaseMessageConverter):
 
             else:
                 logger.error(
-                    f"AnthropicMessageConverter: Unhandled content item type: {content.type} at index {content.index}",
+                    f"ant_convert: Unhandled content item type: {content.type} at index {content.index}",
                 )
         if content_blocks:
             # SDK accepts a list of block params (they serialize to correct schema)

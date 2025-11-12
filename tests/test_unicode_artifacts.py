@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from dhenara.ai.types.genai.dhenara.request import SystemInstruction, Prompt
+from dhenara.ai.types.genai.dhenara.request import Prompt, SystemInstruction
 from dhenara.ai.utils.artifacts import ArtifactWriter
 
 # NOTE: Test uses OpenAI provider class but does not perform real network calls;
