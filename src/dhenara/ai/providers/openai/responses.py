@@ -387,14 +387,11 @@ class OpenAIResponses(OpenAIClientBase):
         )
 
     # Streaming handlers: convert Responses events to StreamingChatResponse
-    def parse_stream_chunk(self, chunk) -> StreamingChatResponse | SSEErrorResponse | None:
-        """Parse Responses API streaming chunks.
+    def parse_stream_chunk(self, chunk) -> StreamingChatResponse | SSEErrorResponse | list | None:
+        """Parse a single OpenAI Responses API streaming event into internal streaming objects.
 
-        Streaming event types mirror the output array structure:
-        - response.output_text.delta: text content delta
-        - response.reasoning.delta: reasoning/thinking block delta
-        - response.function_call.delta: tool call delta (name/arguments)
-        - response.done: final usage/metadata
+        Returns a list of StreamingChatResponse (zero or more), a list containing SSEErrorResponse
+        for error events, or None for ignorable events.
         """
         processed: list[StreamingChatResponse] = []
 
@@ -407,23 +404,13 @@ class OpenAIResponses(OpenAIClientBase):
                 "system_fingerprint": getattr(chunk, "system_fingerprint", None),
             }
 
-        # Handle usage if present (typically in 'done' or 'completed' event)
-        # Check both chunk.usage and chunk.response.usage
-        usage = getattr(chunk, "usage", None)
-        if not usage:
-            # For events like response.completed, usage is in chunk.response.usage
-            response_obj = getattr(chunk, "response", None)
-            if response_obj:
-                usage = getattr(response_obj, "usage", None)
-
+        # Usage snapshot (if any)
+        # Noramay present in chunk.usage but for events like response.completed, usage is in chunk.response.usage
+        usage = getattr(chunk, "usage", None) or getattr(getattr(chunk, "response", None), "usage", None)
         if usage:
             try:
-                # Extract reasoning tokens from output_tokens_details
-                reasoning_tokens = None
                 output_details = getattr(usage, "output_tokens_details", None)
-                if output_details:
-                    reasoning_tokens = getattr(output_details, "reasoning_tokens", None)
-
+                reasoning_tokens = getattr(output_details, "reasoning_tokens", None) if output_details else None
                 usage_obj = ChatResponseUsage(
                     total_tokens=getattr(usage, "total_tokens", None),
                     prompt_tokens=getattr(usage, "prompt_tokens", None) or getattr(usage, "input_tokens", None),
@@ -432,18 +419,18 @@ class OpenAIResponses(OpenAIClientBase):
                     reasoning_tokens=reasoning_tokens,
                 )
                 self.streaming_manager.update_usage(usage_obj)
-            except Exception:
-                pass
+            except Exception as _e:
+                logger.warning(f"oai_stream_chunk: failed usage parse: {_e}")
 
         # Event type dispatch
         event_type = getattr(chunk, "type", None)
         if not event_type:
-            logger.debug(f"parse_stream_chunk: no event_type, chunk={chunk}")
-            return processed
+            logger.debug(f"oai_stream_chunk: missing event_type; ignoring {chunk}")
+            return None
 
-        logger.debug(f"parse_stream_chunk: event_type={event_type}, chunk_type={type(chunk)}")
+        logger.debug(f"oai_stream_chunk: processing type={event_type}")
 
-        # Text delta (message output_text)
+        # 1) Text deltas
         if event_type == "response.output_text.delta":
             delta_text = getattr(chunk, "delta", None)
             output_index = getattr(chunk, "output_index", None)
@@ -474,7 +461,7 @@ class OpenAIResponses(OpenAIClientBase):
                 response_chunk = self.streaming_manager.update(choice_deltas=[choice_delta])
                 processed.append(StreamingChatResponse(id=getattr(chunk, "id", None), data=response_chunk))
 
-        # Reasoning delta (from reasoning models like o3-mini)
+        # 2) Reasoning deltas
         # Note: reasoning has its own dedicated text stream separate from reasoning_summary
         elif event_type == "response.reasoning_text.delta":
             delta_text = getattr(chunk, "delta", None)
@@ -485,18 +472,13 @@ class OpenAIResponses(OpenAIClientBase):
                 # Use captured item_id if available, or fall back to chunk's item_id
                 if not item_id and hasattr(self.streaming_manager, "oai_pending_reasoning_ids"):
                     item_id = self.streaming_manager.oai_pending_reasoning_ids.get(output_index or 0)
-
                 content_delta = ChatResponseReasoningContentItemDelta(
                     index=0,
                     role="assistant",
                     text_delta=delta_text,
                     thinking_summary_delta=None,
                     thinking_id=item_id,
-                    metadata={
-                        "output_index": output_index,
-                        "content_index": content_index,
-                        # "thinking_summary": thinking_summary,
-                    },
+                    metadata={"output_index": output_index, "content_index": content_index},
                 )
                 choice_delta = ChatResponseChoiceDelta(
                     index=0,
@@ -518,17 +500,13 @@ class OpenAIResponses(OpenAIClientBase):
                 # Use captured item_id if available
                 if not item_id and hasattr(self.streaming_manager, "oai_pending_reasoning_ids"):
                     item_id = self.streaming_manager.oai_pending_reasoning_ids.get(output_index or 0)
-
                 content_delta = ChatResponseReasoningContentItemDelta(
                     index=0,
                     role="assistant",
                     text_delta=None,
                     thinking_summary_delta=delta_text,
                     thinking_id=item_id,
-                    metadata={
-                        "output_index": output_index,
-                        "summary_index": summary_index,
-                    },
+                    metadata={"output_index": output_index, "summary_index": summary_index},
                 )
                 choice_delta = ChatResponseChoiceDelta(
                     index=0,
@@ -540,7 +518,7 @@ class OpenAIResponses(OpenAIClientBase):
                 response_chunk = self.streaming_manager.update(choice_deltas=[choice_delta])
                 processed.append(StreamingChatResponse(id=getattr(chunk, "id", None), data=response_chunk))
 
-        # Function call arguments delta (tool calls)
+        # 3) Tool call streaming (name + arguments)
         elif event_type == "response.function_call_arguments.delta":
             # Incremental tool call arguments (JSON string pieces)
             delta_text = getattr(chunk, "delta", None)
@@ -568,8 +546,8 @@ class OpenAIResponses(OpenAIClientBase):
                 response_chunk = self.streaming_manager.update(choice_deltas=[choice_delta])
                 processed.append(StreamingChatResponse(id=getattr(chunk, "id", None), data=response_chunk))
 
-        # Function call name delta (rare, but some SDKs may emit name separately)
         elif event_type == "response.function_call.name.delta":
+            # Function call name delta (rare, but some SDKs may emit name separately)
             name_piece = getattr(chunk, "delta", None)
             output_index = getattr(chunk, "output_index", None)
             meta: dict = {"tool_name_delta": name_piece, "name": name_piece}
@@ -594,9 +572,8 @@ class OpenAIResponses(OpenAIClientBase):
                 response_chunk = self.streaming_manager.update(choice_deltas=[choice_delta])
                 processed.append(StreamingChatResponse(id=getattr(chunk, "id", None), data=response_chunk))
 
-        # Function call completed with full arguments and name
         elif event_type == "response.function_call_arguments.done":
-            # Fields: name, arguments (string), item_id
+            # Function call completed with full arguments and name
             name = getattr(chunk, "name", None)
             args_str = getattr(chunk, "arguments", None)
             item_id = getattr(chunk, "item_id", None)
@@ -630,12 +607,10 @@ class OpenAIResponses(OpenAIClientBase):
             response_chunk = self.streaming_manager.update(choice_deltas=[choice_delta])
             processed.append(StreamingChatResponse(id=getattr(chunk, "id", None), data=response_chunk))
 
-        # Text done (no payload needed, but included for completeness)
-        elif event_type == "response.text.done" or event_type == "response.output_text.done":
-            # No-op: our consolidation model doesn't require explicit done markers for text
+        # 4) Lifecycle / markers
+        elif event_type in ("response.text.done", "response.output_text.done"):
             pass
 
-        # Output/part lifecycle events (capture message/reasoning IDs)
         elif event_type in ("response.output_item.added", "response.content_part.added"):
             # Capture message IDs and reasoning IDs for proper round-tripping
             item = getattr(chunk, "item", None)
@@ -643,7 +618,6 @@ class OpenAIResponses(OpenAIClientBase):
                 item_type = getattr(item, "type", None)
                 item_id = getattr(item, "id", None)
                 output_index = getattr(chunk, "output_index", None)
-
                 if item_type == "message" and item_id:
                     # Store message ID in streaming manager for later retrieval
                     if not hasattr(self.streaming_manager, "pending_message_ids"):
@@ -663,13 +637,11 @@ class OpenAIResponses(OpenAIClientBase):
                             elif isinstance(part, dict):
                                 content_array.append(part)
                         self.streaming_manager.pending_message_content[output_index or 0] = content_array
-
                 elif item_type == "reasoning" and item_id:
                     # Store reasoning ID for potential association with reasoning deltas
                     if not hasattr(self.streaming_manager, "oai_pending_reasoning_ids"):
                         self.streaming_manager.oai_pending_reasoning_ids = {}
                     self.streaming_manager.oai_pending_reasoning_ids[output_index or 0] = item_id
-
                 elif item_type in ("function_call", "custom_tool_call"):
                     # Store tool call identifiers (call_id may not be available yet)
                     if not hasattr(self.streaming_manager, "pending_tool_ids"):
@@ -682,12 +654,12 @@ class OpenAIResponses(OpenAIClientBase):
                         "call_id": call_id,
                         "name": name,
                     }
+
         elif event_type in ("response.output_item.done", "response.content_part.done"):
-            # No-op currently
             pass
 
-        # Reasoning summary part events (piecewise summary text)
         elif event_type in ("response.reasoning_summary_part.added", "response.reasoning_summary_part.done"):
+            # Reasoning summary part events (piecewise summary text)
             part = getattr(chunk, "part", None)
             text = getattr(part, "text", None) if part is not None else None
             item_id = getattr(chunk, "item_id", None)
@@ -699,10 +671,7 @@ class OpenAIResponses(OpenAIClientBase):
                     role="assistant",
                     thinking_summary_delta=text,
                     thinking_id=item_id,
-                    metadata={
-                        "output_index": output_index,
-                        "summary_index": summary_index,
-                    },
+                    metadata={"output_index": output_index, "summary_index": summary_index},
                 )
                 choice_delta = ChatResponseChoiceDelta(
                     index=0,
@@ -714,19 +683,33 @@ class OpenAIResponses(OpenAIClientBase):
                 response_chunk = self.streaming_manager.update(choice_deltas=[choice_delta])
                 processed.append(StreamingChatResponse(id=getattr(chunk, "id", None), data=response_chunk))
 
-        # Completion event - usage already handled above
+        elif event_type == "response.refusal.delta":
+            refusal_text = getattr(chunk, "delta", None)
+            if refusal_text:
+                content_delta = ChatResponseTextContentItemDelta(
+                    index=0,
+                    role="assistant",
+                    text_delta=refusal_text,
+                    metadata={"refusal": True},
+                )
+                choice_delta = ChatResponseChoiceDelta(
+                    index=0,
+                    finish_reason=None,
+                    stop_sequence=None,
+                    content_deltas=[content_delta],
+                    metadata={},
+                )
+                response_chunk = self.streaming_manager.update(choice_deltas=[choice_delta])
+                processed.append(StreamingChatResponse(id=getattr(chunk, "id", None), data=response_chunk))
+
         elif event_type == "response.completed":
-            # Emit a done chunk for clients that rely on it
+            # Completion event - usage already handled
             processed.append(self.streaming_manager.get_streaming_done_chunk())
 
-        # Error events
+        # 5) Error
         elif event_type == "error":
             # Emit a proper SSEErrorResponse for upstream handlers to stop streaming gracefully
             error_obj = getattr(chunk, "error", None)
-            # Attempt to extract message and optional code/details
-            msg = None
-            code = None
-            details = None
             try:
                 msg = getattr(error_obj, "message", None) or str(error_obj)
             except Exception:
@@ -749,5 +732,8 @@ class OpenAIResponses(OpenAIClientBase):
             )
             # Return as a single error chunk for caller to handle immediately
             return [sse_err]
+
+        elif event_type.startswith("response."):
+            logger.debug(f"oai_stream_chunk: unhandled event '{event_type}'")
 
         return processed
