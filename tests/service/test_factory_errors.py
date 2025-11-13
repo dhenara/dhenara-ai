@@ -9,8 +9,6 @@ from dhenara.ai.types.genai.ai_model import (
     AIModelEndpoint,
     AIModelFunctionalTypeEnum,
     AIModelProviderEnum,
-    ChatModelCostData,
-    ChatModelSettings,
     FoundationModel,
 )
 from dhenara.ai.types.genai.dhenara.request import AIModelCallConfig
@@ -25,7 +23,7 @@ def test_unsupported_provider_and_functional_type_raise(text_model):
     THEN it should raise ValueError with a helpful message
     """
 
-    api = AIModelAPI(provider=AIModelAPIProviderEnum.OPEN_AI, api_key="test")
+    api = AIModelAPI(provider=AIModelAPIProviderEnum.OPEN_AI, api_key="test-key")
     config = AIModelCallConfig()
 
     # Unsupported provider
@@ -44,16 +42,11 @@ def test_unsupported_provider_and_functional_type_raise(text_model):
         AIModelClientFactory.create_provider_client(meta_endpoint, config, is_async=False)
     assert "Unsupported provider" in str(excinfo.value)
 
-    # Unsupported functional type
-    video_model = FoundationModel(
-        model_name="video-gen",
-        display_name="Video Gen",
-        provider=AIModelProviderEnum.OPEN_AI,
-        functional_type=AIModelFunctionalTypeEnum.VIDEO_GENERATION,
-        settings=ChatModelSettings(max_input_tokens=1000, max_output_tokens=500),
-        valid_options={},
-        cost_data=ChatModelCostData(input_token_cost_per_million=1.0, output_token_cost_per_million=1.0),
-    )
+    # Unsupported functional type (manually adjust copy to bypass foundation validation)
+    video_model = text_model.model_copy(deep=True)
+    object.__setattr__(video_model, "functional_type", AIModelFunctionalTypeEnum.TEXT_TO_SPEECH)
+    object.__setattr__(video_model, "settings", None)
+    object.__setattr__(video_model, "cost_data", None)
     video_endpoint = AIModelEndpoint(api=api, ai_model=video_model)
 
     with pytest.raises(ValueError) as excinfo_ft:

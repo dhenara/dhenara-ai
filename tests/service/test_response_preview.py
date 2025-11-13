@@ -3,7 +3,12 @@
 import pytest
 
 from dhenara.ai.types import AIModelCallResponse
-from dhenara.ai.types.genai import ChatResponse, ChatResponseChoice, ChatResponseTextContentItem
+from dhenara.ai.types.genai import (
+    ChatMessageContentPart,
+    ChatResponse,
+    ChatResponseChoice,
+    ChatResponseTextContentItem,
+)
 from dhenara.ai.types.genai.ai_model import AIModelAPIProviderEnum, AIModelProviderEnum
 from dhenara.ai.types.genai.dhenara.response import AIModelCallResponseMetaData
 
@@ -26,7 +31,9 @@ def test_preview_dict_none_and_happy_path():
             ChatResponseTextContentItem(
                 index=0,
                 role="assistant",
-                text="Preview me",
+                message_contents=[
+                    ChatMessageContentPart(type="output_text", text="Preview me"),
+                ],
             )
         ],
     )

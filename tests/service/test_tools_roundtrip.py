@@ -70,5 +70,8 @@ def test_tool_call_and_result_message_flow(monkeypatch, text_endpoint, default_c
     assistant_message = response.chat_response.to_message_item() if response.chat_response else None
     assert assistant_message is not None
     tools = assistant_message.tools() if assistant_message else []
-    assert tools and tools[0].name == "fetch_signal"
-    assert tools[0].arguments["path"] == "/tmp/log"
+    assert tools, "Expected the assistant message to expose tool call content"
+    first_tool = tools[0].tool_call
+    assert first_tool is not None
+    assert first_tool.name == "fetch_signal"
+    assert first_tool.arguments["path"] == "/tmp/log"

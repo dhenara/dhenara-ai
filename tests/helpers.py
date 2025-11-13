@@ -8,6 +8,7 @@ from dhenara.ai.types.genai import (
     ChatResponse,
     ChatResponseChoice,
     ChatResponseTextContentItem,
+    ChatResponseUsage,
 )
 from dhenara.ai.types.genai.dhenara.response import AIModelCallResponseMetaData
 
@@ -103,10 +104,15 @@ class FakeProvider(AIModelProviderClientBase):
                 )
             ],
         )
+
+        usage, usage_charge = self.get_usage_and_charge(response)
+
         return ChatResponse(
             model=self.model_endpoint.ai_model.model_name,
             provider=self.model_endpoint.ai_model.provider,
             api_provider=self.model_endpoint.api.provider,
+            usage=usage,
+            usage_charge=usage_charge,
             choices=[choice],
             metadata=AIModelCallResponseMetaData(streaming=False, duration_seconds=0, provider_metadata={}),
             provider_response=response,
@@ -116,7 +122,8 @@ class FakeProvider(AIModelProviderClientBase):
         return []
 
     def _get_usage_from_provider_response(self, response):  # type: ignore[override]
-        return None
+        # Default fake usage to keep cost tracking paths exercised without errors.
+        return ChatResponseUsage(total_tokens=0, prompt_tokens=0, completion_tokens=0)
 
 
 def make_fake_provider(response_text: str = "fake-response"):
