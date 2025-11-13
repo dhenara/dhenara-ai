@@ -46,9 +46,9 @@ class AIModelEndpoint(BaseModel):
     @model_validator(mode="after")
     def _validate_cost_data(self) -> "AIModelEndpoint":
         if self.cost_data:
-            (_setting_model, cost_model) = BaseAIModel.get_pydantic_model_classes(self.functional_type)
+            (_setting_model, cost_model) = BaseAIModel.get_pydantic_model_classes(self.ai_model.functional_type)
             if not isinstance(self.cost_data, cost_model):
-                raise ValueError(f"For {self.functional_type} endpoins, cost data must be type {cost_model} or None.")
+                raise ValueError(f"For {self.ai_model.functional_type} endpoins, cost data must be type {cost_model} or None.")
 
         return self
 
