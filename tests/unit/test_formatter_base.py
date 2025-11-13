@@ -5,6 +5,7 @@ Tests cover prompt formatting, instruction joining, and message API conversion.
 
 import pytest
 
+from dhenara.ai.providers.base.base_formatter import BaseFormatter
 from dhenara.ai.types.genai.dhenara.request import Prompt, SystemInstruction
 from dhenara.ai.types.genai.dhenara.request.data import PromptMessageRoleEnum
 
@@ -30,9 +31,6 @@ class TestFormatter:
             return {"role": "user", "content": message_item.get_formatted_text(**kwargs)}
         return {"role": "assistant", "content": str(message_item)}
 
-
-# Import base formatter methods into test formatter
-from dhenara.ai.providers.base.base_formatter import BaseFormatter
 
 # Copy methods as classmethods to TestFormatter
 TestFormatter.format_prompt = classmethod(BaseFormatter.format_prompt.__func__)

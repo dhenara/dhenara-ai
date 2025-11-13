@@ -48,7 +48,9 @@ class AIModelEndpoint(BaseModel):
         if self.cost_data:
             (_setting_model, cost_model) = BaseAIModel.get_pydantic_model_classes(self.ai_model.functional_type)
             if not isinstance(self.cost_data, cost_model):
-                raise ValueError(f"For {self.ai_model.functional_type} endpoins, cost data must be type {cost_model} or None.")
+                raise ValueError(
+                    f"For {self.ai_model.functional_type} endpoins, cost data must be type {cost_model} or None."
+                )
 
         return self
 

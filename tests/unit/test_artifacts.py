@@ -4,7 +4,6 @@ Tests cover text and JSONL writing with unicode preservation.
 """
 
 import json
-from pathlib import Path
 
 import pytest
 

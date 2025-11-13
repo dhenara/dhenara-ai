@@ -8,6 +8,7 @@ from dhenara.ai.types.genai import (
     AIModelCallResponse,
     AIModelCallResponseMetaData,
     AIModelFunctionalTypeEnum,
+    ChatMessageContentPart,
     ChatResponse,
     ChatResponseChoice,
     ChatResponseChoiceDelta,
@@ -56,7 +57,13 @@ class DummyAIModelResponseFns:
                     contents=[
                         ChatResponseTextContentItem(
                             role="assistant",
-                            text=text,
+                            message_contents=[
+                                ChatMessageContentPart(
+                                    type="output_text",
+                                    text=text,
+                                    annotations=None,
+                                )
+                            ],
                         )
                     ],
                 )
