@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from dhenara.ai.types.genai.dhenara.request import Prompt, SystemInstruction
 from dhenara.ai.utils.artifacts import ArtifactWriter
 
@@ -17,6 +19,8 @@ def _write_dai_request(root: Path, prefix: str, data: dict):
     ArtifactWriter.write_json(artifact_root=root, filename="dai_request.json", data=data, prefix=f"{prefix}/dai")
 
 
+@pytest.mark.component
+@pytest.mark.case_id("DAI-001")
 def test_dai_request_preserves_unicode(tmp_path):
     # Prepare data structure similar to serialized dai request
     # Build messages containing unicode
@@ -54,6 +58,8 @@ def test_dai_request_preserves_unicode(tmp_path):
     assert EMOJI in first_msg_text
 
 
+@pytest.mark.component
+@pytest.mark.case_id("DAI-002")
 def test_jsonl_writer_preserves_unicode(tmp_path):
     ArtifactWriter.write_jsonl(
         artifact_root=tmp_path,
