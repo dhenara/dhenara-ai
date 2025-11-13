@@ -153,7 +153,7 @@ class ArtifactWriter:
             artifact_dir.mkdir(parents=True, exist_ok=True)
             artifact_path = artifact_dir / filename
 
-            serialized: list[str] = [json.dumps(row, default=str) for row in (rows or [])]
+            serialized: list[str] = [json.dumps(row, default=str, ensure_ascii=False) for row in (rows or [])]
 
             with open(artifact_path, "a", encoding="utf-8") as f:
                 for line in serialized:
