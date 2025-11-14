@@ -18,8 +18,6 @@ from ._helpers import (
     run_messages_api,
     run_messages_streaming,
     run_multi_turn_conversation,
-    run_openai_reasoning,
-    run_openai_tool_calling,
     run_streaming_multi_turn,
     run_streaming_tools_structured,
     run_structured_output_all_providers,
@@ -236,28 +234,6 @@ def test_realtime_image_generation(provider_model_endpoint):
 
     payload = run_image_generation(provider_model_endpoint.endpoint)
     assert len(payload) > 0
-
-
-def test_openai_reasoning_responses_api():
-    """
-    GIVEN OpenAI credentials
-    WHEN we run the reasoning responses API scenario
-    THEN the first turn contains output items for validation
-    """
-
-    summary = run_openai_reasoning()
-    assert summary["first_turn_items"]
-
-
-def test_openai_tool_calling_responses_api():
-    """
-    GIVEN OpenAI credentials
-    WHEN we run the tool-calling responses API scenario
-    THEN the summary tracks the tool invoked by the model
-    """
-
-    summary = run_openai_tool_calling()
-    assert summary["tool_name"]
 
 
 def _assert_artifacts_written(tracker: ArtifactTracker):

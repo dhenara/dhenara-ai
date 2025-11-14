@@ -12,6 +12,7 @@ class ArtifactKind(str, Enum):
     LOG = "log"
     PAYLOAD = "payload"
     SNAPSHOT = "snapshot"
+    MEDIA = "media"
     UNKNOWN = "unknown"
 
 

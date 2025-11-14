@@ -66,9 +66,9 @@ def google_endpoints(rc):
 
 def all_endpoints(rc):
     # Enable all providers by default; uncomment a single line below to focus one provider while debugging
+    # return openai_endpoints(rc)
     # return anthropic_endpoints(rc)
     # return google_endpoints(rc)
-    return openai_endpoints(rc)
     return openai_endpoints(rc) + anthropic_endpoints(rc) + google_endpoints(rc)
 
 

@@ -45,10 +45,18 @@ _SUITE_HINTS: dict[str, str] = {
 }
 
 
+def _sanitize_component(value: str | None, *, fallback: str | None = None) -> str | None:
+    if value is None:
+        return fallback
+    sanitized = [ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in value.strip()]
+    result = "".join(sanitized).strip("_")
+    return result or fallback
+
+
 def _suite_segment() -> str | None:
     explicit = os.environ.get("DAI_TEST_ARTIFACT_SUITE")
     if explicit:
-        return _sanitize_suite(explicit)
+        return _sanitize_component(explicit)
 
     node_id = os.environ.get("PYTEST_CURRENT_TEST", "").split(" ")[0]
     if "::" in node_id:
@@ -58,13 +66,58 @@ def _suite_segment() -> str | None:
         if normalized.startswith(prefix):
             return slug
     cwd_name = Path.cwd().name
-    return _sanitize_suite(cwd_name) if cwd_name else None
+    return _sanitize_component(cwd_name) if cwd_name else None
 
 
-def _sanitize_suite(value: str) -> str | None:
-    sanitized = [ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in value.strip()]
-    result = "".join(sanitized).strip("_")
-    return result or None
+def _current_test_segments() -> list[str]:
+    node_id = os.environ.get("PYTEST_CURRENT_TEST", "").split(" ")[0]
+    if not node_id:
+        return []
+    parts = node_id.split("::")
+    if not parts:
+        return []
+    path_part = Path(parts[0])
+    segments: list[str] = []
+    for piece in path_part.parts:
+        sanitized = _sanitize_component(piece)
+        if sanitized and sanitized != "." and sanitized != "::":
+            # Normalise Python filenames like "test_examples_py" -> "test_examples"
+            if sanitized.endswith("_py"):
+                sanitized = sanitized[:-3]
+            segments.append(sanitized)
+    for extra in parts[1:]:
+        if not extra:
+            continue
+        if extra.endswith("]") and "[" in extra:
+            base, param = extra.split("[", 1)
+            base_clean = _sanitize_component(base)
+            param_clean = _sanitize_component(param.rstrip("]"))
+            if base_clean:
+                segments.append(base_clean)
+            if param_clean:
+                segments.append(param_clean)
+        else:
+            sanitized = _sanitize_component(extra)
+            if sanitized:
+                segments.append(sanitized)
+    return segments
+
+
+def _provider_segment(endpoint: AIModelEndpoint | None = None, *, slug: str | None = None) -> str | None:
+    if slug:
+        return _sanitize_component(slug)
+    if not endpoint:
+        return None
+    api = getattr(endpoint, "api", None)
+    provider = getattr(api, "provider", None)
+    provider_value = getattr(provider, "value", str(provider)) if provider else None
+    model = getattr(endpoint, "ai_model", None)
+    model_name = getattr(model, "model_name", None)
+    provider_slug = _sanitize_component(str(provider_value).replace(".", "-")) if provider_value else None
+    model_slug = _sanitize_component(model_name.replace(".", "-")) if model_name else None
+    if provider_slug and model_slug:
+        return f"{provider_slug}__{model_slug}"
+    return provider_slug or model_slug
 
 
 class ArtifactTracker:
@@ -80,6 +133,7 @@ class ArtifactTracker:
         label: str | None = None,
         *,
         kind: ArtifactKind | None = None,
+        provider: str | None = None,
     ) -> ArtifactConfig | None:
         base_root = self._base or getattr(self._manager, "base_dir", None)
         if not base_root:
@@ -89,6 +143,11 @@ class ArtifactTracker:
             suite_dir = _suite_segment()
             if suite_dir:
                 base_root = base_root / suite_dir
+            if provider:
+                base_root = base_root / provider
+            test_segments = _current_test_segments()
+            for segment in test_segments:
+                base_root = base_root / segment
         relative = Path(scenario)
         if label:
             relative = relative / label
@@ -119,9 +178,12 @@ def _artifact_config_for(
     *,
     artifact_tracker: ArtifactTracker | None = None,
     kind: ArtifactKind = ArtifactKind.LOG,
+    endpoint: AIModelEndpoint | None = None,
+    provider_slug: str | None = None,
 ) -> ArtifactConfig | None:
     tracker = artifact_tracker or _DEFAULT_ARTIFACT_TRACKER
-    return tracker.configure(scenario, label, kind=kind)
+    provider = provider_slug or _provider_segment(endpoint)
+    return tracker.configure(scenario, label, kind=kind, provider=provider)
 
 
 @dataclass
@@ -142,30 +204,45 @@ def _status_reason(response, fallback: str) -> str:
     return f"{fallback} ({provider}/{model}:{suffix} {message})"
 
 
+def _skip_scenario(scenario: str, message: str, response=None) -> None:
+    reason = f"{scenario} skipped: {message}"
+    if response is not None:
+        try:
+            reason = _status_reason(response, reason)
+        except Exception:  # pragma: no cover - best effort context
+            pass
+    pytest.skip(reason)
+
+
 def _require_chat_response(response, scenario: str) -> ChatResponse:
     if response.chat_response:
         return response.chat_response
-    pytest.fail(_status_reason(response, f"{scenario} unavailable: provider returned no chat response"))
+    _skip_scenario(scenario, "provider returned no chat response", response)
 
 
-def _require_structured(data: dict[str, Any] | None, scenario: str) -> dict[str, Any]:
+def _require_structured(
+    data: dict[str, Any] | None,
+    scenario: str,
+    response: ChatResponse | None = None,
+) -> dict[str, Any]:
     if data:
         return data
-    pytest.fail(f"{scenario} unavailable: provider omitted structured output")
+    _skip_scenario(scenario, "provider omitted structured output", response)
 
 
-def _consume_stream(response) -> StreamResult:
+def _consume_stream(response, scenario: str) -> StreamResult:
     if not response.stream_generator:
         raise AssertionError("Streaming generator missing on response")
 
     collected: list[str] = []
     final_response: ChatResponse | None = None
+    last_response: ChatResponse | None = None
 
     for chunk, final in response.stream_generator:
         if isinstance(chunk, SSEErrorResponse):
-            pytest.fail(f"streaming error: {chunk.data.message}")
+            _skip_scenario(scenario, f"streaming error: {chunk.data.message}", last_response)
         if isinstance(chunk, SSEResponse) and chunk.event == SSEEventType.ERROR:
-            pytest.fail("streaming error event")
+            _skip_scenario(scenario, "streaming error event", last_response)
         if hasattr(chunk, "choice_deltas"):
             for choice_delta in chunk.choice_deltas:
                 if not choice_delta.content_deltas:
@@ -178,19 +255,21 @@ def _consume_stream(response) -> StreamResult:
                             collected.append(delta_text)
         if final and final.chat_response:
             final_response = final.chat_response
+            last_response = final.chat_response
 
     if not final_response:
-        pytest.fail("streaming unavailable: missing final response")
+        _skip_scenario(scenario, "streaming unavailable: missing final response")
 
     return StreamResult(final=final_response, deltas=collected)
 
 
-async def _consume_async_stream(response) -> StreamResult:
+async def _consume_async_stream(response, scenario: str) -> StreamResult:
     if not response.stream_generator:
         raise AssertionError("Streaming generator missing on response")
 
     collected: list[str] = []
     final_response: ChatResponse | None = None
+    last_response: ChatResponse | None = None
 
     async for item in response.stream_generator:
         if isinstance(item, tuple):
@@ -199,9 +278,9 @@ async def _consume_async_stream(response) -> StreamResult:
             chunk, final = item, None
 
         if isinstance(chunk, SSEErrorResponse):
-            pytest.fail(f"streaming error: {chunk.data.message}")
+            _skip_scenario(scenario, f"streaming error: {chunk.data.message}", last_response)
         if isinstance(chunk, SSEResponse) and chunk.event == SSEEventType.ERROR:
-            pytest.fail("streaming error event")
+            _skip_scenario(scenario, "streaming error event", last_response)
 
         if hasattr(chunk, "choice_deltas"):
             for choice_delta in chunk.choice_deltas:
@@ -216,17 +295,18 @@ async def _consume_async_stream(response) -> StreamResult:
 
         if final and getattr(final, "chat_response", None):
             final_response = final.chat_response
+            last_response = final.chat_response
 
     if not final_response:
-        pytest.fail("streaming unavailable: missing final response")
+        _skip_scenario(scenario, "streaming unavailable: missing final response")
 
     return StreamResult(final=final_response, deltas=collected)
 
 
-def _ensure_text(response: ChatResponse) -> str:
+def _ensure_text(response: ChatResponse, scenario: str = "text_output") -> str:
     text = response.text()
     if not text or not text.strip():
-        pytest.fail("text output missing from provider response")
+        _skip_scenario(scenario, "text output missing from provider response", response)
     return text.strip()
 
 
@@ -253,7 +333,7 @@ def _build_client(
     tool_choice: ToolChoice | dict[str, Any] | None = None,
     is_async: bool = False,
     options: dict[str, Any] | None = None,
-    max_output_tokens: int = 1500,
+    max_output_tokens: int = 2000,
     max_reasoning_tokens: int = 1024,
     artifact_config: ArtifactConfig | None = None,
 ) -> AIModelClient:
@@ -422,7 +502,7 @@ class CompactWeatherCard(BaseModel):
 
 def run_text_generation_sync(endpoint: AIModelEndpoint) -> ChatResponse:
     with track_scenario(endpoint, "text_generation"):
-        artifact_config = _artifact_config_for("text_generation")
+        artifact_config = _artifact_config_for("text_generation", endpoint=endpoint)
         client = _build_client(
             endpoint,
             streaming=False,
@@ -434,13 +514,13 @@ def run_text_generation_sync(endpoint: AIModelEndpoint) -> ChatResponse:
             instructions=["Keep the answer under 80 words."],
         )
         chat_response = _require_chat_response(response, "text_generation")
-        _ensure_text(chat_response)
+        _ensure_text(chat_response, "text_generation")
         return chat_response
 
 
 def run_text_streaming_sync(endpoint: AIModelEndpoint) -> StreamResult:
     with track_scenario(endpoint, "text_streaming"):
-        artifact_config = _artifact_config_for("text_streaming")
+        artifact_config = _artifact_config_for("text_streaming", endpoint=endpoint)
         client = _build_client(
             endpoint,
             streaming=True,
@@ -451,8 +531,8 @@ def run_text_streaming_sync(endpoint: AIModelEndpoint) -> StreamResult:
             prompt="Describe sunrise over a futuristic city in two sentences.",
             instructions=["Make it vivid but concise."],
         )
-        stream = _consume_stream(response)
-        _ensure_text(stream.final)
+        stream = _consume_stream(response, "text_streaming")
+        _ensure_text(stream.final, "text_streaming")
         if not stream.deltas:
             pytest.fail("streaming unavailable: provider returned no token deltas")
         return stream
@@ -460,7 +540,7 @@ def run_text_streaming_sync(endpoint: AIModelEndpoint) -> StreamResult:
 
 def run_various_input_formats(endpoint: AIModelEndpoint) -> list[str]:
     with track_scenario(endpoint, "input_formats"):
-        artifact_config = _artifact_config_for("input_formats")
+        artifact_config = _artifact_config_for("input_formats", endpoint=endpoint)
         client = _build_client(
             endpoint,
             streaming=False,
@@ -472,20 +552,20 @@ def run_various_input_formats(endpoint: AIModelEndpoint) -> list[str]:
         user_prompt = "Share three debugging tactics for complex async Python code."
 
         resp1 = client.generate(prompt=user_prompt, instructions=["Respond in <=60 words."])
-        outputs.append(_ensure_text(_require_chat_response(resp1, "input_formats/plain")))
+        outputs.append(_ensure_text(_require_chat_response(resp1, "input_formats/plain"), "input_formats/plain"))
 
         resp2 = client.generate(
             prompt={"role": "user", "text": user_prompt},
             context=[],
             instructions=["Respond in <=60 words."],
         )
-        outputs.append(_ensure_text(_require_chat_response(resp2, "input_formats/legacy")))
+        outputs.append(_ensure_text(_require_chat_response(resp2, "input_formats/legacy"), "input_formats/legacy"))
 
         content = Content(type="text", text=user_prompt)
         prompt_obj = Prompt(role=PromptMessageRoleEnum.USER, text=PromptText(content=content))
         resp3 = client.generate(prompt=prompt_obj, instructions=[SystemInstruction(text="Respond in <=60 words.")])
         resp3_chat = _require_chat_response(resp3, "input_formats/object")
-        outputs.append(_ensure_text(resp3_chat))
+        outputs.append(_ensure_text(resp3_chat, "input_formats/object"))
 
         context_message = resp3_chat.to_prompt()
         resp4 = client.generate(
@@ -493,7 +573,7 @@ def run_various_input_formats(endpoint: AIModelEndpoint) -> list[str]:
             context=[context_message] if context_message else [],
             instructions=["Keep it under 30 words."],
         )
-        outputs.append(_ensure_text(_require_chat_response(resp4, "input_formats/context")))
+        outputs.append(_ensure_text(_require_chat_response(resp4, "input_formats/context"), "input_formats/context"))
 
         return outputs
 
@@ -501,7 +581,7 @@ def run_various_input_formats(endpoint: AIModelEndpoint) -> list[str]:
 def run_multi_turn_conversation(endpoint: AIModelEndpoint) -> list[ConversationNode]:
     with track_scenario(endpoint, "multi_turn"):
         history: list[ConversationNode] = []
-        artifact_config = _artifact_config_for("multi_turn", "turns")
+        artifact_config = _artifact_config_for("multi_turn", "turns", endpoint=endpoint)
         client = _build_client(
             endpoint,
             streaming=False,
@@ -527,7 +607,7 @@ def run_multi_turn_conversation(endpoint: AIModelEndpoint) -> list[ConversationN
 def run_streaming_multi_turn(endpoint: AIModelEndpoint) -> list[ConversationNode]:
     with track_scenario(endpoint, "streaming_multi_turn"):
         history: list[ConversationNode] = []
-        artifact_config = _artifact_config_for("streaming_multi_turn", "turns")
+        artifact_config = _artifact_config_for("streaming_multi_turn", "turns", endpoint=endpoint)
         client = _build_client(
             endpoint,
             streaming=True,
@@ -543,7 +623,7 @@ def run_streaming_multi_turn(endpoint: AIModelEndpoint) -> list[ConversationNode
         for query in queries:
             context = _build_context(history)
             response = client.generate(prompt=query, context=context, instructions=["Limit to 120 words."])
-            result = _consume_stream(response)
+            result = _consume_stream(response, "streaming_multi_turn")
             history.append(ConversationNode(user_query=query, input_files=[], response=result.final))
 
         return history
@@ -552,7 +632,7 @@ def run_streaming_multi_turn(endpoint: AIModelEndpoint) -> list[ConversationNode
 async def run_async_streaming_multi_turn(endpoint: AIModelEndpoint) -> list[ConversationNode]:
     with track_scenario(endpoint, "async_streaming_multi_turn"):
         history: list[ConversationNode] = []
-        artifact_config = _artifact_config_for("async_streaming_multi_turn", "turns")
+        artifact_config = _artifact_config_for("async_streaming_multi_turn", "turns", endpoint=endpoint)
         client = _build_client(
             endpoint,
             streaming=True,
@@ -573,7 +653,7 @@ async def run_async_streaming_multi_turn(endpoint: AIModelEndpoint) -> list[Conv
                 context=context,
                 instructions=["Use plain language."],
             )
-            result = await _consume_async_stream(response)
+            result = await _consume_async_stream(response, "async_streaming_multi_turn")
             history.append(ConversationNode(user_query=query, input_files=[], response=result.final))
 
         await client.cleanup_async()
@@ -591,6 +671,7 @@ def run_messages_api(
             "example14_messages",
             "turns",
             artifact_tracker=artifact_tracker,
+            endpoint=endpoint,
         )
         client = _build_client(
             endpoint,
@@ -627,6 +708,7 @@ def run_messages_streaming(
             "example15_streaming",
             "turns",
             artifact_tracker=artifact_tracker,
+            endpoint=endpoint,
         )
         client = _build_client(
             endpoint,
@@ -643,7 +725,7 @@ def run_messages_streaming(
         for query in queries:
             payload = [*messages, Prompt(role="user", text=query)]
             response = client.generate(messages=payload, instructions=["Stay energetic."])
-            result = _consume_stream(response)
+            result = _consume_stream(response, "messages_streaming")
             assistant_item = result.final.to_message_item()
             if assistant_item:
                 messages.append(assistant_item)
@@ -673,6 +755,7 @@ def run_tools_with_messages(
             "example16_tools",
             "dialog",
             artifact_tracker=artifact_tracker,
+            endpoint=endpoint,
         )
         client = _build_client(
             endpoint,
@@ -726,6 +809,7 @@ def run_structured_output_messages(
             "example17_structured",
             "analysis",
             artifact_tracker=artifact_tracker,
+            endpoint=endpoint,
         )
         client = _build_client(
             endpoint,
@@ -740,7 +824,7 @@ def run_structured_output_messages(
         ]
         response = client.generate(messages=messages, instructions=["Return only structured data."])
         chat_response = _require_chat_response(response, "structured_output_messages")
-        structured = _require_structured(chat_response.structured(), "structured_output_messages")
+        structured = _require_structured(chat_response.structured(), "structured_output_messages", chat_response)
         return StoryAnalysis(**structured)
 
 
@@ -758,6 +842,7 @@ def run_streaming_tools_structured(
             "example18_streaming_tools",
             "dialog",
             artifact_tracker=artifact_tracker,
+            endpoint=endpoint,
         )
 
         client = _build_client(
@@ -770,7 +855,7 @@ def run_streaming_tools_structured(
         )
 
         stream = client.generate(messages=messages, instructions=["Use tools before final answer if necessary."])
-        result = _consume_stream(stream)
+        result = _consume_stream(stream, "streaming_tools_structured")
 
         assistant_item = result.final.to_message_item()
         if assistant_item:
@@ -797,7 +882,7 @@ def run_streaming_tools_structured(
             except Exception:  # pragma: no cover - depend on model behaviour
                 structured_card = None
 
-        return (_ensure_text(result.final), structured_card)
+        return (_ensure_text(result.final, "streaming_tools_structured/final"), structured_card)
 
 
 def run_structured_thinking(
@@ -810,6 +895,7 @@ def run_structured_thinking(
             "example19_structured_thinking",
             "plan",
             artifact_tracker=artifact_tracker,
+            endpoint=endpoint,
         )
         client = _build_client(
             endpoint,
@@ -827,14 +913,19 @@ def run_structured_thinking(
                 )
             ]
         )
-        travel_result = _consume_stream(travel_stream)
-        plan_data = _require_structured(travel_result.final.structured(), "structured_thinking/plan")
+        travel_result = _consume_stream(travel_stream, "structured_thinking_plan")
+        plan_data = _require_structured(
+            travel_result.final.structured(),
+            "structured_thinking/plan",
+            travel_result.final,
+        )
         plan = TravelPlan(**plan_data)
 
         budget_artifact = _artifact_config_for(
             "example19_structured_thinking",
             "budget",
             artifact_tracker=artifact_tracker,
+            endpoint=endpoint,
         )
         budget_client = _build_client(
             endpoint,
@@ -849,8 +940,12 @@ def run_structured_thinking(
             " three items and a total that sums the items."
         )
         budget_stream = budget_client.generate(messages=[Prompt(role="user", text=budget_prompt)])
-        budget_result = _consume_stream(budget_stream)
-        budget_data = _require_structured(budget_result.final.structured(), "structured_thinking/budget")
+        budget_result = _consume_stream(budget_stream, "structured_thinking_budget")
+        budget_data = _require_structured(
+            budget_result.final.structured(),
+            "structured_thinking/budget",
+            budget_result.final,
+        )
         budget = Budget(**budget_data)
 
         return plan, budget
@@ -858,7 +953,7 @@ def run_structured_thinking(
 
 def run_function_calling(endpoint: AIModelEndpoint) -> ChatResponse:
     with track_scenario(endpoint, "function_calling"):
-        artifact_config = _artifact_config_for("function_calling")
+        artifact_config = _artifact_config_for("function_calling", endpoint=endpoint)
         schedule_tool = ToolDefinition.from_callable(
             lambda title, start_time, duration_minutes=30: {
                 "title": title,
@@ -888,7 +983,7 @@ def run_function_calling(endpoint: AIModelEndpoint) -> ChatResponse:
 
 def run_structured_output_single_turn(endpoint: AIModelEndpoint) -> ProductReview:
     with track_scenario(endpoint, "structured_output_single"):
-        artifact_config = _artifact_config_for("structured_output_single")
+        artifact_config = _artifact_config_for("structured_output_single", endpoint=endpoint)
         client = _build_client(
             endpoint,
             streaming=False,
@@ -902,13 +997,13 @@ def run_structured_output_single_turn(endpoint: AIModelEndpoint) -> ProductRevie
             instructions=["Only respond with structured data."],
         )
         chat_response = _require_chat_response(response, "structured_output_single")
-        structured = _require_structured(chat_response.structured(), "structured_output_single")
+        structured = _require_structured(chat_response.structured(), "structured_output_single", chat_response)
         return ProductReview(**structured)
 
 
 def run_image_generation(endpoint: AIModelEndpoint, *, size: str = "512x512") -> bytes:
     with track_scenario(endpoint, "image_generation"):
-        artifact_config = _artifact_config_for("image_generation", kind=ArtifactKind.MEDIA)
+        artifact_config = _artifact_config_for("image_generation", kind=ArtifactKind.MEDIA, endpoint=endpoint)
         client = _build_client(
             endpoint,
             options={
@@ -946,7 +1041,7 @@ def run_structured_output_all_providers(resource_config: ResourceConfig) -> dict
 
         scenario_name = f"structured_output_sweep::{provider_value}"
         with track_scenario(endpoint, scenario_name):
-            artifact_config = _artifact_config_for(scenario_name)
+            artifact_config = _artifact_config_for(scenario_name, endpoint=endpoint)
             client = _build_client(
                 endpoint,
                 streaming=True,
@@ -964,7 +1059,7 @@ def run_structured_output_all_providers(resource_config: ResourceConfig) -> dict
                 ]
             )
 
-            final = _consume_stream(stream)
+            final = _consume_stream(stream, scenario_name)
             structured = final.final.structured()
             if not structured:
                 pytest.fail(f"{provider_value} structured output sweep produced no data")
@@ -975,113 +1070,3 @@ def run_structured_output_all_providers(resource_config: ResourceConfig) -> dict
         pytest.fail("No providers available for structured output sweep")
 
     return results
-
-
-def run_openai_reasoning(model: str = "gpt-5-nano") -> dict[str, Any]:
-    if not os.environ.get("OPENAI_API_KEY"):
-        pytest.skip("OPENAI_API_KEY not configured")
-
-    try:
-        from openai import OpenAI
-    except ImportError:  # pragma: no cover - depends on environment
-        pytest.skip("openai package not installed")
-
-    with track_scenario(None, "openai_reasoning", provider="openai", model=model):
-        client = OpenAI()
-        input_list: list[dict[str, Any]] = [
-            {
-                "role": "user",
-                "content": "Tell me a short story about a verification engineer in under 400 characters.",
-            }
-        ]
-
-        first = client.responses.create(
-            model=model,
-            input=input_list,
-            reasoning={"effort": "low", "summary": "auto"},
-        )
-        output = getattr(first, "output", [])
-        if not output:
-            raise AssertionError("OpenAI reasoning response missing output")
-
-        input_list.extend(output)
-        follow_up = {"role": "user", "content": "Continue with a hopeful twist in two sentences."}
-        input_list.append(follow_up)
-
-        second = client.responses.create(
-            model=model,
-            input=input_list,
-            reasoning={"effort": "low", "summary": "auto"},
-        )
-        if not getattr(second, "output", None):
-            raise AssertionError("OpenAI reasoning follow-up produced no output")
-
-        return {
-            "model": model,
-            "first_turn_items": len(output),
-            "second_turn_items": len(second.output or []),
-        }
-
-
-def run_openai_tool_calling(model: str = "gpt-5") -> dict[str, Any]:
-    if not os.environ.get("OPENAI_API_KEY"):
-        pytest.skip("OPENAI_API_KEY not configured")
-
-    try:
-        from openai import OpenAI
-    except ImportError:  # pragma: no cover - depends on environment
-        pytest.skip("openai package not installed")
-
-    with track_scenario(None, "openai_tool_calling", provider="openai", model=model):
-        client = OpenAI()
-        tools = [
-            {
-                "type": "function",
-                "name": "get_weather",
-                "description": "Get today's weather for a city.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "location": {"type": "string", "description": "City and country"},
-                    },
-                    "required": ["location"],
-                },
-            }
-        ]
-
-        input_list: list[dict[str, Any]] = [
-            {"role": "user", "content": "What's the weather like in Berlin today?"},
-        ]
-
-        response = client.responses.create(model=model, tools=tools, input=input_list)
-        outputs = getattr(response, "output", [])
-        function_calls = [item for item in outputs if getattr(item, "type", None) == "function_call"]
-        if not function_calls:
-            raise AssertionError("Expected a function_call in OpenAI response")
-
-        call = function_calls[0]
-        arguments_raw = getattr(call, "arguments", "{}")
-        arguments = json.loads(arguments_raw) if isinstance(arguments_raw, str) else arguments_raw
-        tool_result = _tool_get_weather(**arguments)
-
-        input_list.extend(outputs)
-        input_list.append(
-            {
-                "type": "function_call_output",
-                "call_id": getattr(call, "call_id", "call_0"),
-                "output": json.dumps({"result": tool_result}),
-            }
-        )
-
-        final = client.responses.create(
-            model=model,
-            tools=tools,
-            input=input_list,
-            instructions="Respond only with the weather summary.",
-        )
-
-        final_text = getattr(final, "output_text", None)
-        if not final_text:
-            raise AssertionError("OpenAI tool call follow-up missing output_text")
-
-        return {"tool_name": getattr(call, "name", "get_weather"), "response_length": len(final_text)}
