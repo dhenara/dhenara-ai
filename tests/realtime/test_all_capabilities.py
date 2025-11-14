@@ -20,7 +20,6 @@ from ._helpers import (
     run_multi_turn_conversation,
     run_streaming_multi_turn,
     run_streaming_tools_structured,
-    run_structured_output_all_providers,
     run_structured_output_messages,
     run_structured_output_single_turn,
     run_structured_thinking,
@@ -212,17 +211,6 @@ def test_realtime_structured_output_single_turn(provider_model_endpoint):
 
     review = run_structured_output_single_turn(provider_model_endpoint.endpoint)
     assert review.pros
-
-
-def test_realtime_structured_output_all_providers(realtime_resource_config):
-    """
-    GIVEN the realtime resource configuration
-    WHEN we sweep structured output across providers
-    THEN every visited provider returns structured content
-    """
-
-    results = run_structured_output_all_providers(realtime_resource_config)
-    assert results
 
 
 def test_realtime_image_generation(provider_model_endpoint):
