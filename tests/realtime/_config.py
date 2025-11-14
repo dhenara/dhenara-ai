@@ -8,7 +8,7 @@ import pytest
 
 from dhenara.ai.types import AIModelAPIProviderEnum, AIModelEndpoint, ResourceConfig
 
-PROVIDER_MODEL_PREFERENCE: dict[AIModelAPIProviderEnum, tuple[str, ...]] = {
+DEFAULT_PROVIDER_MODELS_MAP: dict[AIModelAPIProviderEnum, tuple[str, ...]] = {
     AIModelAPIProviderEnum.OPEN_AI: (
         "gpt-5-nano",
         # "gpt-5-mini",
@@ -18,11 +18,20 @@ PROVIDER_MODEL_PREFERENCE: dict[AIModelAPIProviderEnum, tuple[str, ...]] = {
         "claude-haiku-4-5",
         # "claude-sonnet-4-5",
     ),
-    AIModelAPIProviderEnum.GOOGLE_AI: (
+    AIModelAPIProviderEnum.GOOGLE_VERTEX_AI: (
         "gemini-2.5-flash-lite",
         # "gemini-2.5-flash",
         # "gemini-2.5-pro",
     ),
+}
+
+ALL_PROVIDER_MODELS_MAP: dict[AIModelAPIProviderEnum, tuple[str, ...]] = {
+    AIModelAPIProviderEnum.OPEN_AI: ("gpt-5-nano"),
+    AIModelAPIProviderEnum.ANTHROPIC: ("claude-haiku-4-5"),
+    AIModelAPIProviderEnum.GOOGLE_VERTEX_AI: ("gemini-2.5-flash-lite"),
+    AIModelAPIProviderEnum.GOOGLE_AI: ("gemini-2.5-flash-lite"),
+    AIModelAPIProviderEnum.AMAZON_BEDROCK: ("claude-haiku-4-5"),
+    AIModelAPIProviderEnum.MICROSOFT_OPENAI: ("gpt-5-nano"),
 }
 
 
@@ -130,7 +139,7 @@ def select_provider_endpoint(
     if not candidates:
         pytest.skip(f"No endpoints configured for provider {provider.name}")
 
-    priority_models = list(preferred_models or PROVIDER_MODEL_PREFERENCE.get(provider, ()))
+    priority_models = list(preferred_models or DEFAULT_PROVIDER_MODELS_MAP.get(provider, ()))
 
     for model_name in priority_models:
         for endpoint in candidates:
@@ -142,4 +151,8 @@ def select_provider_endpoint(
 
 
 def provider_model_cases() -> list[tuple[AIModelAPIProviderEnum, str]]:
-    return [(provider, model_name) for provider, models in PROVIDER_MODEL_PREFERENCE.items() for model_name in models]
+    return [(provider, model_name) for provider, models in DEFAULT_PROVIDER_MODELS_MAP.items() for model_name in models]
+
+
+def all_provider_model_cases() -> list[tuple[AIModelAPIProviderEnum, str]]:
+    return [(provider, model_name) for provider, models in ALL_PROVIDER_MODELS_MAP.items() for model_name in models]

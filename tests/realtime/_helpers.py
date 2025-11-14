@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import base64
-import json
 import os
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
@@ -70,36 +69,43 @@ def _suite_segment() -> str | None:
 
 
 def _current_test_segments() -> list[str]:
+    """Return a simple `<module>/<test_fn>` style path for artifacts.
+
+    Examples
+    --------
+    - test_all_capabilities.py::test_realtime_text_generation[open_ai-gpt-5-nano]
+      -> ["test_all_capabilities", "test_realtime_text_generation"]
+
+    - test_all_providers.py::test_realtime_structured_output_all_providers
+      -> ["test_all_providers", "test_realtime_structured_output_all_providers"]
+    """
+
     node_id = os.environ.get("PYTEST_CURRENT_TEST", "").split(" ")[0]
     if not node_id:
         return []
+
     parts = node_id.split("::")
     if not parts:
         return []
-    path_part = Path(parts[0])
+
+    # Normalised module name (strip .py and suffixes like _py)
+    module_path = Path(parts[0])
+    module_stem = module_path.stem  # e.g. "test_all_capabilities"
+    module_segment = _sanitize_component(module_stem)
+
+    # Base test function name (drop any param suffix [..])
+    test_name: str | None = None
+    if len(parts) > 1:
+        func_part = parts[1]
+        if "[" in func_part:
+            func_part = func_part.split("[", 1)[0]
+        test_name = _sanitize_component(func_part)
+
     segments: list[str] = []
-    for piece in path_part.parts:
-        sanitized = _sanitize_component(piece)
-        if sanitized and sanitized != "." and sanitized != "::":
-            # Normalise Python filenames like "test_examples_py" -> "test_examples"
-            if sanitized.endswith("_py"):
-                sanitized = sanitized[:-3]
-            segments.append(sanitized)
-    for extra in parts[1:]:
-        if not extra:
-            continue
-        if extra.endswith("]") and "[" in extra:
-            base, param = extra.split("[", 1)
-            base_clean = _sanitize_component(base)
-            param_clean = _sanitize_component(param.rstrip("]"))
-            if base_clean:
-                segments.append(base_clean)
-            if param_clean:
-                segments.append(param_clean)
-        else:
-            sanitized = _sanitize_component(extra)
-            if sanitized:
-                segments.append(sanitized)
+    if module_segment:
+        segments.append(module_segment)
+    if test_name:
+        segments.append(test_name)
     return segments
 
 
@@ -145,8 +151,8 @@ class ArtifactTracker:
                 base_root = base_root / suite_dir
             if provider:
                 base_root = base_root / provider
-            test_segments = _current_test_segments()
-            for segment in test_segments:
+            # Use simple `<module>/<test_fn>` structure for all realtime tests
+            for segment in _current_test_segments():
                 base_root = base_root / segment
         relative = Path(scenario)
         if label:
@@ -165,7 +171,7 @@ class ArtifactTracker:
             capture_provider_request=True,
             capture_provider_response=True,
             capture_dhenara_response=True,
-            enable_python_logs=False,
+            enable_python_logs=True,
         )
 
 

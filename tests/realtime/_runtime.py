@@ -139,7 +139,8 @@ def build_provider_summary() -> str:
         for model in sorted(summary.models.keys()):
             model_counts = summary.models[model]
             lines.append(
-                f"    • {model}: pass={model_counts.get('pass', 0)} fail={model_counts.get('fail', 0)} skip={model_counts.get('skip', 0)}"
+                f"    • {model}: pass={model_counts.get('pass', 0)} fail={model_counts.get('fail', 0)} "
+                f"skip={model_counts.get('skip', 0)}"
             )
     return "\n".join(lines)
 
