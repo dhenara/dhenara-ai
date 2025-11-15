@@ -1,4 +1,4 @@
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 from dhenara.ai.types.shared.base import BaseModel
 
@@ -27,15 +27,16 @@ class ChatResponseUsage(BaseModel):
         "These are included in completion_tokens count.",
     )
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "total_tokens": 100,
                 "prompt_tokens": 50,
                 "completion_tokens": 50,
                 "reasoning_tokens": 20,
             }
-        }
+        },
+    )
 
 
 class ImageResponseUsage(BaseModel):
@@ -55,8 +56,8 @@ class ImageResponseUsage(BaseModel):
         description="Options send to API",
     )
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "model": "dall-e-3",
                 "options": {
@@ -64,4 +65,5 @@ class ImageResponseUsage(BaseModel):
                     "quality": "standard",
                 },
             }
-        }
+        },
+    )

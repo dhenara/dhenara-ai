@@ -54,7 +54,7 @@ class BaseTextPrompt(BaseModel):
     variables: dict[str, Any] = Field(
         default_factory=dict,
         description="Variable name s and values for template resolution in prompt.",
-        example={"style": "modern", "name": "Annie"},
+        json_schema_extra={"example": {"style": "modern", "name": "Annie"}},
     )
 
     def get_formatted_text(

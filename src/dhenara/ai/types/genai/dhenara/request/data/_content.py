@@ -2,7 +2,7 @@ import json
 from typing import Any
 
 # from urllib.request import urlopen
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 from dhenara.ai.types.shared.base import BaseEnum, BaseModel
 
@@ -30,30 +30,28 @@ class Content(BaseModel):
     text: str | None = Field(
         default=None,
         description="Primary text content to be processed",
-        example="What is the capital of France?",
+        json_schema_extra={"example": "What is the capital of France?"},
     )
     textl: list[str] | None = Field(
         default=None,
         description="Multiple text contents for batch processing",
-        example=["Text 1", "Text 2"],
+        json_schema_extra={"example": ["Text 1", "Text 2"]},
     )
 
     # Not using name `json` as it shadows an attribute in parent "BaseModel"
     json_c: dict[str, Any] = Field(
         default_factory=dict,
         description="Structured JSON data for processing",
-        example={"key": "value"},
+        json_schema_extra={"example": {"key": "value"}},
     )
     jsonl_c: list[dict[str, Any]] = Field(
         default_factory=list,
         description="List of JSON objects in JSONL format",
-        example=[{"id": 1, "text": "example"}, {"id": 2, "text": "example2"}],
+        json_schema_extra={"example": [{"id": 1, "text": "example"}, {"id": 2, "text": "example2"}]},
     )
 
-    class Config:
-        """Pydantic model configuration."""
-
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "examples": [
                 {
                     "text": "What is the capital of France?",
@@ -62,7 +60,8 @@ class Content(BaseModel):
                     "jsonl_c": [{"id": 1, "text": "example"}],
                 },
             ],
-        }
+        },
+    )
 
     @property
     def has_content(self) -> bool:

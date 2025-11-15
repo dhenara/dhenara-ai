@@ -1,4 +1,4 @@
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 from dhenara.ai.types.genai.ai_model import AIModelAPIProviderEnum
 from dhenara.ai.types.shared.base import BaseEnum, BaseModel
@@ -61,8 +61,8 @@ class ExternalApiCallStatus(BaseModel):
         """Check if the API call completed successfully."""
         return self.status == ExternalApiCallStatusEnum.RESPONSE_RECEIVED_SUCCESS
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "status": "response_received_success",
                 "api_provider": "OpenAI",
@@ -72,4 +72,5 @@ class ExternalApiCallStatus(BaseModel):
                 "http_status_code": 200,
                 "data": {"usage": {"total_tokens": 150}},
             }
-        }
+        },
+    )

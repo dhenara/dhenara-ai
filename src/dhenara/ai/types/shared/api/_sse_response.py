@@ -2,7 +2,7 @@ import json
 from typing import Any, Generic, TypeVar
 from uuid import uuid4
 
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 from dhenara.ai.types.shared.base import BaseEnum, BaseModel
 
@@ -61,8 +61,7 @@ class SSEResponse(BaseModel, Generic[T]):  # noqa: UP046
         description="Retry timeout in milliseconds",
     )
 
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def set_random_id(self) -> str:
         self.id = str(uuid4())

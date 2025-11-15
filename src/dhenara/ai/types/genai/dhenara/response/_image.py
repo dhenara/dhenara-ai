@@ -1,5 +1,7 @@
 from typing import Literal
 
+from pydantic import ConfigDict
+
 from dhenara.ai.types.genai.ai_model import (
     AIModelProviderEnum,
     ImageResponseUsage,
@@ -19,8 +21,8 @@ class ImageResponseChoice(BaseModel):
     index: int
     contents: list[ImageResponseContentItem] = []
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "index": 0,
                 "content": {
@@ -28,7 +30,8 @@ class ImageResponseChoice(BaseModel):
                     "content_url": "https://api.example.com/images/123.jpg",
                 },
             }
-        }
+        },
+    )
 
 
 class ImageResponse(BaseModel):

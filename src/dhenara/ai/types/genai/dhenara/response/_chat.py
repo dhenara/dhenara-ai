@@ -2,7 +2,7 @@ import logging
 from typing import Any, Literal
 
 from pydantic import BaseModel as PydanticBaseModel
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 from dhenara.ai.types.genai.ai_model import (
     AIModelAPIProviderEnum,
@@ -40,8 +40,8 @@ class ChatResponseChoice(BaseModel):
     contents: list[ChatResponseContentItem] | None = None
     metadata: dict = {}
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "index": 0,
                 "contents": [
@@ -51,7 +51,8 @@ class ChatResponseChoice(BaseModel):
                     }
                 ],
             }
-        }
+        },
+    )
 
 
 class ChatResponseChoiceDelta(BaseModel):

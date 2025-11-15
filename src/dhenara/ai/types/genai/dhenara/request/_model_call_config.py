@@ -32,11 +32,11 @@ class AIModelCallConfig(BaseModel):
     reasoning: bool = False
     max_reasoning_tokens: int | None = Field(
         default=None,
-        help="Maximum reasoning tokens when reasoning is enabled. Ignored for OpenAI APIs",
+        description="Maximum reasoning tokens when reasoning is enabled. Ignored for OpenAI APIs",
     )
     reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = Field(
         default=None,
-        help="OpenAI version to control thinking/reasoning tokens when reasoning is enabled. "
+        description="OpenAI version to control thinking/reasoning tokens when reasoning is enabled. "
         "Ignored for other providers",
     )
     options: dict = {}
