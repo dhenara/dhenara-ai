@@ -28,7 +28,7 @@ logger.setLevel(logging.INFO)
 # Ideally, you will do once in your application when it boots, and make it global
 resource_config = ResourceConfig()
 resource_config.load_from_file(
-    credentials_file="~/.env_keys/.dhenara_credentials.yaml",  # Path to your file
+    # credentials_file="path/to/your/credentails_file or None to use `DAI_CREDENTIALS_FILE`
 )
 
 openai_api = resource_config.get_api(AIModelAPIProviderEnum.OPEN_AI)

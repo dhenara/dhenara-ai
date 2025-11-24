@@ -35,10 +35,6 @@ ALL_PROVIDER_MODELS_MAP: dict[AIModelAPIProviderEnum, tuple[str, ...]] = {
 }
 
 
-DEFAULT_CREDENTIALS_PATH = "~/.env_keys/.dhenara_credentials.yaml"
-ENV_CREDENTIALS_FILE = "DHENARA_CREDENTIALS_FILE"
-
-
 @dataclass(frozen=True)
 class EndpointMatch:
     provider: str | None = None
@@ -77,14 +73,9 @@ def _endpoint_matches(endpoint: AIModelEndpoint, match: EndpointMatch) -> bool:
     return provider_match and model_match
 
 
-def resolve_credentials_path() -> str:
-    candidate = os.environ.get(ENV_CREDENTIALS_FILE, DEFAULT_CREDENTIALS_PATH)
-    return os.path.expanduser(candidate)
-
-
 def load_realtime_resource_config() -> ResourceConfig:
     config = ResourceConfig()
-    credentials_path = resolve_credentials_path()
+    credentials_path = None  # Load the default
     config.load_from_file(credentials_path, init_endpoints=True)
     return config
 

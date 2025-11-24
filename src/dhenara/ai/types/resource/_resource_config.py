@@ -113,7 +113,7 @@ class ResourceConfig(BaseModel):
 
     def load_from_file(
         self,
-        credentials_file: str,
+        credentials_file: str | None = None,
         models: list[AIModel] | None = None,
         init_endpoints: bool = False,
     ):
@@ -121,10 +121,13 @@ class ResourceConfig(BaseModel):
         Initialize the ResourceConfig with credentials from a file and optional overrides.
 
         Args:
-            credentials_file: Path to the credentials file (JSON or YAML)
+            credentials_file: Path to the credentials file or  DAI_CREDENTIALS_FILE
             models: Optional list of models to override default ALL_FOUNDATION_MODELS
             mapping_override: Optional dictionary to override default model-to-API mappings
         """
+
+        if not credentials_file:
+            credentials_file = os.getenv("DAI_CREDENTIALS_FILE", "~/.dhenara/dai/.dai_credentials.yaml")
 
         # Load credentials
         credentials = self._load_credentials_from_file(credentials_file)

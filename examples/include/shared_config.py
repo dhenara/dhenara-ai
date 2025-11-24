@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -23,8 +22,7 @@ for p in (str(_SRC_DIR), str(_ROOT_DIR)):
 
 def load_resource_config(credentials_file: str | None = None):
     rc = ResourceConfig()
-    cred_path = credentials_file or os.environ.get("DHENARA_CREDENTIALS_FILE", "~/.env_keys/.dhenara_credentials.yaml")
-    rc.load_from_file(credentials_file=cred_path)
+    rc.load_from_file(credentials_file)
     return rc
 
 

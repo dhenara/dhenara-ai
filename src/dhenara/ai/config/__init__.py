@@ -37,8 +37,8 @@ class Settings:
         """
         possible_files = [
             os.path.join(os.getcwd(), "dhenara_config.py"),
-            # os.path.expanduser("~/.dhenara_config.py"),
-            # "/etc/dhenara_config.py",  # for system-wide settings
+            # os.path.expanduser("~/.dhenara/dai/dai_config.py"),
+            # "/etc/dai_config.py",  # for system-wide settings
         ]
 
         for file_path in possible_files:
