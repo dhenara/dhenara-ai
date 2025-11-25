@@ -959,9 +959,15 @@ class AIModelProviderClientBase(ABC):
         if settings.ENABLE_USAGE_TRACKING or settings.ENABLE_COST_TRACKING:
             if usage is None:
                 usage = self._get_usage_from_provider_response(response)
-
             if settings.ENABLE_COST_TRACKING:
-                usage_charge = self.model_endpoint.calculate_usage_charge(usage)
+                usage_charge = None
+                if usage:
+                    try:
+                        usage_charge = self.model_endpoint.calculate_usage_charge(usage)
+                    except Exception as e:
+                        logger.exception(f"get_usage_and_charge: cost calculation skipped: {e}")
+                else:
+                    logger.error("get_usage_and_charge: cost tracking disabled or usage is None")
 
         return (usage, usage_charge)
 
