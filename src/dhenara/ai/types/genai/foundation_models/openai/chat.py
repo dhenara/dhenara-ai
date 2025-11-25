@@ -6,6 +6,67 @@ from dhenara.ai.types.genai.ai_model import (
     FoundationModel,
 )
 
+GPT51 = FoundationModel(
+    model_name="gpt-5.1",
+    display_name="GPT-5.1",
+    provider=AIModelProviderEnum.OPEN_AI,
+    functional_type=AIModelFunctionalTypeEnum.TEXT_GENERATION,
+    settings=ChatModelSettings(
+        max_context_window_tokens=400000,
+        max_output_tokens=128000,
+    ),
+    valid_options={},
+    metadata={
+        "details": "The best OpenAI model for coding and agentic tasks across domains.",
+    },
+    order=10,
+    cost_data=ChatModelCostData(
+        input_token_cost_per_million=1.25,
+        output_token_cost_per_million=10.0,
+    ),
+)
+
+GPT51Codex = FoundationModel(
+    model_name="gpt-5.1-codex",
+    display_name="GPT-5.1 Codex",
+    provider=AIModelProviderEnum.OPEN_AI,
+    functional_type=AIModelFunctionalTypeEnum.TEXT_GENERATION,
+    settings=ChatModelSettings(
+        max_context_window_tokens=400000,
+        max_output_tokens=128000,
+    ),
+    valid_options={},
+    metadata={
+        "details": "The best OpenAI model for coding and agentic tasks across domains.",
+    },
+    order=10,
+    cost_data=ChatModelCostData(
+        input_token_cost_per_million=1.25,
+        output_token_cost_per_million=10.0,
+    ),
+)
+
+
+GPT51CodexMini = FoundationModel(
+    model_name="gpt-5.1-codex-mini",
+    display_name="GPT-5.1 Codex Mini",
+    provider=AIModelProviderEnum.OPEN_AI,
+    functional_type=AIModelFunctionalTypeEnum.TEXT_GENERATION,
+    settings=ChatModelSettings(
+        max_context_window_tokens=400000,
+        max_output_tokens=128000,
+    ),
+    valid_options={},
+    metadata={
+        "details": "The best OpenAI model for coding and agentic tasks across domains.",
+    },
+    order=10,
+    cost_data=ChatModelCostData(
+        input_token_cost_per_million=0.25,
+        output_token_cost_per_million=2.0,
+    ),
+)
+
 GPT5 = FoundationModel(
     model_name="gpt-5",
     display_name="GPT-5",
@@ -276,4 +337,21 @@ GPT41Nano = FoundationModel(
 )
 
 
-CHAT_MODELS = [GPT5, GPT5Mini, GPT5Nano, GPT41, GPT41Mini, GPT41Nano, GPT4o, GPT4oMini, O1, O1Mini, O3, O3Mini, O4Mini]
+CHAT_MODELS = [
+    GPT51,
+    GPT51Codex,
+    GPT51CodexMini,
+    GPT5,
+    GPT5Mini,
+    GPT5Nano,
+    GPT41,
+    GPT41Mini,
+    GPT41Nano,
+    GPT4o,
+    GPT4oMini,
+    O1,
+    O1Mini,
+    O3,
+    O3Mini,
+    O4Mini,
+]
