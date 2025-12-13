@@ -188,6 +188,7 @@ class GoogleAIChat(GoogleAIClientBase):
 
     def get_default_generate_config_args(self) -> dict:
         max_output_tokens, max_reasoning_tokens = self.config.get_max_output_tokens(self.model_endpoint.ai_model)
+        model_settings = self.model_endpoint.ai_model.get_settings()
         safety_settings = [
             SafetySetting(
                 category="HARM_CATEGORY_DANGEROUS_CONTENT",
@@ -203,11 +204,29 @@ class GoogleAIChat(GoogleAIClientBase):
         if max_output_tokens:
             config_params["max_output_tokens"] = max_output_tokens
 
-        if max_reasoning_tokens:
-            config_params["thinking_config"] = ThinkingConfig(
-                include_thoughts=True,
-                thinking_budget=max_reasoning_tokens,
-            )
+        if self.config.reasoning and model_settings.supports_reasoning:
+            thinking_level_supported = not self.model_endpoint.ai_model.model_name.startswith(("gemini-2", "gemini-1"))
+            if thinking_level_supported:
+                effort = self.config.reasoning_effort
+
+                # To google thinking_level
+                if effort in ["minimal", "low"]:
+                    thinking_level = "low"
+                elif effort in ["medium", "high"]:
+                    thinking_level = "high"
+                else:
+                    logger.error(f"Illegal reasoning effort {effort}. Setting thinking_level to 'low'")
+                    thinking_level = "low"
+
+                config_params["thinking_config"] = ThinkingConfig(
+                    include_thoughts=True,
+                    thinking_level=thinking_level,
+                )
+            else:
+                config_params["thinking_config"] = ThinkingConfig(
+                    include_thoughts=True,
+                    thinking_budget=max_reasoning_tokens,
+                )
 
         return config_params
 

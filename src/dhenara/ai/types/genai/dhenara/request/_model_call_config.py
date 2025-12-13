@@ -92,7 +92,9 @@ class AIModelCallConfig(BaseModel):
             _settings_max_output_tokens = _settings.max_output_tokens
             _reasoning_capable = False
         else:
-            _settings_max_output_tokens = _settings.max_output_tokens_reasoning_mode
+            # OpenAI/Google models mark supports_reasoning=True but may not explicitly support max_reasoning_tokens
+            #  In that case, fall back to max_output_tokensinstead of raising an error.
+            _settings_max_output_tokens = _settings.max_output_tokens_reasoning_mode or _settings.max_output_tokens
             _reasoning_capable = True
 
         if not _settings_max_output_tokens:

@@ -111,7 +111,9 @@ class OpenAIResponses(OpenAIClientBase):
         #                             generate_summary: "auto"|"concise"|"detailed"}
         # Note: Unlike Anthropic's budget_tokens, OpenAI uses max_output_tokens for
         # total (text + reasoning)
-        if self.config.reasoning:
+        model_settings = self.model_endpoint.ai_model.get_settings()
+
+        if self.config.reasoning and model_settings.supports_reasoning:
             reasoning_config: dict[str, Any] = {}
 
             # Effort level

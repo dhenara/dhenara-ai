@@ -112,6 +112,46 @@ def test_get_max_tokens_reasoning_with_override():
 
 
 @pytest.mark.unit
+@pytest.mark.case_id("DAI-006")
+def test_reasoning_model_without_reasoning_mode_tokens_falls_back():
+    """GIVEN a model that supports_reasoning=True but has no max_output_tokens_reasoning_mode
+    WHEN reasoning=True in the call-config
+    THEN get_max_output_tokens should fall back to max_output_tokens (no error)
+    AND max_reasoning_tokens should be None if the model doesn't define it.
+    """
+
+    model = FoundationModel(
+        model_name="test-reasoning-model-missing-reasoning-mode-max",
+        display_name="Test Reasoning Model Missing Reasoning Mode Max",
+        provider=AIModelProviderEnum.OPEN_AI,
+        functional_type=AIModelFunctionalTypeEnum.TEXT_GENERATION,
+        settings=ChatModelSettings(
+            max_input_tokens=100000,
+            max_output_tokens=4096,
+            supports_reasoning=True,
+            # Intentionally omit: max_output_tokens_reasoning_mode
+            # Intentionally omit: max_reasoning_tokens
+        ),
+        valid_options={},
+        cost_data=ChatModelCostData(
+            input_token_cost_per_million=5.0,
+            output_token_cost_per_million=15.0,
+        ),
+    )
+
+    config = AIModelCallConfig(
+        reasoning=True,
+        max_output_tokens=5000,
+        max_reasoning_tokens=2000,
+    )
+
+    max_output, max_reasoning = config.get_max_output_tokens(model)
+
+    assert max_output == 4096
+    assert max_reasoning is None
+
+
+@pytest.mark.unit
 @pytest.mark.case_id("DAI-005")
 def test_reasoning_effort_minimal_maps_low():
     """

@@ -14,6 +14,7 @@ GPT52 = FoundationModel(
     settings=ChatModelSettings(
         max_context_window_tokens=400000,
         max_output_tokens=128000,
+        supports_reasoning=True,
     ),
     valid_options={},
     metadata={},
@@ -32,6 +33,7 @@ GPT52Pro = FoundationModel(
     settings=ChatModelSettings(
         max_context_window_tokens=400000,
         max_output_tokens=128000,
+        supports_reasoning=True,
     ),
     valid_options={},
     metadata={},
@@ -50,6 +52,7 @@ GPT51 = FoundationModel(
     settings=ChatModelSettings(
         max_context_window_tokens=400000,
         max_output_tokens=128000,
+        supports_reasoning=True,
     ),
     valid_options={},
     metadata={
@@ -70,6 +73,7 @@ GPT51Codex = FoundationModel(
     settings=ChatModelSettings(
         max_context_window_tokens=400000,
         max_output_tokens=128000,
+        supports_reasoning=True,
     ),
     valid_options={},
     metadata={
@@ -91,6 +95,7 @@ GPT51CodexMini = FoundationModel(
     settings=ChatModelSettings(
         max_context_window_tokens=400000,
         max_output_tokens=128000,
+        supports_reasoning=True,
     ),
     valid_options={},
     metadata={
@@ -111,6 +116,7 @@ GPT5 = FoundationModel(
     settings=ChatModelSettings(
         max_context_window_tokens=400000,
         max_output_tokens=128000,
+        supports_reasoning=True,
     ),
     valid_options={},
     metadata={
@@ -132,6 +138,7 @@ GPT5Mini = FoundationModel(
     settings=ChatModelSettings(
         max_context_window_tokens=400000,
         max_output_tokens=128000,
+        supports_reasoning=True,
     ),
     valid_options={},
     metadata={
@@ -153,6 +160,7 @@ GPT5Nano = FoundationModel(
     settings=ChatModelSettings(
         max_context_window_tokens=400000,
         max_output_tokens=128000,
+        supports_reasoning=True,
     ),
     valid_options={},
     metadata={
@@ -256,6 +264,7 @@ O3 = FoundationModel(
     settings=ChatModelSettings(
         max_context_window_tokens=200000,
         max_output_tokens=100000,
+        supports_reasoning=True,
     ),
     valid_options={},
     metadata={
@@ -277,6 +286,7 @@ O3Mini = FoundationModel(
     settings=ChatModelSettings(
         max_context_window_tokens=200000,
         max_output_tokens=100000,
+        supports_reasoning=True,
     ),
     valid_options={},
     metadata={
@@ -297,6 +307,7 @@ O4Mini = FoundationModel(
     settings=ChatModelSettings(
         max_context_window_tokens=200000,
         max_output_tokens=100000,
+        supports_reasoning=True,
     ),
     valid_options={},
     metadata={

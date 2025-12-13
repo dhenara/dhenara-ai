@@ -86,7 +86,8 @@ class OpenAIChatLEGACY(OpenAIClientBase):
             else:
                 chat_args["max_tokens"] = max_output_tokens
 
-        if self.config.reasoning and self.config.reasoning_effort is not None:
+        model_settings = self.model_endpoint.ai_model.get_settings()
+        if self.config.reasoning and model_settings.supports_reasoning and self.config.reasoning_effort is not None:
             chat_args["reasoning_effort"] = self.config.reasoning_effort
 
         if self.config.streaming:
