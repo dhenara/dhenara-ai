@@ -6,7 +6,6 @@ from dhenara.ai.types.genai.ai_model import (
     FoundationModel,
 )
 
-
 Gemini3Pro = FoundationModel(
     model_name="gemini-3-pro-preview",
     display_name="Gemini 3 Pro Preview",
