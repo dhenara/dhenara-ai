@@ -6,6 +6,42 @@ from dhenara.ai.types.genai.ai_model import (
     FoundationModel,
 )
 
+GPT52 = FoundationModel(
+    model_name="gpt-5.2",
+    display_name="GPT-5.2",
+    provider=AIModelProviderEnum.OPEN_AI,
+    functional_type=AIModelFunctionalTypeEnum.TEXT_GENERATION,
+    settings=ChatModelSettings(
+        max_context_window_tokens=400000,
+        max_output_tokens=128000,
+    ),
+    valid_options={},
+    metadata={},
+    order=0,
+    cost_data=ChatModelCostData(
+        input_token_cost_per_million=1.75,
+        output_token_cost_per_million=14.0,
+    ),
+)
+
+GPT52Pro = FoundationModel(
+    model_name="gpt-5.2-pro",
+    display_name="GPT-5.2 Pro",
+    provider=AIModelProviderEnum.OPEN_AI,
+    functional_type=AIModelFunctionalTypeEnum.TEXT_GENERATION,
+    settings=ChatModelSettings(
+        max_context_window_tokens=400000,
+        max_output_tokens=128000,
+    ),
+    valid_options={},
+    metadata={},
+    order=0,
+    cost_data=ChatModelCostData(
+        input_token_cost_per_million=21,
+        output_token_cost_per_million=168.0,
+    ),
+)
+
 GPT51 = FoundationModel(
     model_name="gpt-5.1",
     display_name="GPT-5.1",
@@ -338,6 +374,8 @@ GPT41Nano = FoundationModel(
 
 
 CHAT_MODELS = [
+    GPT52,
+    GPT52Pro,
     GPT51,
     GPT51Codex,
     GPT51CodexMini,

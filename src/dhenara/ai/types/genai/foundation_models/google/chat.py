@@ -6,6 +6,32 @@ from dhenara.ai.types.genai.ai_model import (
     FoundationModel,
 )
 
+
+Gemini3Pro = FoundationModel(
+    model_name="gemini-3-pro-preview",
+    display_name="Gemini 3 Pro Preview",
+    provider=AIModelProviderEnum.GOOGLE_AI,
+    functional_type=AIModelFunctionalTypeEnum.TEXT_GENERATION,
+    settings=ChatModelSettings(
+        max_input_tokens=1048576,
+        max_output_tokens=65535,
+        supports_reasoning=True,
+        max_reasoning_tokens=32768,
+        max_output_tokens_reasoning_mode=64000,  # TODO: Review this simple workaround when google api has more control
+    ),
+    valid_options={},
+    metadata={
+        "details": "GoogleAI gemini-2.5 Pro model",
+        "display_order": 10,
+    },
+    order=52,
+    cost_data=ChatModelCostData(
+        input_token_cost_per_million=2,
+        output_token_cost_per_million=12.0,
+    ),
+)
+
+
 Gemini25Pro = FoundationModel(
     model_name="gemini-2.5-pro",
     display_name="Gemini 2.5 Pro",
@@ -163,6 +189,7 @@ Gemini15Flash = FoundationModel(
 )
 
 CHAT_MODELS = [
+    Gemini3Pro,
     Gemini25Pro,
     Gemini25Flash,
     Gemini25FlashLite,
