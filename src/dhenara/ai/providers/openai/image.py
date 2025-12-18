@@ -3,6 +3,7 @@ from typing import Any
 
 from openai.types import ImagesResponse as OpenAIImagesResponse
 
+from dhenara.ai.providers.common.message_text import build_image_prompt_text
 from dhenara.ai.providers.openai import OpenAIClientBase
 from dhenara.ai.types.genai import (
     AIModelCallResponse,
@@ -40,17 +41,13 @@ class OpenAIImage(OpenAIClientBase):
         if self._input_validation_pending:
             raise ValueError("inputs must be validated with `self.validate_inputs()` before api calls")
 
-        if messages is not None:
-            raise ValueError("Image generation does not support 'messages' parameter")
-
-        if instructions:
-            instructions_str = instructions["content"]
-        else:
-            instructions_str = ""
-
-        if prompt is None:
-            raise ValueError("Image generation requires a prompt; messages API not supported.")
-        prompt_text = f"{instructions_str} {context} {prompt}"
+        prompt_text = build_image_prompt_text(
+            prompt=prompt,
+            context=context,
+            instructions=instructions,
+            messages=messages,
+            formatter=self.formatter,
+        )
         model_options = self.model_endpoint.ai_model.get_options_with_defaults(self.config.options)
         user = self.config.get_user()
 

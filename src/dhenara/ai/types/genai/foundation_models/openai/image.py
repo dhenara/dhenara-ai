@@ -192,5 +192,11 @@ GPTImage1 = FoundationModel(
     ),
 )
 
+GPTImage15 = GPTImage1.model_copy(
+    update={
+        "model_name": "gpt-image-1.5",
+        "display_name": "gpt-image-1.5",
+    }
+)
 
-IMAGE_MODELS = [DallE2, DallE3, GPTImage1]
+IMAGE_MODELS = [DallE2, DallE3, GPTImage1, GPTImage15]

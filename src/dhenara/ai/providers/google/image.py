@@ -2,6 +2,7 @@ import logging
 
 from google.genai.types import GenerateImagesConfig, GenerateImagesResponse
 
+from dhenara.ai.providers.common.message_text import build_image_prompt_text
 from dhenara.ai.providers.google import GoogleAIClientBase
 from dhenara.ai.types.genai import (
     AIModelCallResponse,
@@ -34,17 +35,13 @@ class GoogleAIImage(GoogleAIClientBase):
         if self._input_validation_pending:
             raise ValueError("Inputs must be validated before API calls")
 
-        if messages is not None:
-            raise ValueError("Image generation does not support 'messages' parameter")
-
-        if instructions:
-            instructions_str = instructions["parts"][0]["text"]
-        else:
-            instructions_str = ""
-
-        if prompt is None:
-            raise ValueError("Image generation requires a prompt; messages API not supported.")
-        prompt_text = f"{instructions_str} {context} {prompt}"
+        prompt_text = build_image_prompt_text(
+            prompt=prompt,
+            context=context,
+            instructions=instructions,
+            messages=messages,
+            formatter=self.formatter,
+        )
 
         generate_config_args = self.get_default_generate_config_args()
         generate_config = GenerateImagesConfig(**generate_config_args)
