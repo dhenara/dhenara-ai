@@ -40,8 +40,14 @@ class AsyncToSyncWrapper:
             except RuntimeError:
                 loop = None
 
+            # IMPORTANT: Never block a running event loop thread.
+            # If a sync wrapper is invoked from within an active loop (e.g. FastAPI/Uvicorn),
+            # blocking here will starve the server and make subsequent requests hang.
             if loop and loop.is_running():
-                return self._run_in_new_loop(async_func, *args, **kwargs)
+                # return self._run_in_new_loop(async_func, *args, **kwargs)
+                raise RuntimeError(
+                    "sync wrapper called from a running event loop; use the async API and 'await' instead"
+                )
             return self._run_async_func(async_func, *args, **kwargs)
 
         return wrapper
