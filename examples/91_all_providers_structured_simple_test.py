@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Quick test of structured output with reasoning for all providers."""
 
+# This file is an interactive example script. Prevent pytest from treating it
+# as part of the automated test suite.
+__test__ = False
+
 import sys
 from pathlib import Path
 
