@@ -19,7 +19,6 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.13",
     "Operating System :: OS Independent",
-    "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "License :: OSI Approved :: MIT License",
 ]
 dependencies = [
@@ -29,7 +28,6 @@ dependencies = [
     "cryptography>=44.0.0",
     "aiohttp>=3.11.0",
     "pydantic>=2.10.0",
-    "pyyaml>=6.0",
     "Pillow>=11.1.0",
     "openai>=2.3.0",
     "google-genai>=1.43.0",
@@ -92,7 +90,6 @@ select = [
     "FBT",  # Disallow boolean traps
     "A",  # check if shadow built-ins
     "COM",  # Check if commas are missing
-    "CPY",  # Check if copyright header is missing
     "C4",  # Comprehension linter
 ]
 ignore = [
@@ -103,7 +100,6 @@ ignore = [
     "FBT001",  # Prevents boolean-default-value-positional-argument
     "FBT002",  # Prevents boolean-default-value-positional-argument
     "A005",    # Module name shadows a Python standard-library module
-    "UP038",   # Use `X | Y` in isinstance
 ]
 
 
