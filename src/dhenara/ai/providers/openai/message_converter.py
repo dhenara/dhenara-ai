@@ -191,7 +191,7 @@ class OpenAIMessageConverter(BaseMessageConverter):
             return ci
 
         # Assistant message with text/structured output content
-        if item_type in ("message"):
+        if item_type == "message":
             contents = _get(output_item, "content", None) or []
             message_id = _get(output_item, "id", None)
 

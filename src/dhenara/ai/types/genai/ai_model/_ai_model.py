@@ -237,9 +237,9 @@ class ChatModelSettings(BaseModel):
                 )
         # fmt: on
 
-        # Update the model's dict directly
+        # Update the model attributes directly
         for key, value in values_to_update.items():
-            self.__dict__[key] = value
+            object.__setattr__(self, key, value)
 
         return self
 

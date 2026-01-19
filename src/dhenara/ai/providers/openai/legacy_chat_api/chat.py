@@ -334,7 +334,7 @@ class OpenAIChatLEGACY(OpenAIClientBase):
         # if isinstance(delta, (ChoiceDelta, AzureStreamingChatResponseMessageUpdate)):
         if hasattr(delta, "content"):
             if self.model_endpoint.ai_model.provider == AIModelProviderEnum.DEEPSEEK:
-                content = delta.content
+                content = delta.content or ""
 
                 # Check for think tag markers
                 think_start = "<think>" in content

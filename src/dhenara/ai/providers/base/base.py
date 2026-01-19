@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator, Generator, Sequence
@@ -80,16 +81,25 @@ class AIModelProviderClientBase(ABC):
             self._initialized = False
 
     def _initialize_sync(self) -> None:
-        self.initialize()
+        self._run_coroutine_sync(self.initialize())
 
     async def _initialize_async(self) -> None:
-        self.initialize()
+        await self.initialize()
 
     def _cleanup_sync(self) -> None:
-        self.cleanup()
+        self._run_coroutine_sync(self.cleanup())
 
     async def _cleanup_async(self) -> None:
-        self.cleanup()
+        await self.cleanup()
+
+    @staticmethod
+    def _run_coroutine_sync(coro) -> None:
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            asyncio.run(coro)
+            return
+        raise RuntimeError("Cannot run async coroutine from sync context while an event loop is running")
 
     def _setup_client_sync(self):
         if not self.is_async:
