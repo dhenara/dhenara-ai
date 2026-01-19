@@ -575,7 +575,4 @@ class FoundationModel(BaseAIModel):
 
 
 class AIModel(BaseAIModel):
-    foundation_model: FoundationModel | None = Field(
-        None,
-        description="Matching foundation model for parameter preloading",
-    )
+    pass

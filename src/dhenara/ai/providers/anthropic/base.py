@@ -31,10 +31,11 @@ class AnthropicClientBase(AIModelProviderClientBase):
 
     def _get_client_params(self, api) -> tuple[str, dict]:
         """Common logic for both sync and async clients"""
+        http_params = self._get_client_http_params(api) or {}
         if api.provider == AIModelAPIProviderEnum.ANTHROPIC:
             params = {
                 "api_key": api.api_key,
-                **self._get_client_http_params(api),
+                **http_params,
             }
             return "anthropic", params
 
@@ -44,7 +45,7 @@ class AnthropicClientBase(AIModelProviderClientBase):
                 "credentials": client_params["credentials"],
                 "project_id": client_params["project_id"],
                 "region": client_params["location"],
-                **self._get_client_http_params(api),
+                **http_params,
             }
             return "vertex_ai", params
 
@@ -54,7 +55,7 @@ class AnthropicClientBase(AIModelProviderClientBase):
                 "aws_access_key": client_params["aws_access_key"],
                 "aws_secret_key": client_params["aws_secret_key"],
                 "aws_region": client_params.get("aws_region", "us-east-1"),
-                **self._get_client_http_params(api),
+                **http_params,
             }
             return "bedrock", params
 

@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator, Generator, Sequence
@@ -81,19 +82,29 @@ class AIModelProviderClientBase(ABC):
             self._initialized = False
 
     def _initialize_sync(self) -> None:
-        self._run_coroutine_sync(self.initialize())
+        maybe_awaitable = self.initialize()
+        if inspect.isawaitable(maybe_awaitable):
+            self._run_coroutine_sync(maybe_awaitable)
 
     async def _initialize_async(self) -> None:
-        await self.initialize()
+        maybe_awaitable = self.initialize()
+        if inspect.isawaitable(maybe_awaitable):
+            await maybe_awaitable
 
     def _cleanup_sync(self) -> None:
-        self._run_coroutine_sync(self.cleanup())
+        maybe_awaitable = self.cleanup()
+        if inspect.isawaitable(maybe_awaitable):
+            self._run_coroutine_sync(maybe_awaitable)
 
     async def _cleanup_async(self) -> None:
-        await self.cleanup()
+        maybe_awaitable = self.cleanup()
+        if inspect.isawaitable(maybe_awaitable):
+            await maybe_awaitable
 
     @staticmethod
     def _run_coroutine_sync(coro) -> None:
+        if not inspect.isawaitable(coro):
+            return
         try:
             asyncio.get_running_loop()
         except RuntimeError:
@@ -109,7 +120,7 @@ class AIModelProviderClientBase(ABC):
         if self.is_async:
             raise NotImplementedError("_setup_client_async")
 
-    def _get_client_http_params(self, api=None) -> tuple[str, dict]:
+    def _get_client_http_params(self, api=None) -> dict[str, Any]:
         params = {}
         if self.config.timeout:
             params["timeout"] = self.config.timeout

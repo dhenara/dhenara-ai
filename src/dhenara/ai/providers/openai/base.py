@@ -24,10 +24,11 @@ class OpenAIClientBase(AIModelProviderClientBase):
 
     def _get_client_params(self, api) -> tuple[str, dict]:
         """Common logic for both sync and async clients"""
+        http_params = self._get_client_http_params(api) or {}
         if api.provider == AIModelAPIProviderEnum.OPEN_AI:
             params = {
                 "api_key": api.api_key,
-                **self._get_client_http_params(api),
+                **http_params,
             }
             return "openai", params
 
@@ -37,7 +38,7 @@ class OpenAIClientBase(AIModelProviderClientBase):
                 "api_key": client_params["api_key"],
                 "azure_endpoint": client_params["azure_endpoint"],
                 "api_version": client_params["api_version"],
-                **self._get_client_http_params(api),
+                **http_params,
             }
             return "azure_openai", params
 
@@ -46,7 +47,7 @@ class OpenAIClientBase(AIModelProviderClientBase):
             params = {
                 "endpoint": client_params["azure_endpoint"],
                 "credential": client_params["api_key"],
-                **self._get_client_http_params(api),
+                **http_params,
             }
             return "azure_ai", params
 
