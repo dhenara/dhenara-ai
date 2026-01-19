@@ -247,7 +247,7 @@ class GoogleAIChat(GoogleAIClientBase):
 
         processed_chunks = []
 
-        self.streaming_manager.provider_metadata = None
+        self.streaming_manager.provider_metadata = {}
 
         # Process content
         if chunk.candidates:

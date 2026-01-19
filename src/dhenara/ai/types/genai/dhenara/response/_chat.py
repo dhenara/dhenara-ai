@@ -125,7 +125,7 @@ class ChatResponse(BaseModel):
             ),
         )
 
-    def first(self, content_type: ChatResponseContentItemType):
+    def first(self, content_type: ChatResponseContentItemType) -> ChatResponseContentItem | None:
         "Returns the first content of matching type"
         for choice in self.choices:
             for content in choice.contents or []:
@@ -181,17 +181,23 @@ class ChatResponse(BaseModel):
     def structured(self) -> dict | None:
         "Returns the first structured-output type content as dict"
         structured_item = self.first(ChatResponseContentItemType.STRUCTURED_OUTPUT)
-        return structured_item.structured_output.structured_data if structured_item else None
+        if isinstance(structured_item, ChatResponseStructuredOutputContentItem):
+            return structured_item.structured_output.structured_data
+        return None
 
     def structured_unprocessed(self) -> "ChatResponseStructuredOutput | None":
         "Returns the first structured-output type content as its model instance"
         structured_item = self.first(ChatResponseContentItemType.STRUCTURED_OUTPUT)
-        return structured_item.structured_output
+        if isinstance(structured_item, ChatResponseStructuredOutputContentItem):
+            return structured_item.structured_output
+        return None
 
     def structured_pyd(self) -> PydanticBaseModel | None:
         "Returns the first structured-output type content as its pydantic model instance configured in the input call"
         structured_item = self.first(ChatResponseContentItemType.STRUCTURED_OUTPUT)
-        return structured_item.structured_output.as_pydantic() if structured_item else None
+        if isinstance(structured_item, ChatResponseStructuredOutputContentItem):
+            return structured_item.structured_output.as_pydantic()
+        return None
 
     def to_message_item(self, choice_index: int = 0) -> "ChatResponse| None":
         """Get the response choice to use as a message item in multi-turn conversations.

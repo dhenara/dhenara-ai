@@ -15,7 +15,6 @@ from dhenara.ai.providers.base import BaseMessageConverter
 from dhenara.ai.types.genai import (
     ChatMessageContentPart,
     ChatResponseContentItem,
-    ChatResponseContentItemType,
     ChatResponseGenericContentItem,
     ChatResponseReasoningContentItem,
     ChatResponseStructuredOutput,
@@ -303,7 +302,7 @@ class OpenAIMessageConverter(BaseMessageConverter):
         # First pass: collect all content by type
         for item in choice.contents or []:
             try:
-                if item.type == ChatResponseContentItemType.REASONING:
+                if isinstance(item, ChatResponseReasoningContentItem):
                     # USE PRESERVED DATA if available for perfect round-tripping
                     param_data: dict[str, Any] = {
                         "type": "reasoning",
@@ -342,7 +341,7 @@ class OpenAIMessageConverter(BaseMessageConverter):
                     # reasoning_items.append(ResponseReasoningItemParam(**param_data))
                     output_items.append(ResponseReasoningItemParam(**param_data))
 
-                elif item.type in (ChatResponseContentItemType.TEXT, ChatResponseContentItemType.STRUCTURED_OUTPUT):
+                elif isinstance(item, ChatResponseTextContentItem):
                     # Structured output are nothing but text content in model responses
                     content = []
 
@@ -371,10 +370,13 @@ class OpenAIMessageConverter(BaseMessageConverter):
                     message_param = ResponseOutputMessageParam(**param_data)
                     output_items.append(message_param)
 
-                elif item.type == ChatResponseContentItemType.TOOL_CALL:
+                elif isinstance(item, ChatResponseToolCallContentItem):
                     # Include tool calls in conversation history
                     # They must appear BEFORE their corresponding function_call_output items
                     tool_call = item.tool_call
+                    if tool_call is None:
+                        logger.warning("OpenAI: ToolCallContentItem missing tool_call")
+                        continue
 
                     # Convert arguments to JSON string if it's a dict
                     import json as _json

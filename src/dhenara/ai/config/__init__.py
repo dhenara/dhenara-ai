@@ -2,7 +2,7 @@
 Settings and configuration for Dhenara-AI.
 """
 
-import importlib
+import importlib.util as importlib_util
 import logging
 import os
 from typing import Any
@@ -48,9 +48,9 @@ class Settings:
                 break  # Stop at the first found settings file
 
     def _import_settings(self, file_path: str):
-        spec = importlib.util.spec_from_file_location("user_settings", file_path)
+        spec = importlib_util.spec_from_file_location("user_settings", file_path)
         if spec and spec.loader:
-            user_settings = importlib.util.module_from_spec(spec)
+            user_settings = importlib_util.module_from_spec(spec)
             spec.loader.exec_module(user_settings)
             for setting in dir(user_settings):
                 if setting.isupper():

@@ -15,7 +15,6 @@ from dhenara.ai.providers.base import BaseMessageConverter
 from dhenara.ai.types.genai import (
     ChatMessageContentPart,
     ChatResponseContentItem,
-    ChatResponseContentItemType,
     ChatResponseReasoningContentItem,
     ChatResponseStructuredOutput,
     ChatResponseStructuredOutputContentItem,
@@ -202,7 +201,7 @@ class AnthropicMessageConverter(BaseMessageConverter):
             # IMPORTANT: ChatResponseReasoningContentItem subclasses ChatResponseTextContentItem.
             # We must handle reasoning BEFORE generic text; otherwise reasoning items will be treated as plain text
             # and their thinking blocks/signatures won't round-trip.
-            if content.type == ChatResponseContentItemType.REASONING:
+            if isinstance(content, ChatResponseReasoningContentItem):
                 # Anthropic thinking blocks require thinking text + signature
                 # Prefer message_contents parts of type 'thinking' when present.
                 thinking_text = None
@@ -263,7 +262,7 @@ class AnthropicMessageConverter(BaseMessageConverter):
                     # No text, no summary; skip silently (encrypted-only with missing parts)
                     logger.warning("ant_convert: reasoning item had neither text nor summary")
 
-            elif content.type == ChatResponseContentItemType.TEXT:
+            elif isinstance(content, ChatResponseTextContentItem):
                 # Replay message_contents if available for better round-tripping
                 if content.message_contents:
                     # Accept both legacy 'text' and unified 'output_text' part types
@@ -278,8 +277,11 @@ class AnthropicMessageConverter(BaseMessageConverter):
                     # content_blocks.append(TextBlockParam(type="text", text=content.text))
                     logger.warning("ant_convert: TextContentItem has no message_contents")
 
-            elif content.type == ChatResponseContentItemType.TOOL_CALL:
+            elif isinstance(content, ChatResponseToolCallContentItem):
                 tool_call = content.tool_call
+                if tool_call is None:
+                    logger.warning("ant_convert: ToolCallContentItem has no tool_call")
+                    continue
                 content_blocks.append(
                     ToolUseBlockParam(
                         type="tool_use",
@@ -289,7 +291,7 @@ class AnthropicMessageConverter(BaseMessageConverter):
                     )
                 )
 
-            elif content.type == ChatResponseContentItemType.STRUCTURED_OUTPUT:
+            elif isinstance(content, ChatResponseStructuredOutputContentItem):
                 if same_provider:
                     # INFO:
                     # Anthropic structured output is generated via tool use, so its message_contents will be be empty.
@@ -299,7 +301,7 @@ class AnthropicMessageConverter(BaseMessageConverter):
                     # Live with this dirty workaround until Anthropic natively supports structured output blocks in API
 
                     raw_data = content.structured_output.raw_data
-                    if raw_data:
+                    if isinstance(raw_data, dict) and raw_data:
                         try:
                             # # Make a copy to avoid mutating the original
                             # raw_data_copy = dict(raw_data)

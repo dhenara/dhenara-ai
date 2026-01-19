@@ -6,7 +6,9 @@ from openai.types.chat import ChatCompletion, ChatCompletionMessage
 from openai.types.chat.chat_completion_chunk import ChatCompletionChunk, ChoiceDelta
 
 from dhenara.ai.providers.openai import OpenAIClientBase
-from dhenara.ai.providers.openai.message_converter import OpenAIMessageConverter
+from dhenara.ai.providers.openai.legacy_chat_api.message_converter import (
+    OpenAIMessageConverterCHATAPI as OpenAIMessageConverter,
+)
 from dhenara.ai.types.genai import (
     AIModelCallResponseMetaData,
     ChatResponse,
@@ -174,7 +176,7 @@ class OpenAIChatLEGACY(OpenAIClientBase):
         """Handle streaming response with progress tracking and final response"""
         processed_chunks: list[StreamingChatResponse] = []
 
-        self.streaming_manager.provider_metadata = None
+        self.streaming_manager.provider_metadata = {}
         self.streaming_manager.persistant_choice_metadata_list = []
 
         if not self.streaming_manager.provider_metadata:  # Grab the metadata once

@@ -280,7 +280,7 @@ class AnthropicChat(AnthropicClientBase):
                         index=chunk.index,
                         role=self.streaming_manager.message_metadata["role"],
                         metadata={
-                            "redacted_thinking_data": chunk.content_block.data,
+                            "redacted_thinking_data": getattr(chunk.content_block, "data", None),
                         },
                     )
                 ]

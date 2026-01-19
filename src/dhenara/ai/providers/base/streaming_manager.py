@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime as datetime_type
+from typing import Any, cast
 
 from dhenara.ai.config import settings
 from dhenara.ai.types.genai import (
@@ -14,12 +15,16 @@ from dhenara.ai.types.genai import (
     ChatResponseChunk,
     ChatResponseContentItemType,
     ChatResponseGenericContentItem,
+    ChatResponseGenericContentItemDelta,
     ChatResponseReasoningContentItem,
+    ChatResponseReasoningContentItemDelta,
     ChatResponseStructuredOutput,
     ChatResponseStructuredOutputContentItem,
     ChatResponseTextContentItem,
+    ChatResponseTextContentItemDelta,
     ChatResponseToolCall,
     ChatResponseToolCallContentItem,
+    ChatResponseToolCallContentItemDelta,
     ChatResponseUsage,
     ExternalApiCallStatus,
     ExternalApiCallStatusEnum,
@@ -48,6 +53,8 @@ class INTStreamingProgress(BaseModel):
 class StreamingManager:
     """Manages streaming state and constructs final ChatResponse"""
 
+    provider_metadata: dict[str, Any]
+
     def __init__(
         self,
         model_endpoint: AIModelEndpoint,
@@ -68,6 +75,14 @@ class StreamingManager:
         self.message_metadata = {}  # Anthropic
         self.anthropic_tool_use_indices = set()
         self.persistant_choice_metadata_list = []  # OpenAI
+
+        # OpenAI Responses API streaming bookkeeping.
+        # These are populated by provider-specific stream parsers and are used to
+        # round-trip message / reasoning / tool-call identifiers.
+        self.pending_message_ids: dict[int, str] = {}
+        self.pending_message_content: dict[int, list[dict[str, Any]]] = {}
+        self.oai_pending_reasoning_ids: dict[int, str] = {}
+        self.pending_tool_ids: dict[int, dict[str, Any]] = {}
 
         # Accumulated final response coming out of SDKs natively.
         # When set, we prefer this response over incremental reconstruction.
@@ -132,12 +147,12 @@ class StreamingManager:
 
                     for i, content in enumerate(choice.contents or []):
                         # Reasoning should not be parsed as structured output
-                        if content.type == ChatResponseContentItemType.REASONING:
+                        if isinstance(content, ChatResponseReasoningContentItem):
                             continue
 
                         # For Anthropic: structured output is delivered as tool_use blocks
                         # Convert ChatResponseToolCallContentItem to ChatResponseStructuredOutputContentItem
-                        if content.type == ChatResponseContentItemType.TOOL_CALL:
+                        if isinstance(content, ChatResponseToolCallContentItem):
                             if content.tool_call:
                                 # CRITICAL: Build the complete raw_response structure for round-tripping
                                 # This is especially important for Anthropic where structured output
@@ -171,7 +186,7 @@ class StreamingManager:
 
                         # For OpenAI/Google: structured output is delivered as text
                         # Convert ChatResponseTextContentItem to ChatResponseStructuredOutputContentItem
-                        if content.type == ChatResponseContentItemType.TEXT:
+                        if isinstance(content, ChatResponseTextContentItem):
                             raw_text = content.get_text()
                             if raw_text is None:
                                 continue
@@ -311,7 +326,10 @@ class StreamingManager:
         """Update streaming progress with new chunk of deltas"""
         # Update metadata if provided
         if response_metadata:
-            self.response_metadata.update(response_metadata)
+            if self.response_metadata.provider_metadata is None:
+                self.response_metadata.provider_metadata = {}
+            if isinstance(self.response_metadata.provider_metadata, dict):
+                self.response_metadata.provider_metadata.update(response_metadata)
 
         # Update last token time
         self.progress.last_token_time = datetime_type.now()
@@ -345,6 +363,30 @@ class StreamingManager:
                         choice.contents = []
 
                     for content_delta in choice_delta.content_deltas:
+                        # Narrow delta to specific type for attribute access below
+                        if isinstance(content_delta, ChatResponseTextContentItemDelta):
+                            typed_delta: (
+                                ChatResponseTextContentItemDelta
+                                | ChatResponseReasoningContentItemDelta
+                                | ChatResponseToolCallContentItemDelta
+                                | ChatResponseGenericContentItemDelta
+                            ) = content_delta
+                        elif isinstance(content_delta, ChatResponseReasoningContentItemDelta):
+                            typed_delta = content_delta
+                        elif isinstance(content_delta, ChatResponseToolCallContentItemDelta):
+                            typed_delta = content_delta
+                        elif isinstance(content_delta, ChatResponseGenericContentItemDelta):
+                            typed_delta = content_delta
+                        else:
+                            # Fallback for unexpected delta types
+                            typed_delta = cast(
+                                ChatResponseTextContentItemDelta
+                                | ChatResponseReasoningContentItemDelta
+                                | ChatResponseToolCallContentItemDelta
+                                | ChatResponseGenericContentItemDelta,
+                                content_delta,
+                            )
+
                         # Find matching content by type and index, or create new
                         matching_content = None
 
@@ -365,9 +407,10 @@ class StreamingManager:
                         # If still no match, create new content item
                         if not matching_content:
                             # Create new content based on delta type
-                            if content_delta.type == ChatResponseContentItemType.TEXT:
-                                message_id = content_delta.message_id
-                                message_contents = content_delta.message_contents
+                            if typed_delta.type == ChatResponseContentItemType.TEXT:
+                                delta_text = cast(ChatResponseTextContentItemDelta, typed_delta)
+                                message_id = delta_text.message_id
+                                message_contents = delta_text.message_contents
                                 # Always rely on message_contents; initialize with a single output_text part
                                 # if provider sends only text_delta increments.
                                 if not message_contents:
@@ -377,25 +420,26 @@ class StreamingManager:
                                 matching_content = ChatResponseTextContentItem(
                                     index=content_delta.index,
                                     type=ChatResponseContentItemType.TEXT,
-                                    role=content_delta.role,
+                                    role=delta_text.role,
                                     message_id=message_id,
                                     message_contents=message_contents,
-                                    metadata=content_delta.metadata,
-                                    storage_metadata=content_delta.storage_metadata,
-                                    custom_metadata=content_delta.custom_metadata,
+                                    metadata=delta_text.metadata,
+                                    storage_metadata=delta_text.storage_metadata,
+                                    custom_metadata=delta_text.custom_metadata,
                                 )
-                            elif content_delta.type == ChatResponseContentItemType.REASONING:
+                            elif typed_delta.type == ChatResponseContentItemType.REASONING:
+                                delta_reasoning = cast(ChatResponseReasoningContentItemDelta, typed_delta)
                                 # Initialize reasoning item; summary is list[ChatMessageContentPart] or None
-                                thinking_id = content_delta.thinking_id
+                                thinking_id = delta_reasoning.thinking_id
                                 # Legacy hack removed: do NOT pull summary from metadata
 
                                 message_contents = None
                                 thinking_summary = None
-                                if content_delta.text_delta is not None:
+                                if delta_reasoning.text_delta is not None:
                                     message_contents = [
                                         ChatMessageContentPart(type="thinking", text="", annotations=None)
                                     ]
-                                if content_delta.thinking_summary_delta is not None:
+                                if delta_reasoning.thinking_summary_delta is not None:
                                     thinking_summary = [
                                         ChatMessageContentPart(type="summary_text", text="", annotations=None)
                                     ]
@@ -403,64 +447,58 @@ class StreamingManager:
                                 matching_content = ChatResponseReasoningContentItem(
                                     index=content_delta.index,
                                     type=ChatResponseContentItemType.REASONING,
-                                    role=content_delta.role,
+                                    role=delta_reasoning.role,
                                     thinking_id=thinking_id,
                                     message_contents=message_contents,
                                     thinking_summary=thinking_summary,
-                                    metadata=content_delta.metadata,
-                                    storage_metadata=content_delta.storage_metadata,
-                                    custom_metadata=content_delta.custom_metadata,
+                                    metadata=delta_reasoning.metadata,
+                                    storage_metadata=delta_reasoning.storage_metadata,
+                                    custom_metadata=delta_reasoning.custom_metadata,
                                 )
-                            elif content_delta.type == ChatResponseContentItemType.TOOL_CALL:
+                            elif typed_delta.type == ChatResponseContentItemType.TOOL_CALL:
+                                delta_tool = cast(ChatResponseToolCallContentItemDelta, typed_delta)
                                 # Create tool-call item with a placeholder to satisfy validation
                                 # Prefer name from delta.tool_call if present; else from metadata hint; else 'unknown'
                                 _name = None
-                                if hasattr(content_delta, "tool_call") and content_delta.tool_call:
-                                    _name = content_delta.tool_call.name
+                                if delta_tool.tool_call:
+                                    _name = delta_tool.tool_call.name
                                 if not _name:
                                     _name = (
-                                        (content_delta.metadata or {}).get("name")
-                                        or (content_delta.metadata or {}).get("tool_name_delta")
+                                        (delta_tool.metadata or {}).get("name")
+                                        or (delta_tool.metadata or {}).get("tool_name_delta")
                                         or "unknown"
                                     )
 
                                 # Extract any known identifiers from metadata (e.g., OpenAI Responses)
                                 _call_id = None
                                 _item_id = None
-                                if content_delta.metadata:
-                                    _call_id = content_delta.metadata.get("call_id")
-                                    _item_id = content_delta.metadata.get("item_id")
+                                if delta_tool.metadata:
+                                    _call_id = delta_tool.metadata.get("call_id")
+                                    _item_id = delta_tool.metadata.get("item_id")
 
                                 matching_content = ChatResponseToolCallContentItem(
                                     index=content_delta.index,
                                     type=ChatResponseContentItemType.TOOL_CALL,
-                                    role=content_delta.role,
+                                    role=delta_tool.role,
                                     tool_call=ChatResponseToolCall(
-                                        call_id=(
-                                            content_delta.tool_call.call_id
-                                            if getattr(content_delta, "tool_call", None)
-                                            else _call_id
-                                        ),
-                                        id=(
-                                            content_delta.tool_call.id
-                                            if getattr(content_delta, "tool_call", None)
-                                            else _item_id
-                                        ),
+                                        call_id=(delta_tool.tool_call.call_id if delta_tool.tool_call else _call_id),
+                                        id=(delta_tool.tool_call.id if delta_tool.tool_call else _item_id),
                                         name=_name,
                                         arguments={},
                                     ),
-                                    metadata=content_delta.metadata,
-                                    storage_metadata=content_delta.storage_metadata,
-                                    custom_metadata=content_delta.custom_metadata,
+                                    metadata=delta_tool.metadata,
+                                    storage_metadata=delta_tool.storage_metadata,
+                                    custom_metadata=delta_tool.custom_metadata,
                                 )
-                            elif content_delta.type == ChatResponseContentItemType.GENERIC:
+                            elif typed_delta.type == ChatResponseContentItemType.GENERIC:
+                                delta_generic = cast(ChatResponseGenericContentItemDelta, typed_delta)
                                 matching_content = ChatResponseGenericContentItem(
                                     index=content_delta.index,
                                     type=ChatResponseContentItemType.GENERIC,
-                                    role=content_delta.role,
-                                    metadata=content_delta.metadata,
-                                    storage_metadata=content_delta.storage_metadata,
-                                    custom_metadata=content_delta.custom_metadata,
+                                    role=delta_generic.role,
+                                    metadata=delta_generic.metadata,
+                                    storage_metadata=delta_generic.storage_metadata,
+                                    custom_metadata=delta_generic.custom_metadata,
                                 )
                             else:
                                 logger.error(f"stream_manager: Unknown content_delta type {content_delta.type}")
@@ -469,54 +507,58 @@ class StreamingManager:
                             choice.contents.append(matching_content)
 
                         # Verify type matches
-                        if matching_content.type != content_delta.type or matching_content.index != content_delta.index:
+                        if matching_content.type != typed_delta.type or matching_content.index != typed_delta.index:
                             logger.error(f"stream_manager: Content type mismatch at index {content_delta.index}")
                             continue
 
                         # Update content based on delta type
-                        if content_delta.type == ChatResponseContentItemType.TEXT:
+                        if typed_delta.type == ChatResponseContentItemType.TEXT:
+                            delta_text = cast(ChatResponseTextContentItemDelta, typed_delta)
+                            text_content = cast(ChatResponseTextContentItem, matching_content)
                             # Otherwise, append raw text_delta into the first output_text part
-                            if content_delta.text_delta:
-                                if not matching_content.message_contents:
-                                    matching_content.message_contents = [
+                            if delta_text.text_delta:
+                                if not text_content.message_contents:
+                                    text_content.message_contents = [
                                         ChatMessageContentPart(type="output_text", text="", annotations=None)
                                     ]
                                 # Ensure we have at least one writable text part
-                                if not matching_content.message_contents:
-                                    matching_content.message_contents.append(
+                                if not text_content.message_contents:
+                                    text_content.message_contents.append(
                                         ChatMessageContentPart(type="output_text", text="", annotations=None)
                                     )
                                 # Append to the first text-bearing part
-                                matching_content.message_contents[0].text = (
-                                    matching_content.message_contents[0].text or ""
-                                ) + content_delta.text_delta
+                                text_content.message_contents[0].text = (
+                                    text_content.message_contents[0].text or ""
+                                ) + delta_text.text_delta
 
-                        elif content_delta.type == ChatResponseContentItemType.REASONING:
+                        elif typed_delta.type == ChatResponseContentItemType.REASONING:
+                            delta_reasoning = cast(ChatResponseReasoningContentItemDelta, typed_delta)
+                            reasoning_content = cast(ChatResponseReasoningContentItem, matching_content)
                             # Append reasoning deltas into message_contents or thinking_summary list parts
-                            thinking_id = content_delta.thinking_id
-                            thinking_signature = content_delta.thinking_signature
+                            thinking_id = delta_reasoning.thinking_id
+                            thinking_signature = delta_reasoning.thinking_signature
 
                             # Reasoning text goes into message_contents parts
-                            if content_delta.text_delta:
-                                if not matching_content.message_contents:
-                                    matching_content.message_contents = [
+                            if delta_reasoning.text_delta:
+                                if not reasoning_content.message_contents:
+                                    reasoning_content.message_contents = [
                                         ChatMessageContentPart(type="thinking", text="", annotations=None)
                                     ]
-                                matching_content.message_contents[0].text = (
-                                    matching_content.message_contents[0].text or ""
-                                ) + content_delta.text_delta
+                                reasoning_content.message_contents[0].text = (
+                                    reasoning_content.message_contents[0].text or ""
+                                ) + delta_reasoning.text_delta
 
                             # Streamed thinking summary accumulation
-                            elif content_delta.thinking_summary_delta:
-                                if not matching_content.thinking_summary:
-                                    matching_content.thinking_summary = [
+                            elif delta_reasoning.thinking_summary_delta:
+                                if not reasoning_content.thinking_summary:
+                                    reasoning_content.thinking_summary = [
                                         ChatMessageContentPart(type="summary_text", text="", annotations=None)
                                     ]
 
                                 # Append to first thinking part
-                                matching_content.thinking_summary[0].text = (
-                                    matching_content.thinking_summary[0].text or ""
-                                ) + content_delta.thinking_summary_delta
+                                reasoning_content.thinking_summary[0].text = (
+                                    reasoning_content.thinking_summary[0].text or ""
+                                ) + delta_reasoning.thinking_summary_delta
 
                             else:
                                 logger.warning(
@@ -524,16 +566,16 @@ class StreamingManager:
                                 )
 
                             if thinking_id:
-                                matching_content.thinking_id = thinking_id
+                                reasoning_content.thinking_id = thinking_id
                             if thinking_signature:
-                                matching_content.thinking_signature = thinking_signature
+                                reasoning_content.thinking_signature = thinking_signature
 
-                        elif content_delta.type in (
+                        elif typed_delta.type in (
                             ChatResponseContentItemType.TOOL_CALL,
                             ChatResponseContentItemType.GENERIC,
                         ):
                             # Update metadata for tool calls and generic content
-                            matching_content.metadata.update(content_delta.metadata)
+                            matching_content.metadata.update(typed_delta.metadata)
 
                             # Ensure metadata dict exists for subscripting below
                             _mc_meta = getattr(matching_content, "metadata", None)
@@ -543,33 +585,39 @@ class StreamingManager:
 
                             # If it's a tool call, update the incremental arguments, name, or set full tool_call
                             if content_delta.type == ChatResponseContentItemType.TOOL_CALL:
-                                if hasattr(content_delta, "tool_call") and content_delta.tool_call:
+                                delta_tool = cast(ChatResponseToolCallContentItemDelta, typed_delta)
+                                tool_content = cast(ChatResponseToolCallContentItem, matching_content)
+                                if delta_tool.tool_call:
                                     # If we have a complete tool_call object, set/replace it
-                                    if hasattr(matching_content, "tool_call"):
-                                        matching_content.tool_call = content_delta.tool_call
+                                    tool_content.tool_call = delta_tool.tool_call
                                 # Update name from metadata deltas if present
-                                _md = content_delta.metadata or {}
-                                if _md.get("name") and getattr(matching_content, "tool_call", None):
-                                    matching_content.tool_call.name = _md.get("name")
-                                if _md.get("tool_name_delta") and getattr(matching_content, "tool_call", None):
+                                _md = delta_tool.metadata or {}
+                                if _md.get("name") and getattr(tool_content, "tool_call", None):
+                                    try:
+                                        tool_content.tool_call = tool_content.tool_call.model_copy(
+                                            update={"name": str(_md.get("name"))}
+                                        )
+                                    except Exception:
+                                        pass
+                                if _md.get("tool_name_delta") and getattr(tool_content, "tool_call", None):
                                     # Accumulate piecewise name in a buffer
                                     name_buf = _mc_meta.get("name_buffer", "") + (_md.get("tool_name_delta") or "")
                                     _mc_meta["name_buffer"] = name_buf
                                     try:
-                                        matching_content.tool_call.name = name_buf
+                                        tool_content.tool_call = tool_content.tool_call.model_copy(
+                                            update={"name": name_buf}
+                                        )
                                     except Exception:
                                         pass
                                 # Handle incremental arguments appends into metadata buffer
-                                if hasattr(content_delta, "arguments_delta") and content_delta.arguments_delta:
+                                if delta_tool.arguments_delta:
                                     # Maintain a buffer for args in metadata
                                     buf_key = "arguments_buffer"
                                     prev = _mc_meta.get(buf_key) or ""
-                                    _mc_meta[buf_key] = prev + content_delta.arguments_delta
+                                    _mc_meta[buf_key] = prev + delta_tool.arguments_delta
 
                                 # Finalize tool call arguments when signaled
-                                if hasattr(content_delta, "metadata") and content_delta.metadata.get(
-                                    "finalize_tool_call"
-                                ):
+                                if delta_tool.metadata.get("finalize_tool_call"):
                                     buf_key = "arguments_buffer"
                                     raw_buf = _mc_meta.get(buf_key)
                                     if raw_buf is not None:
@@ -583,21 +631,21 @@ class StreamingManager:
                                             parse_error = str(e)
 
                                         # Ensure tool_call exists
-                                        if not getattr(matching_content, "tool_call", None):
+                                        if not getattr(tool_content, "tool_call", None):
                                             # Create a placeholder tool_call
-                                            matching_content.tool_call = ChatResponseToolCall(
+                                            tool_content.tool_call = ChatResponseToolCall(
                                                 call_id=None,
                                                 id=None,
-                                                name=matching_content.metadata.get("name") or "unknown",
+                                                name=tool_content.metadata.get("name") or "unknown",
                                                 arguments={},
                                             )
 
                                         # Assign parsed args and parse error
-                                        matching_content.tool_call.arguments = (
+                                        tool_content.tool_call.arguments = (
                                             parsed if isinstance(parsed, dict) else {"raw": raw_buf}
                                         )
                                         if parse_error:
-                                            matching_content.tool_call.parse_error = parse_error
+                                            tool_content.tool_call.parse_error = parse_error
 
                                         # Clear buffer
                                         try:

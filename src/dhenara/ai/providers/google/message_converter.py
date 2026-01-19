@@ -10,7 +10,6 @@ from dhenara.ai.providers.base import BaseMessageConverter
 from dhenara.ai.types.genai import (
     ChatMessageContentPart,
     ChatResponseContentItem,
-    ChatResponseContentItemType,
     ChatResponseGenericContentItem,
     ChatResponseReasoningContentItem,
     ChatResponseStructuredOutput,
@@ -131,9 +130,9 @@ class GoogleMessageConverter(BaseMessageConverter):
             )
 
         if function_call is not None:
-            function_payload = (
-                part.function_call.model_dump() if hasattr(part.function_call, "model_dump") else part.function_call
-            )
+            function_payload = function_call.model_dump() if hasattr(function_call, "model_dump") else function_call
+            if not isinstance(function_payload, dict):
+                function_payload = {}
             _args = function_payload.get("args")
             _parsed_args = ChatResponseToolCall.parse_args_str_or_dict(_args)
 
@@ -278,7 +277,7 @@ class GoogleMessageConverter(BaseMessageConverter):
                         parts.append({"text": str(p), **extra_kv})
 
         for content in choice.contents or []:
-            if content.type == ChatResponseContentItemType.REASONING:
+            if isinstance(content, ChatResponseReasoningContentItem):
                 # Prefer explicit reasoning message_contents (type="thinking").
                 message_contents = content.message_contents
                 if message_contents:
@@ -309,8 +308,11 @@ class GoogleMessageConverter(BaseMessageConverter):
                 parts.append({"text": "", "thought": True})
                 continue
 
-            elif content.type == ChatResponseContentItemType.TOOL_CALL:
+            elif isinstance(content, ChatResponseToolCallContentItem):
                 tool_call = content.tool_call
+                if tool_call is None:
+                    logger.warning("GoogleMessageConverter: ToolCallContentItem missing tool_call")
+                    continue
                 # Preserve Google thought_signature on function_call parts when continuing with the same provider
                 thought_sig = None
                 if same_provider and content.metadata is not None:
@@ -327,13 +329,13 @@ class GoogleMessageConverter(BaseMessageConverter):
 
                 parts.append(part_obj)
                 continue
-            elif content.type == ChatResponseContentItemType.TEXT:
+            elif isinstance(content, ChatResponseTextContentItem):
                 if content.message_contents:
                     _replay_message_contents(content.message_contents)
                 else:
                     logger.warning("GoogleMessageConverter: TextContentItem has no message_contents;")
                 continue
-            elif content.type == ChatResponseContentItemType.STRUCTURED_OUTPUT:
+            elif isinstance(content, ChatResponseStructuredOutputContentItem):
                 if content.message_contents:
                     _replay_message_contents(content.message_contents)
                 else:
@@ -342,7 +344,7 @@ class GoogleMessageConverter(BaseMessageConverter):
                         parts.append({"text": json.dumps(output.structured_data)})
                 continue
 
-            elif content.type == ChatResponseContentItemType.GENERIC:
+            elif isinstance(content, ChatResponseGenericContentItem):
                 md = content.metadata or {}
                 if "video_metadata" in md:
                     parts.append({"video_metadata": md.get("video_metadata")})

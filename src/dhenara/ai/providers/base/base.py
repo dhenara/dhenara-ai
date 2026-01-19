@@ -5,8 +5,11 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator, AsyncIterator, Generator, Iterator, Sequence
 from typing import Any, Literal, overload
 
+from pydantic import BaseModel as PydanticBaseModel
+
 from dhenara.ai.config import settings
 from dhenara.ai.providers.base import StreamingManager
+from dhenara.ai.providers.base.base_formatter import BaseFormatter
 from dhenara.ai.types import (
     AIModelCallConfig,
     AIModelCallResponse,
@@ -33,7 +36,7 @@ logger = logging.getLogger(__name__)
 class AIModelProviderClientBase(ABC):
     """Base class for AI model provider handlers"""
 
-    formatter = None
+    formatter: type[BaseFormatter] | None = None
 
     def __init__(self, model_endpoint: AIModelEndpoint, config: AIModelCallConfig, is_async: bool = True):
         self.model_endpoint = model_endpoint
@@ -135,11 +138,17 @@ class AIModelProviderClientBase(ABC):
         messages: Sequence[MessageItem] | None,
     ) -> dict:
         """Serialize dhenara request format for artifact capture."""
+
+        def dump_if_model(value: object) -> object:
+            if isinstance(value, PydanticBaseModel):
+                return value.model_dump()
+            return value
+
         return {
-            "prompt": prompt.model_dump() if hasattr(prompt, "model_dump") else prompt,
-            "context": [c.model_dump() if hasattr(c, "model_dump") else c for c in (context or [])],
-            "instructions": [i.model_dump() if hasattr(i, "model_dump") else i for i in (instructions or [])],
-            "messages": [m.model_dump() if hasattr(m, "model_dump") else m for m in (messages or [])],
+            "prompt": dump_if_model(prompt) if prompt is not None else None,
+            "context": [dump_if_model(c) for c in (context or [])],
+            "instructions": [dump_if_model(i) for i in (instructions or [])],
+            "messages": [dump_if_model(m) for m in (messages or [])],
             "config": self.config.model_dump() if self.config else {},
         }
 
@@ -428,7 +437,7 @@ class AIModelProviderClientBase(ABC):
             response = self.do_api_call_sync(api_call_params)
             prdata = (
                 response.model_dump()
-                if hasattr(response, "model_dump")
+                if isinstance(response, PydanticBaseModel)
                 else response
                 if isinstance(response, dict)
                 else str(response)
@@ -531,7 +540,7 @@ class AIModelProviderClientBase(ABC):
             response = await self.do_api_call_async(api_call_params)
             prdata = (
                 response.model_dump()
-                if hasattr(response, "model_dump")
+                if isinstance(response, PydanticBaseModel)
                 else response
                 if isinstance(response, dict)
                 else str(response)
@@ -703,11 +712,17 @@ class AIModelProviderClientBase(ABC):
                     provider_payload = chat.provider_response
                 else:
                     # Fallback: synthesize from consolidated DAI response
+
+                    def dump_if_model(value: object) -> object:
+                        if isinstance(value, PydanticBaseModel):
+                            return value.model_dump()
+                        return value
+
                     provider_payload = {
-                        "usage": (chat.usage.model_dump() if chat and chat.usage else None),
-                        "usage_charge": (chat.usage_charge.model_dump() if chat and chat.usage_charge else None),
-                        "choices": ([c.model_dump() for c in (chat.choices or [])] if chat else []),
-                        "metadata": (chat.metadata.model_dump() if chat and chat.metadata else {}),
+                        "usage": (dump_if_model(chat.usage) if chat and chat.usage else None),
+                        "usage_charge": (dump_if_model(chat.usage_charge) if chat and chat.usage_charge else None),
+                        "choices": ([dump_if_model(c) for c in (chat.choices or [])] if chat else []),
+                        "metadata": (dump_if_model(chat.metadata) if chat and chat.metadata else {}),
                     }
 
                 self._capture_artifacts(
@@ -782,11 +797,17 @@ class AIModelProviderClientBase(ABC):
                 if chat and getattr(chat, "provider_response", None):
                     provider_payload = chat.provider_response
                 else:
+
+                    def dump_if_model(value: object) -> object:
+                        if isinstance(value, PydanticBaseModel):
+                            return value.model_dump()
+                        return value
+
                     provider_payload = {
-                        "usage": (chat.usage.model_dump() if chat and chat.usage else None),
-                        "usage_charge": (chat.usage_charge.model_dump() if chat and chat.usage_charge else None),
-                        "choices": ([c.model_dump() for c in (chat.choices or [])] if chat else []),
-                        "metadata": (chat.metadata.model_dump() if chat and chat.metadata else {}),
+                        "usage": (dump_if_model(chat.usage) if chat and chat.usage else None),
+                        "usage_charge": (dump_if_model(chat.usage_charge) if chat and chat.usage_charge else None),
+                        "choices": ([dump_if_model(c) for c in (chat.choices or [])] if chat else []),
+                        "metadata": (dump_if_model(chat.metadata) if chat and chat.metadata else {}),
                     }
                 self._capture_artifacts(
                     stage="provider_response",
@@ -878,7 +899,7 @@ class AIModelProviderClientBase(ABC):
 
     def serialize_provider_response(self, response: object) -> dict | None:
         # Serialize content blocks for provider_message using SDK Pydantic validation
-        if hasattr(response, "model_dump"):
+        if isinstance(response, PydanticBaseModel):
             return response.model_dump()
         elif isinstance(response, dict):
             return response
@@ -915,7 +936,10 @@ class AIModelProviderClientBase(ABC):
             formatted_prompt = None
             # Format prompt
             if prompt:
-                formatted_prompt = self.formatter.format_prompt(
+                if self.formatter is None:
+                    raise ValueError("Formatter is not set")
+                formatter = self.formatter
+                formatted_prompt = formatter.format_prompt(
                     prompt=prompt,
                     model_endpoint=self.model_endpoint,
                     **kwargs,
@@ -924,7 +948,10 @@ class AIModelProviderClientBase(ABC):
             # Format context ( exclude if messages are provided)
             formatted_context = []
             if context_items and (not has_messages):
-                formatted_context = self.formatter.format_context(
+                if self.formatter is None:
+                    raise ValueError("Formatter is not set")
+                formatter = self.formatter
+                formatted_context = formatter.format_context(
                     context=context_items,
                     model_endpoint=self.model_endpoint,
                     **kwargs,
@@ -933,7 +960,10 @@ class AIModelProviderClientBase(ABC):
             # Format instructions
             formatted_instructions = None
             if instructions:
-                formatted_instructions = self.formatter.format_instructions(
+                if self.formatter is None:
+                    raise ValueError("Formatter is not set")
+                formatter = self.formatter
+                formatted_instructions = formatter.format_instructions(
                     instructions=instructions,
                     model_endpoint=self.model_endpoint,
                     **kwargs,

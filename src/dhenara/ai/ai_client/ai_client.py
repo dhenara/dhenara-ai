@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from contextlib import AsyncExitStack, ExitStack, contextmanager
+from typing import cast
 
 from dhenara.ai.types import AIModelCallConfig, AIModelCallResponse, AIModelEndpoint
 from dhenara.ai.types.genai.dhenara.request import MessageItem, Prompt, SystemInstruction
@@ -311,7 +312,9 @@ class AIModelClient:
         Call this method when you're done using generate_with_existing_connection()
         to ensure proper resource cleanup.
         """
-        self._client_stack.close()
+        if self.is_async:
+            raise RuntimeError("cleanup_sync called for an async client")
+        cast(ExitStack, self._client_stack).close()
         self._provider_client = None
 
     async def generate_with_existing_connection_async(
@@ -321,8 +324,10 @@ class AIModelClient:
         instructions: list[str | dict | SystemInstruction] | None = None,
         messages: MessagesInput = None,
     ) -> AIModelCallResponse:
+        if not self.is_async:
+            raise RuntimeError("generate_with_existing_connection_async called for a sync client")
         if not self._provider_client:
-            self._provider_client = await self._client_stack.enter_async_context(
+            self._provider_client = await cast(AsyncExitStack, self._client_stack).enter_async_context(
                 AIModelClientFactory.create_provider_client(
                     self.model_endpoint,
                     self.config,
@@ -352,5 +357,7 @@ class AIModelClient:
         Call this method when you're done using generate_with_existing_connection()
         to ensure proper resource cleanup.
         """
-        await self._client_stack.aclose()
+        if not self.is_async:
+            raise RuntimeError("cleanup_async called for a sync client")
+        await cast(AsyncExitStack, self._client_stack).aclose()
         self._provider_client = None

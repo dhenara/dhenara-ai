@@ -2,7 +2,9 @@ import logging
 from typing import Any
 
 from dhenara.ai.providers.base import BaseFormatter
-from dhenara.ai.providers.openai.message_converter import OpenAIMessageConverter
+from dhenara.ai.providers.openai.legacy_chat_api.message_converter import (
+    OpenAIMessageConverterCHATAPI as OpenAIMessageConverter,
+)
 from dhenara.ai.types.genai.ai_model import AIModelEndpoint, AIModelFunctionalTypeEnum
 from dhenara.ai.types.genai.dhenara.request import (
     FunctionDefinition,
@@ -19,7 +21,7 @@ from dhenara.ai.types.genai.dhenara.request import (
 )
 from dhenara.ai.types.genai.dhenara.request.data import FormattedPrompt
 from dhenara.ai.types.genai.dhenara.response import ChatResponseChoice
-from dhenara.ai.types.shared.file import FileFormatEnum, GenericFile
+from dhenara.ai.types.shared.file import FileFormatEnum, GenericFile, ProcessedFile
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +106,9 @@ class OpenAIFormatterCHATAPI(BaseFormatter):
 
         contents = []
         for file in files:
+            if not isinstance(file, ProcessedFile):
+                logger.error(f"convert_files_to_provider_content: expected ProcessedFile, got {type(file)}")
+                continue
             file_format = file.get_file_format()
             try:
                 if file_format in [FileFormatEnum.COMPRESSED, FileFormatEnum.TEXT]:
@@ -158,6 +163,9 @@ class OpenAIFormatterCHATAPI(BaseFormatter):
     ) -> str:
         contents: list[str] = []
         for file in files:
+            if not isinstance(file, ProcessedFile):
+                logger.error(f"_convert_files_for_image_models: expected ProcessedFile, got {type(file)}")
+                continue
             file_format = file.get_file_format()
             try:
                 if file_format in [FileFormatEnum.COMPRESSED, FileFormatEnum.TEXT]:

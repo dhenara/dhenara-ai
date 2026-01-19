@@ -136,11 +136,12 @@ class ResourceConfig(BaseModel):
         self._initialize_apis(credentials)
 
         if models:
-            self.models = models
+            self.models.clear()
+            self.models.extend(models)
 
         if init_endpoints:
             if not self.models:
-                self.models = [*ALL_FOUNDATION_MODELS]
+                self.models.extend([*ALL_FOUNDATION_MODELS])
 
             # Create endpoints from models and APIs
             self._initialize_endpoints()

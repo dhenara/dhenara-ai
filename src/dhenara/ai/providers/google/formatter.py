@@ -19,7 +19,7 @@ from dhenara.ai.types.genai.dhenara.request import (
 )
 from dhenara.ai.types.genai.dhenara.request.data import FormattedPrompt
 from dhenara.ai.types.genai.dhenara.response import ChatResponse
-from dhenara.ai.types.shared.file import FileFormatEnum, GenericFile
+from dhenara.ai.types.shared.file import FileFormatEnum, GenericFile, ProcessedFile
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +115,10 @@ class GoogleFormatter(BaseFormatter):
 
         contents = []
         for file in files:
+            if not isinstance(file, ProcessedFile):
+                logger.error(f"convert_files_to_provider_content: expected ProcessedFile, got {type(file)}")
+                continue
+
             file_format = file.get_file_format()
             if file_format in [FileFormatEnum.COMPRESSED, FileFormatEnum.TEXT]:
                 text = f"\nFile: {file.get_source_file_name()}  Content: {file.get_processed_file_data(max_words)}"
