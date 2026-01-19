@@ -86,8 +86,8 @@ class TextTemplate(BaseModel):
 
         return self
 
-    def get_variable_names(self) -> dict[str, Any]:
-        """Get a dictionary of variable default values."""
+    def get_variable_names(self) -> list[str]:
+        """Get the variable names used by this template."""
         return list(self.variables.keys())
 
     def get_args_default_values(self) -> dict[str, Any]:

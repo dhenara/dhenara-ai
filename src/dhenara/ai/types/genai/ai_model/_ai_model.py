@@ -246,7 +246,7 @@ class ChatModelSettings(BaseModel):
 
 class ImageModelSettings(BaseModel):
     max_words: int | None = Field(
-        None,
+        default=None,
         description="Maximum word count, if applicable",
     )
 
@@ -276,15 +276,15 @@ class BaseAIModel(BaseModel):
     )
 
     order: int = Field(
-        0,
+        default=0,
         description="Order for display purposes",
     )
     enabled: bool = Field(
-        True,  # noqa: FBT003
+        default=True,
         description="Whether the model is enabled",
     )
     beta: bool = Field(
-        False,  # noqa: FBT003
+        default=False,
         description="Whether the model is in beta",
     )
 
@@ -302,12 +302,12 @@ class BaseAIModel(BaseModel):
     )
 
     cost_data: ChatModelCostData | ImageModelCostData | None = Field(
-        None,
+        default=None,
         description="Optional Cost data",
     )
 
     reference_number: str | None = Field(
-        None,
+        default=None,
         description="Optional unique reference number",
     )
 

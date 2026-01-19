@@ -27,19 +27,19 @@ class AIModelEndpoint(BaseModel):
         description="Reference to AI model",
     )
     order: int = Field(
-        0,
+        default=0,
         description="Order for display purposes",
     )
     enabled: bool = Field(
-        True,  # noqa: FBT003
+        default=True,
         description="Whether the endpoint is enabled",
     )
     cost_data: ChatModelCostData | ImageModelCostData | None = Field(
-        None,
+        default=None,
         description="Matching foundation model for parameter preloading",
     )
     reference_number: str | None = Field(
-        None,
+        default=None,
         description="reference number. Should be unique if not None",
     )
 

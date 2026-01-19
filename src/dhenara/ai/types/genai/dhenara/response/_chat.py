@@ -23,9 +23,9 @@ from ._content_items._chat_items import (
     ChatResponseReasoningContentItem,
     ChatResponseStructuredOutputContentItem,
     ChatResponseTextContentItem,
-    ChatResponseToolCall,
     ChatResponseToolCallContentItem,
 )
+from ._content_items._structured_output import ChatResponseStructuredOutput
 from ._metadata import AIModelCallResponseMetaData
 
 logger = logging.getLogger(__name__)
@@ -91,7 +91,7 @@ class ChatResponse(BaseModel):
         self,
         choice_index: int = 0,
         max_words_text: int | None = None,
-    ) -> "Prompt":
+    ) -> "Prompt | None":
         """Convert response to a context message for next turn"""
 
         # Get text from the first choice's contents
@@ -167,13 +167,14 @@ class ChatResponse(BaseModel):
         ]
         return "\n\n".join(text_parts) if text_parts else None
 
-    def tools(self) -> list[ChatResponseToolCall]:
-        "Returns all tool type content"
-        tools = [
+    def tools(self) -> list[ChatResponseToolCallContentItem]:
+        "Returns all tool-call content items"
+        tools: list[ChatResponseToolCallContentItem] = [
             content
             for choice in self.choices
             for content in (choice.contents or [])
             if content.type == ChatResponseContentItemType.TOOL_CALL
+            and isinstance(content, ChatResponseToolCallContentItem)
         ]
         return tools
 
@@ -182,12 +183,12 @@ class ChatResponse(BaseModel):
         structured_item = self.first(ChatResponseContentItemType.STRUCTURED_OUTPUT)
         return structured_item.structured_output.structured_data if structured_item else None
 
-    def structured_unprocessed(self) -> dict | None:
-        "Returns the first structured-output type content as dict"
+    def structured_unprocessed(self) -> "ChatResponseStructuredOutput | None":
+        "Returns the first structured-output type content as its model instance"
         structured_item = self.first(ChatResponseContentItemType.STRUCTURED_OUTPUT)
         return structured_item.structured_output
 
-    def structured_pyd(self) -> PydanticBaseModel:
+    def structured_pyd(self) -> PydanticBaseModel | None:
         "Returns the first structured-output type content as its pydantic model instance configured in the input call"
         structured_item = self.first(ChatResponseContentItemType.STRUCTURED_OUTPUT)
         return structured_item.structured_output.as_pydantic() if structured_item else None

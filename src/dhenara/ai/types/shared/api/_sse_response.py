@@ -65,6 +65,7 @@ class SSEResponse(BaseModel, Generic[T]):  # noqa: UP046
 
     def set_random_id(self) -> str:
         self.id = str(uuid4())
+        return self.id
 
     def is_error(self) -> bool:
         return self.event == SSEEventType.ERROR
@@ -98,7 +99,7 @@ class SSEResponse(BaseModel, Generic[T]):  # noqa: UP046
         return "\n".join(lines) + "\n\n"
 
     @classmethod
-    def parse_sse(cls, sse_str: str, data_type: T | None = None) -> "SSEResponse[Any]":
+    def parse_sse(cls, sse_str: str, data_type: type[T] | None = None) -> "SSEResponse[Any]":
         """Parse SSE format string into response object"""
         lines = sse_str.strip().split("\n")
         event_data = {

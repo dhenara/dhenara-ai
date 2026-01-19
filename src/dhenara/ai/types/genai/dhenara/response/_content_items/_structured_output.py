@@ -245,8 +245,12 @@ class ChatResponseStructuredOutput(BaseModel):
                         except Exception as post_e:
                             logger.warning(f"Post-process fallback failed: {post_e}")
             else:
-                # No model class available, just return the normalized data
-                parsed_data = normalized_data
+                # No model class available, accept only dict-shaped structured output
+                if isinstance(normalized_data, dict):
+                    parsed_data = normalized_data
+                else:
+                    parsed_data = None
+                    error = f"Expected structured output to be a dict, got {type(normalized_data).__name__}"
 
         except Exception as e:
             logger.exception(f"Unexpected error during parsing/validation: {e}")

@@ -10,7 +10,7 @@ class CredentialFieldConfig(BaseModel):
     """Configuration for a credential field"""
 
     field_name: str = Field(..., description="Name of the credential field")
-    is_json_field: bool = Field(False, description="Whether the field contains JSON data")  # noqa: FBT003
+    is_json_field: bool = Field(default=False, description="Whether the field contains JSON data")
     error_msg: str = Field(..., description="Error message for validation failures")
 
 
@@ -22,7 +22,7 @@ class CredentialOutputMapping(BaseModel):
         description="Source of the credential value",
     )
     source_key: str | None = Field(
-        None,
+        default=None,
         description="Key in the source dictionary (for credentials and config)",
     )
     output_key: str = Field(
@@ -30,7 +30,7 @@ class CredentialOutputMapping(BaseModel):
         description="Key name in the output credentials dictionary",
     )
     default_value: Any | None = Field(
-        None,
+        default=None,
         description="Default value if the source is not found",
     )
 

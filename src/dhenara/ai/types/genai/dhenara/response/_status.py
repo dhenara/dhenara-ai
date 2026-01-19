@@ -42,17 +42,17 @@ class ExternalApiCallStatus(BaseModel):
         description="Human readable status/error message",
     )
     code: str | None = Field(
-        None,
+        default=None,
         description="Provider-specific status/error code",
     )
     http_status_code: int | None = Field(
-        None,
+        default=None,
         description="HTTP status code if applicable",
         ge=100,
         le=599,
     )
     data: dict | None = Field(
-        None,
+        default=None,
         description="Additional provider-specific status data",
     )
 

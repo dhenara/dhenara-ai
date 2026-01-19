@@ -52,7 +52,7 @@ class ImageResponse(BaseModel):
         self,
         choice_index: int = 0,
         max_words_text: int | None = None,
-    ) -> "Prompt":
+    ) -> "Prompt | None":
         """Convert response to a context message for next turn"""
 
         # Get text from the first choice's contents

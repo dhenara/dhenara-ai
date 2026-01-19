@@ -34,16 +34,16 @@ class ImageResponseContentItem(BaseResponseContentItem):
         description="Response content format",
     )
     content_bytes: bytes | None = Field(
-        None,
+        default=None,
         description="Raw image content in bytes",
     )
     content_b64_json: str | None = Field(
-        None,
+        default=None,
         description="Base64 encoded image content",
         min_length=1,
     )
     content_url: str | None = Field(
-        None,
+        default=None,
         description="URL to access the generated image",
         pattern=r"^https?://.*$",
     )
@@ -64,8 +64,12 @@ class ImageResponseContentItem(BaseResponseContentItem):
 
     def get_content_as_bytes(self) -> bytes:
         if self.content_format == ImageContentFormat.BYTES:
+            if self.content_bytes is None:
+                raise ValueError("get_content_as_bytes: content_bytes is None while content_format=BYTES")
             byte_content = self.content_bytes
         elif self.content_format == ImageContentFormat.BASE64:
+            if self.content_b64_json is None:
+                raise ValueError("get_content_as_bytes: content_b64_json is None while content_format=BASE64")
             byte_content = base64.b64decode(self.content_b64_json)
         else:
             raise ValueError(

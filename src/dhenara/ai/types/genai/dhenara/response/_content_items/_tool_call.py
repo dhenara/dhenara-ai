@@ -10,22 +10,22 @@ class ChatResponseToolCall(BaseModel):
     """Representation of a tool call from an LLM"""
 
     call_id: str | None = Field(
-        None,
+        default=None,
         description="An identifier used to map this tool call to a tool call output.",
     )
     id: str | None = Field(
-        None,
+        default=None,
         description="The unique ID of the tool call output in the provider platform.",
     )
     name: str
     arguments: dict[str, Any] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)
     raw_data: str | dict | None = Field(
-        None,
+        default=None,
         description="Raw unparsed response from the model",
     )
     parse_error: str | None = Field(
-        None,
+        default=None,
         description="Error that occurred during parsing, if any",
     )
 

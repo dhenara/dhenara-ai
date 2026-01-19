@@ -30,7 +30,12 @@ class PromptText(BaseModel):
 
     def format(self, **kwargs) -> str:
         if self.content:
-            return self.content.get_content()
+            value = self.content.get_content()
+            if isinstance(value, str):
+                return value
+            if isinstance(value, list):
+                return "\n".join(str(v) for v in value)
+            return str(value)
         else:
             return self.template.format(**kwargs)
 

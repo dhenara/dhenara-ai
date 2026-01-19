@@ -17,11 +17,11 @@ class AIModelAPI(BaseModel):
         description="The AI model provider",
     )
     api_key: str | None = Field(
-        None,
+        default=None,
         description="API key, if applicable ",
     )
     credentials: dict[str, Any] | None = Field(
-        None,
+        default=None,
         description="Dictionary of sensitive credentials otherthan API key.",
     )
     config: dict[str, Any] = Field(
@@ -29,15 +29,15 @@ class AIModelAPI(BaseModel):
         description="Non-sensitive credential configuration/parameters.",
     )
     order: int = Field(
-        0,
+        default=0,
         description="Order for display purposes",
     )
     enabled: bool = Field(
-        True,  # noqa: FBT003
+        default=True,
         description="Whether this API is enabled",
     )
     reference_number: str | None = Field(
-        None,
+        default=None,
         description="Reference number. Should be unique if not None",
     )
 
@@ -270,7 +270,7 @@ class AIModelAPI(BaseModel):
         cls,
         current_model: "AIModelAPI",
         credentials: dict[str, Any],
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | None:
         """Validate credentials update only."""
         return cls.validate_updates(
             current_model,

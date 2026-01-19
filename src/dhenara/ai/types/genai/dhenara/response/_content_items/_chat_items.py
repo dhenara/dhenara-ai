@@ -57,12 +57,12 @@ class ChatResponseTextContentItem(BaseChatResponseContentItem):
 
     # Provider-specific message id (e.g., OpenAI Responses API item id)
     message_id: str | None = Field(
-        None,
+        default=None,
         description="Provider-specific message/content identifier for round-tripping",
     )
     # Unified list of provider content parts (output_text, text, etc.)
     message_contents: list[ChatMessageContentPart] | None = Field(
-        None,
+        default=None,
         description=(
             "Unified provider content parts array (e.g., output_text entries). Required for text reconstruction."
         ),
@@ -70,7 +70,7 @@ class ChatResponseTextContentItem(BaseChatResponseContentItem):
 
     def get_text(self) -> str:
         if self.message_contents:
-            texts = [p.text for p in self.message_contents if getattr(p, "text", None)]
+            texts = [p.text for p in self.message_contents if p.text is not None]
             if texts:
                 return "".join(texts)
         return ""
@@ -112,8 +112,9 @@ class ChatResponseReasoningContentItem(ChatResponseTextContentItem):
         if base:
             return base
         if isinstance(self.thinking_summary, list):
-            parts = [p.text for p in self.thinking_summary if getattr(p, "text", None)]
-            return "".join(parts)
+            parts = [p.text for p in self.thinking_summary if p.text is not None]
+            if parts:
+                return "".join(parts)
         return ""
 
 
@@ -161,11 +162,11 @@ class ChatResponseTextContentItemDelta(BaseChatResponseContentItemDelta):
     type: ChatResponseContentItemType = ChatResponseContentItemType.TEXT
 
     # Unified incremental text delta (was `text_delta`); keep name for backward compat but treat as raw append
-    text_delta: str | None = Field(None, description="Incremental text delta append for streaming")
+    text_delta: str | None = Field(default=None, description="Incremental text delta append for streaming")
     # Provider may start emitting full `message_contents` array mid-stream; we adopt it immediately.
-    message_id: str | None = Field(None, description="Provider-specific message content identifier")
+    message_id: str | None = Field(default=None, description="Provider-specific message content identifier")
     message_contents: list[ChatMessageContentPart] | None = Field(
-        None,
+        default=None,
         description="Full provider content parts snapshot when available (supersedes text_delta accumulation).",
     )
 
@@ -208,7 +209,7 @@ class ChatResponseToolCallContentItemDelta(BaseChatResponseContentItemDelta):
 
     def get_text_delta(self) -> str:
         # Prefer new field, fallback to legacy name if present
-        return self.arguments_delta or self.tool_calls_delta
+        return self.arguments_delta or self.tool_calls_delta or ""
 
 
 # INFO: There is no separate `structured_output` in streaming, its simply the outout text

@@ -259,7 +259,7 @@ class AIModelClient:
             when you're done making calls.
         """
         if self.is_async:
-            return self.generate_with_existing_connection_async(
+            return await self.generate_with_existing_connection_async(
                 prompt=prompt,
                 context=context,
                 instructions=instructions,

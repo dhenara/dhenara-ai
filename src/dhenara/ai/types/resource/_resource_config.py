@@ -34,10 +34,10 @@ class ResourceConfig(BaseModel):
         description="AIModel Endpoints",
     )
 
-    def get_api(self, api_provider: str | None = None) -> AIModelEndpoint:
+    def get_api(self, api_provider: str | None = None) -> AIModelAPI | None:
         return next((api for api in self.model_apis if api.provider == api_provider), None)
 
-    def get_model_endpoint(self, model_name: str, api_provider: str | None = None) -> AIModelEndpoint:
+    def get_model_endpoint(self, model_name: str, api_provider: str | None = None) -> AIModelEndpoint | None:
         """
         Retrieves an endpoint by model name.
 
@@ -59,7 +59,7 @@ class ResourceConfig(BaseModel):
             )
         )
 
-    def get_resource(self, resource_item: ResourceConfigItem) -> AIModelEndpoint:  # |RagEndpoint
+    def get_resource(self, resource_item: ResourceConfigItem) -> AIModelEndpoint | None:  # |RagEndpoint
         """
         Retrieves a resource based on the resource specification.
 

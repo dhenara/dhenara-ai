@@ -90,20 +90,21 @@ class ApiResponse(BaseModel, Generic[T]):  # noqa: UP046
     def first_message(self) -> ApiResponseMessage | None:
         return self.messages[0] if self.messages else None
 
-    def check_for_status_errors(self) -> None:
-        """Raises an exception if the response indicates an error"""
-        if not self.is_success:
-            if self.first_message:
-                return self.first_message
-            return "Unknown error occurred"
-        return None
+    def check_for_status_errors(self) -> ApiResponseMessage | str | None:
+        """Return an error object/message when status indicates failure."""
+        if self.is_success:
+            return None
+        if self.first_message:
+            return self.first_message
+        return "Unknown error occurred"
 
     def raise_for_status(self) -> None:
         """Raises an exception if the response indicates an error"""
         error_msg = self.check_for_status_errors()
         if error_msg:
+            message = error_msg.message if isinstance(error_msg, ApiResponseMessage) else str(error_msg)
             raise DhenaraAPIError(
-                message="Unknown error occurred",
+                message=message,
                 status_code=self.first_message.status_code or ApiResponseMessageStatusCode.FAIL_SERVER_ERROR,
                 response={},
             )
