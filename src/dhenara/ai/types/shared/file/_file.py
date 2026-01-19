@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 # TODO: Need cleanup
 # -----------------------------------------------------------------------------
 class GenericFileContent(BaseModel):
-    content_format: Literal["bytes", "base64"] = Field(
+    content_format: Literal["bytes", "base64"] | None = Field(
         default=None,
         description="Content format",
     )

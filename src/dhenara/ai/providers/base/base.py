@@ -367,7 +367,7 @@ class AIModelProviderClientBase(ABC):
         instructions: list[str | dict | SystemInstruction] | None = None,
         messages: Sequence[MessageItem] | None = None,
     ) -> AIModelCallResponse:
-        parsed_response: ChatResponse | None = None
+        parsed_response: ChatResponse | ImageResponse | None = None
         api_call_status: ExternalApiCallStatus | None = None
 
         logger.debug(f"generate_response: prompt={prompt}, context={context}")
@@ -470,7 +470,7 @@ class AIModelProviderClientBase(ABC):
         instructions: list[str | dict | SystemInstruction] | None = None,
         messages: Sequence[MessageItem] | None = None,
     ) -> AIModelCallResponse:
-        parsed_response: ChatResponse | None = None
+        parsed_response: ChatResponse | ImageResponse | None = None
         api_call_status: ExternalApiCallStatus | None = None
 
         logger.debug(f"generate_response: prompt={prompt}, context={context}")

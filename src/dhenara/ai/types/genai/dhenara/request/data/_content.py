@@ -24,7 +24,7 @@ class Content(BaseModel):
 
     """
 
-    type: ContentType = Field(
+    type: ContentType | None = Field(
         default=None,
     )
     text: str | None = Field(

@@ -48,7 +48,7 @@ class ImageResponseUsage(BaseModel):
         description="Number of Images generated",
     )
     model: str = Field(
-        default_factory=dict,
+        default="",
         description="Model Name",
     )
     options: dict = Field(
