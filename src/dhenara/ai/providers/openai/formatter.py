@@ -1,6 +1,12 @@
 import logging
 from typing import Any
 
+from openai.types.responses import (
+    ResponseFunctionToolCallParam,
+    ResponseOutputMessageParam,
+    ResponseReasoningItemParam,
+)
+
 from dhenara.ai.providers.base import BaseFormatter
 from dhenara.ai.providers.openai.message_converter import OpenAIMessageConverter
 from dhenara.ai.types.genai.ai_model import AIModelEndpoint, AIModelFunctionalTypeEnum
@@ -42,9 +48,9 @@ class OpenAIFormatter(BaseFormatter):
         model_endpoint: AIModelEndpoint | None = None,
         files: list[GenericFile] | None = None,
         max_words_file: int | None = None,
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | str:
         # Map Dhenara formats to provider format
-        file_contents = None
+        file_contents: list[dict[str, Any]] | str | None = None
         if files:
             file_contents = cls.convert_files_to_provider_content(
                 files=files,
@@ -56,10 +62,10 @@ class OpenAIFormatter(BaseFormatter):
             return cls._convert_image_model_prompt(
                 formatted_prompt=formatted_prompt,
                 model_endpoint=model_endpoint,
-                file_contents=file_contents,
+                file_contents=file_contents if isinstance(file_contents, str) else None,
             )
 
-        if file_contents:
+        if isinstance(file_contents, list) and file_contents:
             content = [
                 {
                     "type": "text",
@@ -68,14 +74,7 @@ class OpenAIFormatter(BaseFormatter):
                 *file_contents,
             ]
         else:
-            if isinstance(formatted_prompt, FormattedPrompt):
-                # Use Simple text format
-                content = formatted_prompt.text
-            else:
-                raise ValueError(
-                    "Prompt must be of type FormattedPrompt, provided:"
-                    f"{type(formatted_prompt)} , value: {formatted_prompt}"
-                )
+            content = formatted_prompt.text
 
         role = cls.role_map.get(formatted_prompt.role)
         return {"role": role, "content": content}
@@ -96,7 +95,7 @@ class OpenAIFormatter(BaseFormatter):
         files: list[GenericFile],
         model_endpoint: AIModelEndpoint | None = None,
         max_words: int | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, Any]] | str:
         if model_endpoint.ai_model.functional_type == AIModelFunctionalTypeEnum.IMAGE_GENERATION:
             return cls._convert_files_for_image_models(
                 files=files,
@@ -104,7 +103,7 @@ class OpenAIFormatter(BaseFormatter):
                 max_words=max_words,
             )
 
-        contents = []
+        contents: list[dict[str, Any]] = []
         for file in files:
             file_format = file.get_file_format()
             try:
@@ -141,12 +140,11 @@ class OpenAIFormatter(BaseFormatter):
     def _convert_image_model_prompt(
         cls,
         formatted_prompt: FormattedPrompt,
-        file_contents: list[dict[str, Any]],
+        file_contents: str | None,
         model_endpoint: AIModelEndpoint | None = None,
     ) -> str:
         if file_contents:
-            _file_content = " ".join(file_contents)
-            content = formatted_prompt.text + " " + _file_content
+            content = formatted_prompt.text + " " + file_contents
         else:
             content = formatted_prompt.text
 
@@ -159,7 +157,7 @@ class OpenAIFormatter(BaseFormatter):
         model_endpoint: AIModelEndpoint | None = None,
         max_words: int | None = None,
     ) -> str:
-        contents: list[dict[str, Any]] = []
+        contents: list[str] = []
         for file in files:
             file_format = file.get_file_format()
             try:
@@ -400,7 +398,11 @@ class OpenAIFormatter(BaseFormatter):
         message_item: MessageItem,
         model_endpoint: AIModelEndpoint | None = None,
         **kwargs,
-    ) -> dict[str, Any] | list[dict[str, Any]]:
+    ) -> (
+        dict[str, Any]
+        | list[dict[str, Any]]
+        | list[ResponseReasoningItemParam | ResponseOutputMessageParam | ResponseFunctionToolCallParam]
+    ):
         """Responses equivalent of convert_dai_message_item_to_provider.
 
         - Prompt -> convert via format_prompt then convert_prompt_responses

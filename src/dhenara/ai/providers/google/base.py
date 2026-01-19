@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 from google import genai
 from google.genai.types import HttpOptions as GooogleHttpOptions
@@ -69,7 +70,7 @@ class GoogleAIClientBase(AIModelProviderClientBase):
         _client_type, params = self._get_client_params(api)
         return genai.Client(**params)
 
-    async def _setup_client_async(self) -> genai.Client:
+    async def _setup_client_async(self) -> Any:
         """Get the appropriate async Google AI client"""
         api = self.model_endpoint.api
         _client_type, params = self._get_client_params(api)

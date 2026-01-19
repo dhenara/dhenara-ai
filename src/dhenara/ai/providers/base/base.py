@@ -2,8 +2,8 @@ import asyncio
 import inspect
 import logging
 from abc import ABC, abstractmethod
-from collections.abc import AsyncGenerator, Generator, Sequence
-from typing import Any
+from collections.abc import AsyncGenerator, AsyncIterator, Generator, Iterator, Sequence
+from typing import Any, Literal, overload
 
 from dhenara.ai.config import settings
 from dhenara.ai.providers.base import StreamingManager
@@ -834,35 +834,35 @@ class AIModelProviderClientBase(ABC):
         context: list[dict] | None = None,
         instructions: dict | None = None,
         messages: Sequence[MessageItem] | None = None,
-    ) -> AIModelCallResponse:
+    ) -> dict[str, Any]:
         pass
 
     @abstractmethod
     def do_api_call_sync(
         self,
         api_call_params: dict,
-    ) -> AIModelCallResponse:
+    ) -> object:
         pass
 
     @abstractmethod
     async def do_api_call_async(
         self,
         api_call_params: dict,
-    ) -> AIModelCallResponse:
+    ) -> object:
         pass
 
     @abstractmethod
     def do_streaming_api_call_sync(
         self,
         api_call_params: dict,
-    ) -> AIModelCallResponse:
+    ) -> Iterator[object]:
         pass
 
     @abstractmethod
     async def do_streaming_api_call_async(
         self,
         api_call_params: dict,
-    ) -> AIModelCallResponse:
+    ) -> AsyncIterator[object]:
         pass
 
     @abstractmethod
@@ -895,7 +895,7 @@ class AIModelProviderClientBase(ABC):
         instructions: list[str | dict | SystemInstruction] | None = None,
         messages: Sequence[MessageItem] | None = None,
         **kwargs,
-    ) -> tuple[dict, list[dict], list[str] | dict | None]:
+    ) -> dict[str, Any] | None:
         """Format inputs into provider-specific formats"""
         try:
             # Validate mutual exclusivity: either (prompt+context) OR messages, not both
@@ -1053,13 +1053,31 @@ class AIModelProviderClientBase(ABC):
             )
         )
 
+    @overload
+    def get_unknown_content_type_item(
+        self,
+        index: int,
+        role: str,
+        unknown_item: Any,
+        streaming: Literal[True],
+    ) -> ChatResponseGenericContentItemDelta: ...
+
+    @overload
+    def get_unknown_content_type_item(
+        self,
+        index: int,
+        role: str,
+        unknown_item: Any,
+        streaming: Literal[False],
+    ) -> ChatResponseGenericContentItem: ...
+
     def get_unknown_content_type_item(
         self,
         index: int,
         role: str,
         unknown_item: Any,
         streaming: bool,
-    ):
+    ) -> ChatResponseGenericContentItemDelta | ChatResponseGenericContentItem:
         logger.debug(f"Unknown content item type {type(unknown_item)}")
 
         item_dict = {

@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 from google.genai.types import GenerateImagesConfig, GenerateImagesResponse
 
@@ -28,7 +29,7 @@ class GoogleAIImage(GoogleAIClientBase):
         context: list[dict] | None = None,
         instructions: dict | None = None,
         messages: list | None = None,
-    ) -> AIModelCallResponse:
+    ) -> dict[str, Any]:
         if not self._client:
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
 
@@ -54,7 +55,7 @@ class GoogleAIImage(GoogleAIClientBase):
     def do_api_call_sync(
         self,
         api_call_params: dict,
-    ) -> AIModelCallResponse:
+    ) -> GenerateImagesResponse:
         response = self._client.models.generate_images(
             model=self.model_name_in_api_calls,
             config=api_call_params["generate_config"],
@@ -65,7 +66,7 @@ class GoogleAIImage(GoogleAIClientBase):
     async def do_api_call_async(
         self,
         api_call_params: dict,
-    ) -> AIModelCallResponse:
+    ) -> GenerateImagesResponse:
         response = await self._client.models.generate_images(
             model=self.model_name_in_api_calls,
             config=api_call_params["generate_config"],

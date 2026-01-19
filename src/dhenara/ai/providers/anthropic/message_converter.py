@@ -165,22 +165,26 @@ class AnthropicMessageConverter(BaseMessageConverter):
                     config=structured_output_config,
                 )
 
-                return [
+                items: list[ChatResponseContentItem] = []
+                items.append(
                     ChatResponseStructuredOutputContentItem(
                         index=index,
                         role=role,
                         structured_output=structured_output,
                     )
-                ]
+                )
+                return items
 
-            return [
+            items: list[ChatResponseContentItem] = []
+            items.append(
                 ChatResponseToolCallContentItem(
                     index=index,
                     role=role,
                     tool_call=tool_call,
                     metadata={},
                 )
-            ]
+            )
+            return items
 
         return []
 

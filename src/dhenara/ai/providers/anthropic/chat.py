@@ -1,6 +1,7 @@
 import json
 import logging
 from collections.abc import AsyncGenerator, Generator
+from typing import Any
 
 from anthropic.types import (
     ContentBlock,
@@ -20,7 +21,6 @@ from anthropic.types import (
 from dhenara.ai.providers.anthropic import AnthropicClientBase
 from dhenara.ai.providers.anthropic.message_converter import AnthropicMessageConverter
 from dhenara.ai.types.genai import (
-    AIModelCallResponse,
     AIModelCallResponseMetaData,
     ChatResponse,
     ChatResponseChoice,
@@ -48,7 +48,7 @@ class AnthropicChat(AnthropicClientBase):
         context: list[dict] | None = None,
         instructions: dict | None = None,
         messages: list[dict] | None = None,
-    ) -> AIModelCallResponse:
+    ) -> dict[str, Any]:
         if not self._client:
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
 
@@ -162,7 +162,7 @@ class AnthropicChat(AnthropicClientBase):
     def do_api_call_sync(
         self,
         api_call_params: dict,
-    ) -> AIModelCallResponse:
+    ) -> Message:
         chat_args = api_call_params["chat_args"]
         response = self._client.messages.create(**chat_args)
         return response
@@ -170,7 +170,7 @@ class AnthropicChat(AnthropicClientBase):
     async def do_api_call_async(
         self,
         api_call_params: dict,
-    ) -> AIModelCallResponse:
+    ) -> Message:
         chat_args = api_call_params["chat_args"]
         response = await self._client.messages.create(**chat_args)
         return response
@@ -178,10 +178,10 @@ class AnthropicChat(AnthropicClientBase):
     def do_streaming_api_call_sync(
         self,
         api_call_params,
-    ) -> AIModelCallResponse:
+    ) -> Generator[MessageStreamEvent]:
         chat_args = api_call_params["chat_args"]
 
-        def _wrapper() -> Generator:
+        def _wrapper() -> Generator[MessageStreamEvent]:
             # Use SDK stream context to access final aggregated message
             _args = dict(chat_args)
             _args.pop("stream", None)
@@ -200,10 +200,10 @@ class AnthropicChat(AnthropicClientBase):
     async def do_streaming_api_call_async(
         self,
         api_call_params,
-    ) -> AIModelCallResponse:
+    ) -> AsyncGenerator[MessageStreamEvent]:
         chat_args = api_call_params["chat_args"]
 
-        async def _awrapper() -> AsyncGenerator:
+        async def _awrapper() -> AsyncGenerator[MessageStreamEvent]:
             # Use SDK async stream context to access final aggregated message
             _args = dict(chat_args)
             _args.pop("stream", None)
@@ -238,7 +238,7 @@ class AnthropicChat(AnthropicClientBase):
     def parse_stream_chunk(
         self,
         chunk: MessageStreamEvent,
-    ) -> StreamingChatResponse | SSEErrorResponse | None:
+    ) -> StreamingChatResponse | SSEErrorResponse | list[StreamingChatResponse | SSEErrorResponse] | None:
         """Handle streaming response with progress tracking and final response"""
 
         processed_chunks = []
@@ -560,11 +560,10 @@ class AnthropicChat(AnthropicClientBase):
                 thinking_signature=delta.signature,
                 metadata={},
             )
-        # TODO: Tools Not supported in streaming yet
-        else:
-            return self.get_unknown_content_type_item(
-                index=index,
-                role=role,
-                unknown_item=delta,
-                streaming=True,
-            )
+
+        return self.get_unknown_content_type_item(
+            index=index,
+            role=role,
+            unknown_item=delta,
+            streaming=True,
+        )

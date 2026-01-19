@@ -1,4 +1,5 @@
 import logging
+from collections.abc import AsyncIterator, Iterator
 from typing import Any
 
 from openai.types.chat import ChatCompletion, ChatCompletionMessage
@@ -7,7 +8,6 @@ from openai.types.chat.chat_completion_chunk import ChatCompletionChunk, ChoiceD
 from dhenara.ai.providers.openai import OpenAIClientBase
 from dhenara.ai.providers.openai.message_converter import OpenAIMessageConverter
 from dhenara.ai.types.genai import (
-    AIModelCallResponse,
     AIModelCallResponseMetaData,
     ChatResponse,
     ChatResponseChoice,
@@ -33,11 +33,12 @@ class OpenAIChatLEGACY(OpenAIClientBase):
         context: list[dict] | None = None,
         instructions: dict | None = None,
         messages: list | None = None,
-    ) -> AIModelCallResponse:
+    ) -> dict[str, Any]:
         # HARD GUARD: This legacy client must never be used for OpenAI provider.
         # The project has migrated to the Responses API; invoking this path for
         # OpenAI is a configuration error and should fail fast.
-        raise RuntimeError("OpenAIChatLEGACY is disabled for provider=OPEN_AI. Use Responses API client instead.")
+        if self.model_endpoint.ai_model.provider == AIModelProviderEnum.OPEN_AI:
+            raise RuntimeError("OpenAIChatLEGACY is disabled for provider=OPEN_AI. Use Responses API client instead.")
         if not self._client:
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
 
@@ -122,7 +123,7 @@ class OpenAIChatLEGACY(OpenAIClientBase):
     def do_api_call_sync(
         self,
         api_call_params: dict,
-    ) -> AIModelCallResponse:
+    ) -> ChatCompletion:
         chat_args = api_call_params["chat_args"]
         if self.model_endpoint.api.provider != AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
             response = self._client.chat.completions.create(**chat_args)
@@ -133,7 +134,7 @@ class OpenAIChatLEGACY(OpenAIClientBase):
     async def do_api_call_async(
         self,
         api_call_params: dict,
-    ) -> AIModelCallResponse:
+    ) -> ChatCompletion:
         chat_args = api_call_params["chat_args"]
         if self.model_endpoint.api.provider != AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
             response = await self._client.chat.completions.create(**chat_args)
@@ -144,7 +145,7 @@ class OpenAIChatLEGACY(OpenAIClientBase):
     def do_streaming_api_call_sync(
         self,
         api_call_params,
-    ) -> AIModelCallResponse:
+    ) -> Iterator[ChatCompletionChunk]:
         chat_args = api_call_params["chat_args"]
         if self.model_endpoint.api.provider != AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
             stream = self._client.chat.completions.create(**chat_args)
@@ -156,7 +157,7 @@ class OpenAIChatLEGACY(OpenAIClientBase):
     async def do_streaming_api_call_async(
         self,
         api_call_params,
-    ) -> AIModelCallResponse:
+    ) -> AsyncIterator[ChatCompletionChunk]:
         chat_args = api_call_params["chat_args"]
         if self.model_endpoint.api.provider != AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
             stream = await self._client.chat.completions.create(**chat_args)
@@ -169,9 +170,9 @@ class OpenAIChatLEGACY(OpenAIClientBase):
     def parse_stream_chunk(
         self,
         chunk: ChatCompletionChunk,
-    ) -> StreamingChatResponse | SSEErrorResponse | None:
+    ) -> list[StreamingChatResponse] | SSEErrorResponse | None:
         """Handle streaming response with progress tracking and final response"""
-        processed_chunks = []
+        processed_chunks: list[StreamingChatResponse] = []
 
         self.streaming_manager.provider_metadata = None
         self.streaming_manager.persistant_choice_metadata_list = []

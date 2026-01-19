@@ -29,12 +29,12 @@ dependencies = [
     "aiohttp>=3.11.0",
     "pydantic>=2.10.0",
     "Pillow>=11.1.0",
-    "openai>=2.3.0",
-    "google-genai>=1.43.0",
-    "anthropic>=0.69.0",
+    "openai>=2.15.0",
+    "google-genai>=1.59.0",
+    "anthropic>=0.76.0",
     "azure-ai-inference>=1.0.0b9",
-    "boto3>=1.40.51",
-    "botocore>=1.40.51",
+    "boto3>=1.42.30",
+    "botocore>=1.42.30",
 ]
 
 [project.optional-dependencies]

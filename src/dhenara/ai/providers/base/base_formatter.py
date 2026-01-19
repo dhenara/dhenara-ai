@@ -32,7 +32,7 @@ class BaseFormatter(ABC):
         prompt: str | dict | Prompt,
         model_endpoint: AIModelEndpoint | None = None,
         **kwargs,
-    ) -> FormattedPrompt:
+    ) -> dict[str, Any]:
         # First convert a prompt to Dhenara Prompt format
         if isinstance(prompt, str):
             # Formatted Prompt
@@ -103,7 +103,7 @@ class BaseFormatter(ABC):
         instructions: list[str | SystemInstruction] | str,
         model_endpoint: AIModelEndpoint | None = None,
         **kwargs,
-    ) -> dict[str, Any]:
+    ) -> str | None:
         if not instructions:
             return None
 
@@ -126,9 +126,7 @@ class BaseFormatter(ABC):
 
         formatted_instructions = [_process_single_instruction(instr, **kwargs) for instr in instructions]
 
-        joined = " ".join(formatted_instructions)
-
-        return joined
+        return " ".join(formatted_instructions)
 
     @classmethod
     def format_instructions(
@@ -136,7 +134,7 @@ class BaseFormatter(ABC):
         instructions: list[str | dict | Prompt] | str,
         model_endpoint: AIModelEndpoint | None = None,
         **kwargs,
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | None:
         if not instructions:
             return None
 

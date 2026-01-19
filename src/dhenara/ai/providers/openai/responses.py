@@ -1,12 +1,12 @@
 import json
 import logging
+from collections.abc import AsyncIterator, Iterator
 from typing import Any
 
 from dhenara.ai.providers.openai import OpenAIClientBase
 from dhenara.ai.providers.openai.formatter import OpenAIFormatter
 from dhenara.ai.providers.openai.message_converter import OpenAIMessageConverter
 from dhenara.ai.types.genai import (
-    AIModelCallResponse,
     AIModelCallResponseMetaData,
     ChatResponse,
     ChatResponseChoice,
@@ -42,9 +42,9 @@ class OpenAIResponses(OpenAIClientBase):
         prompt: dict | None,
         context: list[dict] | None,
         messages: list | None,
-    ) -> list[dict]:
+    ) -> list[Any]:
         """Build the Responses API 'input' array of role/content items."""
-        input_items: list[dict] = []
+        input_items: list[Any] = []
 
         if messages is not None:
             # Convert Dhenara messages to Responses input messages
@@ -71,7 +71,7 @@ class OpenAIResponses(OpenAIClientBase):
         context: list[dict] | None = None,
         instructions: dict | None = None,
         messages: list | None = None,
-    ) -> AIModelCallResponse:
+    ) -> dict[str, Any]:
         if not self._client:
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
 
@@ -217,7 +217,7 @@ class OpenAIResponses(OpenAIClientBase):
     def do_api_call_sync(
         self,
         api_call_params: dict,
-    ) -> AIModelCallResponse:
+    ) -> object:
         args = dict(api_call_params["response_args"])
         if self.model_endpoint.api.provider == AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
             raise ValueError("OpenAIResponses doens't supports AIModelAPIProviderEnum.MICROSOFT_AZURE_AI in Phase 1")
@@ -230,7 +230,7 @@ class OpenAIResponses(OpenAIClientBase):
     async def do_api_call_async(
         self,
         api_call_params: dict,
-    ) -> AIModelCallResponse:
+    ) -> object:
         args = dict(api_call_params["response_args"])
         if self.model_endpoint.api.provider == AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
             raise ValueError("OpenAIResponses doens't supports AIModelAPIProviderEnum.MICROSOFT_AZURE_AI in Phase 1")
@@ -243,7 +243,7 @@ class OpenAIResponses(OpenAIClientBase):
     def do_streaming_api_call_sync(
         self,
         api_call_params,
-    ) -> AIModelCallResponse:
+    ) -> Iterator[object]:
         args = dict(api_call_params["response_args"])
         if self.model_endpoint.api.provider == AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
             raise ValueError("OpenAIResponses doens't supports AIModelAPIProviderEnum.MICROSOFT_AZURE_AI in Phase 1")
@@ -256,7 +256,7 @@ class OpenAIResponses(OpenAIClientBase):
     async def do_streaming_api_call_async(
         self,
         api_call_params,
-    ) -> AIModelCallResponse:
+    ) -> AsyncIterator[object]:
         args = dict(api_call_params["response_args"])
         if self.model_endpoint.api.provider == AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
             raise ValueError("OpenAIResponses doens't supports AIModelAPIProviderEnum.MICROSOFT_AZURE_AI in Phase 1")

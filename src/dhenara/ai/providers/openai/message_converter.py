@@ -264,7 +264,7 @@ class OpenAIMessageConverter(BaseMessageConverter):
     def dai_response_to_provider_message(
         dai_response: ChatResponse,
         model_endpoint: AIModelEndpoint,
-    ) -> dict[str, Any] | list[dict[str, Any]]:
+    ) -> list[ResponseReasoningItemParam | ResponseOutputMessageParam | ResponseFunctionToolCallParam]:
         """Convert ChatResponse into OpenAI Responses API input format.
 
         Single source of truth: always converts from Dhenara content items,
@@ -284,7 +284,7 @@ class OpenAIMessageConverter(BaseMessageConverter):
         choice: ChatResponseChoice,
         model_endpoint: AIModelEndpoint,
         source_provider: AIModelProviderEnum,
-    ) -> dict[str, Any] | list[dict[str, Any]]:
+    ) -> list[ResponseReasoningItemParam | ResponseOutputMessageParam | ResponseFunctionToolCallParam]:
         """Convert ChatResponseChoice into OpenAI Responses API input format.
 
         Returns a list of proper SDK param types for input:

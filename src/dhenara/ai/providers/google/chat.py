@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 from google.genai.types import (
     GenerateContentConfig,
@@ -38,14 +39,22 @@ models_not_supporting_system_instructions = ["gemini-1.0-pro"]
 def _process_thought_signature(thought_signature: str | bytes | None) -> str | None:
     import base64
 
-    if thought_signature and not isinstance(thought_signature, str):
+    if thought_signature is None:
+        return None
+
+    if isinstance(thought_signature, bytes):
+        if not thought_signature:
+            return None
         try:
             return base64.b64encode(thought_signature).decode("utf-8")
         except Exception:
-            # Keep as-is if encoding fails
-            pass
+            try:
+                return thought_signature.decode("utf-8", errors="replace")
+            except Exception:
+                # return None
+                pass
 
-    return thought_signature
+    return str(thought_signature)
 
 
 # -----------------------------------------------------------------------------
@@ -56,7 +65,7 @@ class GoogleAIChat(GoogleAIClientBase):
         context: list[dict] | None = None,
         instructions: dict | None = None,
         messages: list[dict] | None = None,
-    ) -> AIModelCallResponse:
+    ) -> dict[str, Any]:
         if not self._client:
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
 
@@ -145,7 +154,7 @@ class GoogleAIChat(GoogleAIClientBase):
     def do_api_call_sync(
         self,
         api_call_params: dict,
-    ) -> AIModelCallResponse:
+    ) -> GenerateContentResponse:
         response = self._client.models.generate_content(
             model=self.model_name_in_api_calls,
             config=api_call_params["generate_config"],
@@ -156,7 +165,7 @@ class GoogleAIChat(GoogleAIClientBase):
     async def do_api_call_async(
         self,
         api_call_params: dict,
-    ) -> AIModelCallResponse:
+    ) -> GenerateContentResponse:
         response = await self._client.models.generate_content(
             model=self.model_name_in_api_calls,
             config=api_call_params["generate_config"],
@@ -233,7 +242,7 @@ class GoogleAIChat(GoogleAIClientBase):
     def parse_stream_chunk(
         self,
         chunk: GenerateContentResponse,
-    ) -> StreamingChatResponse | SSEErrorResponse | None:
+    ) -> StreamingChatResponse | SSEErrorResponse | list[StreamingChatResponse | SSEErrorResponse] | None:
         """Handle streaming response with progress tracking and final response"""
 
         processed_chunks = []

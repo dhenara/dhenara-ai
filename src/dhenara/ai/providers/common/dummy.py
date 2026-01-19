@@ -256,9 +256,7 @@ so the issue is likely in how you're handling these tokens after receiving them 
         """  # noqa: F841
         return f"{base_text}\n\n\n{large_text}"
 
-    def _create_streaming_response(
-        self, chunk_deltas: list[ChatResponseChoiceDelta]
-    ) -> tuple[StreamingChatResponse | None, AIModelCallResponse | None]:
+    def _create_streaming_response(self, chunk_deltas: list[ChatResponseChoiceDelta]) -> StreamingChatResponse | None:
         """Process streaming chunks and create appropriate response"""
         stream_response = None
 
@@ -298,7 +296,7 @@ so the issue is likely in how you're handling these tokens after receiving them 
                 for choice in chunk.choices
             ]
             return self._create_streaming_response(choice_deltas)
-        return None, None
+        return None
 
     def sync_stream_generator(self, ai_model_ep: AIModelEndpoint):
         """Synchronous streaming generator"""
@@ -326,7 +324,7 @@ so the issue is likely in how you're handling these tokens after receiving them 
         self,
         stream_generator,
         model_endpoint: AIModelEndpoint,
-    ) -> Generator[tuple[StreamingChatResponse | SSEErrorResponse, AIModelCallResponse | None]]:
+    ) -> Generator[tuple[StreamingChatResponse | SSEErrorResponse | None, AIModelCallResponse | None]]:
         """Handle synchronous streaming response"""
 
         try:
@@ -361,7 +359,7 @@ so the issue is likely in how you're handling these tokens after receiving them 
         self,
         stream_generator,
         model_endpoint: AIModelEndpoint,
-    ) -> AsyncGenerator[tuple[StreamingChatResponse | SSEErrorResponse, AIModelCallResponse | None]]:
+    ) -> AsyncGenerator[tuple[StreamingChatResponse | SSEErrorResponse | None, AIModelCallResponse | None]]:
         """Handle asynchronous streaming response"""
 
         try:

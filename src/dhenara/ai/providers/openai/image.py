@@ -34,7 +34,7 @@ class OpenAIImage(OpenAIClientBase):
         context: list[dict] | None = None,
         instructions: dict | None = None,
         messages: list | None = None,
-    ) -> AIModelCallResponse:
+    ) -> dict[str, Any]:
         if not self._client:
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
 
@@ -70,7 +70,7 @@ class OpenAIImage(OpenAIClientBase):
     def do_api_call_sync(
         self,
         api_call_params: dict,
-    ) -> AIModelCallResponse:
+    ) -> OpenAIImagesResponse:
         image_args = api_call_params["image_args"]
         if self.model_endpoint.api.provider != AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
             response = self._client.images.generate(**image_args)
@@ -82,7 +82,7 @@ class OpenAIImage(OpenAIClientBase):
     async def do_api_call_async(
         self,
         api_call_params: dict,
-    ) -> AIModelCallResponse:
+    ) -> OpenAIImagesResponse:
         image_args = api_call_params["image_args"]
         if self.model_endpoint.api.provider != AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
             response = await self._client.images.generate(**image_args)

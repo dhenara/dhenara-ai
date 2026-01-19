@@ -42,7 +42,7 @@ class OpenAIFormatterCHATAPI(BaseFormatter):
         model_endpoint: AIModelEndpoint | None = None,
         files: list[GenericFile] | None = None,
         max_words_file: int | None = None,
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | str:
         # Map Dhenara formats to provider format
         file_contents = None
         if files:
@@ -56,10 +56,10 @@ class OpenAIFormatterCHATAPI(BaseFormatter):
             return cls._convert_image_model_prompt(
                 formatted_prompt=formatted_prompt,
                 model_endpoint=model_endpoint,
-                file_contents=file_contents,
+                file_contents=file_contents if isinstance(file_contents, str) else None,
             )
 
-        if file_contents:
+        if isinstance(file_contents, list) and file_contents:
             content = [
                 {
                     "type": "text",
@@ -94,7 +94,7 @@ class OpenAIFormatterCHATAPI(BaseFormatter):
         files: list[GenericFile],
         model_endpoint: AIModelEndpoint | None = None,
         max_words: int | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, Any]] | str:
         if model_endpoint.ai_model.functional_type == AIModelFunctionalTypeEnum.IMAGE_GENERATION:
             return cls._convert_files_for_image_models(
                 files=files,
@@ -139,12 +139,11 @@ class OpenAIFormatterCHATAPI(BaseFormatter):
     def _convert_image_model_prompt(
         cls,
         formatted_prompt: FormattedPrompt,
-        file_contents: list[dict[str, Any]],
+        file_contents: str | None,
         model_endpoint: AIModelEndpoint | None = None,
     ) -> str:
         if file_contents:
-            _file_content = " ".join(file_contents)
-            content = formatted_prompt.text + " " + _file_content
+            content = formatted_prompt.text + " " + file_contents
         else:
             content = formatted_prompt.text
 
@@ -157,7 +156,7 @@ class OpenAIFormatterCHATAPI(BaseFormatter):
         model_endpoint: AIModelEndpoint | None = None,
         max_words: int | None = None,
     ) -> str:
-        contents: list[dict[str, Any]] = []
+        contents: list[str] = []
         for file in files:
             file_format = file.get_file_format()
             try:
