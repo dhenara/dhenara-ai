@@ -1,7 +1,7 @@
 import json
 import logging
-from collections.abc import AsyncGenerator, Generator
-from typing import Any
+from collections.abc import AsyncGenerator, Generator, Sequence
+from typing import Any, cast
 
 from anthropic.types import (
     ContentBlock,
@@ -27,7 +27,6 @@ from dhenara.ai.types.genai import (
     ChatResponseChoiceDelta,
     ChatResponseContentItem,
     ChatResponseContentItemDelta,
-    ChatResponseReasoningContentItem,
     ChatResponseReasoningContentItemDelta,
     ChatResponseTextContentItemDelta,
     ChatResponseToolCall,
@@ -35,6 +34,7 @@ from dhenara.ai.types.genai import (
     ChatResponseUsage,
     StreamingChatResponse,
 )
+from dhenara.ai.types.genai.dhenara.request import MessageItem, Prompt, SystemInstruction
 from dhenara.ai.types.shared.api import SSEErrorResponse
 
 logger = logging.getLogger(__name__)
@@ -44,10 +44,10 @@ logger = logging.getLogger(__name__)
 class AnthropicChat(AnthropicClientBase):
     def get_api_call_params(
         self,
-        prompt: dict | None,
-        context: list[dict] | None = None,
-        instructions: dict | None = None,
-        messages: list[dict] | None = None,
+        prompt: str | dict | Prompt | None,
+        context: Sequence[str | dict | Prompt] | None = None,
+        instructions: dict[str, Any] | list[str | dict | SystemInstruction] | None = None,
+        messages: Sequence[MessageItem] | None = None,
     ) -> dict[str, Any]:
         if not self._client:
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
@@ -59,13 +59,13 @@ class AnthropicChat(AnthropicClientBase):
         if self._input_validation_pending:
             raise ValueError("inputs must be validated with validate_inputs() before api calls")
 
-        messages_list = []
+        messages_list: list[dict[str, Any]] = []
         user = self.config.get_user()
 
         # Process system instructions
         system_prompt = None
         if instructions:
-            if not (isinstance(instructions, dict) and "content" in instructions.keys()):
+            if not isinstance(instructions, dict) or "content" not in instructions:
                 raise ValueError(
                     f"Invalid Instructions format. "
                     f"Instructions should be processed and passed in prompt format. Value is {instructions} "
@@ -82,8 +82,18 @@ class AnthropicChat(AnthropicClientBase):
             messages_list = formatted_messages
         else:
             if context:
-                messages_list.extend(context)
+                for item in context:
+                    if not isinstance(item, dict):
+                        raise ValueError(
+                            "Invalid context format. Context should be processed and passed in prompt format (dict)."
+                        )
+                messages_list.extend(cast(Sequence[dict[str, Any]], context))
+
             if prompt is not None:
+                if not isinstance(prompt, dict):
+                    raise ValueError(
+                        "Invalid prompt format. Prompt should be processed and passed in prompt format (dict)."
+                    )
                 messages_list.append(prompt)
 
         # Prepare API call arguments
@@ -129,7 +139,8 @@ class AnthropicChat(AnthropicClientBase):
 
         # --- Structured Output ---
         # Anthropic uses the tool system for structured output
-        if self.config.structured_output:
+        structured_output_config = self._get_structured_output_config()
+        if structured_output_config:
             # For Anthropic, we need to set up tool calling
             existing_tools = chat_args.get("tools")
             if not isinstance(existing_tools, list):
@@ -138,7 +149,7 @@ class AnthropicChat(AnthropicClientBase):
 
             # Add structured output as a tool
             structured_tool = formatter.format_structured_output(
-                structured_output=self.config.structured_output,
+                structured_output=structured_output_config,
                 model_endpoint=self.model_endpoint,
             )
             chat_args["tools"].append(structured_tool)
@@ -304,12 +315,23 @@ class AnthropicChat(AnthropicClientBase):
             mm = sm.message_metadata
             if not isinstance(mm, dict):
                 return None
+            role = mm.get("role")
+            if not isinstance(role, str):
+                raise ValueError("anthropic: Missing/invalid role in streaming metadata")
+            msg_id = mm.get("id")
+            if not isinstance(msg_id, str):
+                raise ValueError("anthropic: Missing/invalid id in streaming metadata")
+            choice_index = mm.get("index")
+            if not isinstance(choice_index, int):
+                choice_index = 0
+
             block_type = chunk.content_block.type
             if block_type == "redacted_thinking":
                 content_deltas = [
-                    ChatResponseReasoningContentItem(
+                    ChatResponseReasoningContentItemDelta(
                         index=chunk.index,
-                        role=mm.get("role"),
+                        role=role,
+                        text_delta="",
                         metadata={
                             "redacted_thinking_data": getattr(chunk.content_block, "data", None),
                         },
@@ -318,7 +340,7 @@ class AnthropicChat(AnthropicClientBase):
 
                 choice_deltas = [
                     ChatResponseChoiceDelta(
-                        index=mm.get("index"),
+                        index=choice_index,
                         content_deltas=content_deltas,
                         metadata={},
                     )
@@ -326,7 +348,7 @@ class AnthropicChat(AnthropicClientBase):
 
                 response_chunk = sm.update(choice_deltas=choice_deltas)
                 stream_response = StreamingChatResponse(
-                    id=mm.get("id"),
+                    id=msg_id,
                     data=response_chunk,
                 )
 
@@ -337,6 +359,8 @@ class AnthropicChat(AnthropicClientBase):
                 # Initialize a tool call item with id and name; args will stream via deltas
                 tool_id = getattr(chunk.content_block, "id", None)
                 tool_name = getattr(chunk.content_block, "name", None)
+                if not isinstance(tool_name, str):
+                    tool_name = "unknown_tool"
                 # Remember this index as a tool_use block for subsequent deltas
                 try:
                     sm.anthropic_tool_use_indices.add(chunk.index)
@@ -346,7 +370,7 @@ class AnthropicChat(AnthropicClientBase):
                 content_deltas = [
                     ChatResponseToolCallContentItemDelta(
                         index=chunk.index,
-                        role=mm.get("role"),
+                        role=role,
                         tool_call=ChatResponseToolCall(
                             call_id=tool_id,
                             id=None,
@@ -359,14 +383,14 @@ class AnthropicChat(AnthropicClientBase):
 
                 choice_deltas = [
                     ChatResponseChoiceDelta(
-                        index=mm.get("index"),
+                        index=choice_index,
                         content_deltas=content_deltas,
                         metadata={},
                     )
                 ]
                 response_chunk = sm.update(choice_deltas=choice_deltas)
                 stream_response = StreamingChatResponse(
-                    id=mm.get("id"),
+                    id=msg_id,
                     data=response_chunk,
                 )
                 processed_chunks.append(stream_response)
@@ -377,6 +401,15 @@ class AnthropicChat(AnthropicClientBase):
             mm = sm.message_metadata
             if not isinstance(mm, dict):
                 return None
+            role = mm.get("role")
+            if not isinstance(role, str):
+                raise ValueError("anthropic: Missing/invalid role in streaming metadata")
+            msg_id = mm.get("id")
+            if not isinstance(msg_id, str):
+                raise ValueError("anthropic: Missing/invalid id in streaming metadata")
+            choice_index = mm.get("index")
+            if not isinstance(choice_index, int):
+                choice_index = 0
             # Tool use arguments typically stream as input_json deltas; detect by tracked indices
             is_tool_use = False
             try:
@@ -403,7 +436,7 @@ class AnthropicChat(AnthropicClientBase):
                 content_deltas = [
                     ChatResponseToolCallContentItemDelta(
                         index=chunk.index,
-                        role=mm.get("role"),
+                        role=role,
                         arguments_delta=arguments_delta,
                         metadata={"tool_use_args_delta": True},
                     )
@@ -412,21 +445,21 @@ class AnthropicChat(AnthropicClientBase):
                 content_deltas = [
                     self.process_content_item_delta(
                         index=chunk.index,
-                        role=mm.get("role"),
+                        role=role,
                         delta=chunk.delta,
                     )
                 ]
 
             choice_deltas = [
                 ChatResponseChoiceDelta(
-                    index=mm.get("index"),
+                    index=choice_index,
                     content_deltas=content_deltas,
                     metadata={},
                 )
             ]
             response_chunk = sm.update(choice_deltas=choice_deltas)
             stream_response = StreamingChatResponse(
-                id=mm.get("id"),
+                id=msg_id,
                 data=response_chunk,
             )
             processed_chunks.append(stream_response)
@@ -434,6 +467,15 @@ class AnthropicChat(AnthropicClientBase):
             mm = sm.message_metadata
             if not isinstance(mm, dict):
                 return None
+            role = mm.get("role")
+            if not isinstance(role, str):
+                raise ValueError("anthropic: Missing/invalid role in streaming metadata")
+            msg_id = mm.get("id")
+            if not isinstance(msg_id, str):
+                raise ValueError("anthropic: Missing/invalid id in streaming metadata")
+            choice_index = mm.get("index")
+            if not isinstance(choice_index, int):
+                choice_index = 0
             # For tool_use, emit a finalize delta to parse accumulated arguments buffer
             finalize_tool = False
             try:
@@ -444,20 +486,20 @@ class AnthropicChat(AnthropicClientBase):
                 content_deltas = [
                     ChatResponseToolCallContentItemDelta(
                         index=chunk.index,
-                        role=mm.get("role"),
+                        role=role,
                         metadata={"finalize_tool_call": True},
                     )
                 ]
                 choice_deltas = [
                     ChatResponseChoiceDelta(
-                        index=mm.get("index"),
+                        index=choice_index,
                         content_deltas=content_deltas,
                         metadata={},
                     )
                 ]
                 response_chunk = sm.update(choice_deltas=choice_deltas)
                 stream_response = StreamingChatResponse(
-                    id=mm.get("id"),
+                    id=msg_id,
                     data=response_chunk,
                 )
                 processed_chunks.append(stream_response)
@@ -470,6 +512,12 @@ class AnthropicChat(AnthropicClientBase):
             mm = sm.message_metadata
             if not isinstance(mm, dict):
                 return None
+            msg_id = mm.get("id")
+            if not isinstance(msg_id, str):
+                raise ValueError("anthropic: Missing/invalid id in streaming metadata")
+            choice_index = mm.get("index")
+            if not isinstance(choice_index, int):
+                choice_index = 0
             # Update output tokens
             usage = sm.usage
             if usage is None:
@@ -481,7 +529,7 @@ class AnthropicChat(AnthropicClientBase):
             # Update choice metatdata
             choice_deltas = [
                 ChatResponseChoiceDelta(
-                    index=mm.get("index"),
+                    index=choice_index,
                     finish_reason=chunk.delta.stop_reason,
                     stop_sequence=chunk.delta.stop_sequence,
                     content_deltas=[],
@@ -490,7 +538,7 @@ class AnthropicChat(AnthropicClientBase):
             ]
             response_chunk = sm.update(choice_deltas=choice_deltas)
             stream_response = StreamingChatResponse(
-                id=mm.get("id"),
+                id=msg_id,
                 data=response_chunk,
             )
             processed_chunks.append(stream_response)
@@ -517,11 +565,15 @@ class AnthropicChat(AnthropicClientBase):
     def parse_response(self, response: Message) -> ChatResponse:
         usage, usage_charge = self.get_usage_and_charge(response)
 
+        if usage is not None and not isinstance(usage, ChatResponseUsage):
+            raise TypeError(f"Unexpected usage type for chat response: {type(usage)}")
+        usage_chat = cast(ChatResponseUsage | None, usage)
+
         return ChatResponse(
             model=response.model,
             provider=self.model_endpoint.ai_model.provider,
             api_provider=self.model_endpoint.api.provider,
-            usage=usage,
+            usage=usage_chat,
             usage_charge=usage_charge,
             provider_response=self.serialize_provider_response(response),
             choices=[
@@ -560,7 +612,7 @@ class AnthropicChat(AnthropicClientBase):
             content_block=content_item,
             index=index,
             role=role,
-            structured_output_config=self.config.structured_output,
+            structured_output_config=self._get_structured_output_config(),
         )
 
         if converted_items:

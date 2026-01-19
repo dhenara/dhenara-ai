@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from typing import Any
 
 from dhenara.ai.types.genai.ai_model import AIModelEndpoint
@@ -100,12 +101,12 @@ class BaseFormatter(ABC):
     @classmethod
     def join_instructions(
         cls,
-        instructions: list[str | SystemInstruction] | str,
+        instructions: list[str | dict | SystemInstruction] | str,
         model_endpoint: AIModelEndpoint | None = None,
         **kwargs,
-    ) -> str | None:
+    ) -> str:
         if not instructions:
-            return None
+            return ""
 
         if isinstance(instructions, str):
             return instructions
@@ -131,7 +132,7 @@ class BaseFormatter(ABC):
     @classmethod
     def format_instructions(
         cls,
-        instructions: list[str | dict | Prompt] | str,
+        instructions: list[str | dict | SystemInstruction] | str,
         model_endpoint: AIModelEndpoint | None = None,
         **kwargs,
     ) -> dict[str, Any] | None:
@@ -157,7 +158,7 @@ class BaseFormatter(ABC):
     @classmethod
     def format_messages(
         cls,
-        messages: list[MessageItem],
+        messages: Sequence[MessageItem],
         model_endpoint: AIModelEndpoint | None = None,
         **kwargs,
     ) -> list[dict[str, Any]]:
@@ -175,6 +176,9 @@ class BaseFormatter(ABC):
         """
         if not messages:
             return []
+
+        # Normalize to a list for downstream processing.
+        messages = list(messages)
 
         formatted_messages = []
         for msg_item in messages:

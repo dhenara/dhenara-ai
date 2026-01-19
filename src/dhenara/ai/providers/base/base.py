@@ -2,8 +2,8 @@ import asyncio
 import inspect
 import logging
 from abc import ABC, abstractmethod
-from collections.abc import AsyncGenerator, AsyncIterator, Generator, Iterator, Sequence
-from typing import Any, Literal, overload
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Coroutine, Generator, Iterator, Sequence
+from typing import Any, Literal, cast, overload
 
 from pydantic import BaseModel as PydanticBaseModel
 
@@ -26,7 +26,7 @@ from dhenara.ai.types import (
     StreamingChatResponse,
     UsageCharge,
 )
-from dhenara.ai.types.genai.dhenara.request import MessageItem, Prompt, SystemInstruction
+from dhenara.ai.types.genai.dhenara.request import MessageItem, Prompt, StructuredOutputConfig, SystemInstruction
 from dhenara.ai.types.shared.api import SSEErrorCode, SSEErrorData, SSEErrorResponse
 from dhenara.ai.utils.artifacts import ArtifactWriter
 
@@ -105,15 +105,28 @@ class AIModelProviderClientBase(ABC):
             await maybe_awaitable
 
     @staticmethod
-    def _run_coroutine_sync(coro) -> None:
+    def _run_coroutine_sync(coro: Awaitable[Any]) -> None:
         if not inspect.isawaitable(coro):
             return
         try:
             asyncio.get_running_loop()
         except RuntimeError:
-            asyncio.run(coro)
+
+            async def _runner() -> None:
+                await coro
+
+            to_run: Coroutine[Any, Any, Any]
+            if inspect.iscoroutine(coro):
+                to_run = cast(Coroutine[Any, Any, Any], coro)
+            else:
+                to_run = _runner()
+            asyncio.run(to_run)
             return
         raise RuntimeError("Cannot run async coroutine from sync context while an event loop is running")
+
+    def _get_structured_output_config(self) -> StructuredOutputConfig | None:
+        so = self.config.structured_output
+        return so if isinstance(so, StructuredOutputConfig) else None
 
     def _setup_client_sync(self):
         if not self.is_async:
@@ -166,6 +179,9 @@ class AIModelProviderClientBase(ABC):
             return
 
         artifact_config = self.config.artifact_config
+        artifact_root = artifact_config.artifact_root
+        if not artifact_root:
+            return
 
         # Check if this stage should be captured
         if stage == "dhenara_request" and not artifact_config.capture_dhenara_request:
@@ -181,7 +197,7 @@ class AIModelProviderClientBase(ABC):
         combined_prefix = f"{artifact_config.prefix}/dai" if artifact_config.prefix else "dai"
 
         ArtifactWriter.write_json(
-            artifact_root=artifact_config.artifact_root,
+            artifact_root=artifact_root,
             filename=filename,
             data=data,
             prefix=combined_prefix,
@@ -228,6 +244,9 @@ class AIModelProviderClientBase(ABC):
 
         # Build prefix (dai subfolder under loop prefix)
         combined_prefix = f"{artifact_config.prefix}/dai" if artifact_config.prefix else "dai"
+        artifact_root = artifact_config.artifact_root
+        if not artifact_root:
+            return
 
         if when in start_events:
             # If already started, do nothing
@@ -309,7 +328,7 @@ class AIModelProviderClientBase(ABC):
                 "buf": buf,
                 "root_prev_level": root_prev_level,
                 "level_value": level_value,
-                "artifact_root": artifact_config.artifact_root,
+                "artifact_root": artifact_root,
                 "combined_prefix": combined_prefix,
                 "logger_overrides_prev": overrides_prev,
             }
@@ -359,8 +378,11 @@ class AIModelProviderClientBase(ABC):
                 pass
             # Persist JSONL rows
             try:
+                ar = state.get("artifact_root")
+                if not ar:
+                    return
                 ArtifactWriter.write_jsonl(
-                    artifact_root=state.get("artifact_root"),
+                    artifact_root=ar,
                     filename="dai_python_logs.jsonl",
                     rows=state.get("buf") or [],
                     prefix=state.get("combined_prefix"),
@@ -417,7 +439,7 @@ class AIModelProviderClientBase(ABC):
 
             self.streaming_manager = StreamingManager(
                 model_endpoint=self.model_endpoint,
-                structured_output_config=self.config.structured_output,
+                structured_output_config=self._get_structured_output_config(),
             )
             dummy_resp = DummyAIModelResponseFns(streaming_manager=self.streaming_manager)
 
@@ -520,7 +542,7 @@ class AIModelProviderClientBase(ABC):
 
             self.streaming_manager = StreamingManager(
                 model_endpoint=self.model_endpoint,
-                structured_output_config=self.config.structured_output,
+                structured_output_config=self._get_structured_output_config(),
             )
             dummy_resp = DummyAIModelResponseFns(streaming_manager=self.streaming_manager)
 
@@ -668,7 +690,7 @@ class AIModelProviderClientBase(ABC):
 
     def _handle_streaming_response_sync(
         self,
-        stream: Generator,
+        stream: Iterator[object],
     ) -> Generator[
         tuple[
             StreamingChatResponse | SSEErrorResponse | None,
@@ -678,7 +700,7 @@ class AIModelProviderClientBase(ABC):
         """Shared streaming logic with async/sync handling"""
         self.streaming_manager = StreamingManager(
             model_endpoint=self.model_endpoint,
-            structured_output_config=self.config.structured_output,
+            structured_output_config=self._get_structured_output_config(),
         )
 
         try:
@@ -756,7 +778,7 @@ class AIModelProviderClientBase(ABC):
 
     async def _handle_streaming_response_async(
         self,
-        stream: AsyncGenerator,
+        stream: AsyncIterator[object],
     ) -> AsyncGenerator[
         tuple[
             StreamingChatResponse | SSEErrorResponse | None,
@@ -766,7 +788,7 @@ class AIModelProviderClientBase(ABC):
         """Shared streaming logic with async/sync handling"""
         self.streaming_manager = StreamingManager(
             model_endpoint=self.model_endpoint,
-            structured_output_config=self.config.structured_output,
+            structured_output_config=self._get_structured_output_config(),
         )
 
         try:
@@ -851,9 +873,9 @@ class AIModelProviderClientBase(ABC):
     @abstractmethod
     def get_api_call_params(
         self,
-        prompt: dict | None,
-        context: list[dict] | None = None,
-        instructions: dict | None = None,
+        prompt: str | dict | Prompt | None,
+        context: Sequence[str | dict | Prompt] | None = None,
+        instructions: dict[str, Any] | list[str | dict | SystemInstruction] | None = None,
         messages: Sequence[MessageItem] | None = None,
     ) -> dict[str, Any]:
         pass

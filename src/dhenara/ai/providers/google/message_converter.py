@@ -4,7 +4,7 @@ import base64
 import json
 import logging
 import uuid
-from typing import Any
+from typing import Any, cast
 
 from dhenara.ai.providers.base import BaseMessageConverter
 from dhenara.ai.types.genai import (
@@ -134,7 +134,7 @@ class GoogleMessageConverter(BaseMessageConverter):
             if not isinstance(function_payload, dict):
                 function_payload = {}
             _args = function_payload.get("args")
-            _parsed_args = ChatResponseToolCall.parse_args_str_or_dict(_args)
+            _parsed_args = ChatResponseToolCall.parse_args_str_or_dict(_args if isinstance(_args, (str, dict)) else {})
 
             # TODO_FUTURE: Update fn call id when google adds it
             tool_id = function_payload.get("id")
@@ -144,8 +144,9 @@ class GoogleMessageConverter(BaseMessageConverter):
             tool_call = ChatResponseToolCall(
                 call_id=tool_id,
                 id=None,
-                name=function_payload.get("name"),
-                arguments=_parsed_args.get("arguments_dict"),
+                name=(function_payload.get("name") if isinstance(function_payload.get("name"), str) else None)
+                or "unknown_tool",
+                arguments=cast(dict[str, Any], _parsed_args.get("arguments_dict") or {}),
                 raw_data=_parsed_args.get("raw_data"),
                 parse_error=_parsed_args.get("parse_error"),
             )
@@ -214,8 +215,10 @@ class GoogleMessageConverter(BaseMessageConverter):
         message: Any,
         structured_output_config: StructuredOutputConfig | None = None,
     ) -> list[ChatResponseContentItem]:
-        parts = _get(message, "parts", [])
-        role = _get(message, "role", "model")
+        parts_raw = _get(message, "parts", [])
+        parts = parts_raw if isinstance(parts_raw, list) else []
+        role_raw = _get(message, "role", "model")
+        role = role_raw if isinstance(role_raw, str) else "model"
         return [
             GoogleMessageConverter.provider_part_to_content_item(
                 part=part,

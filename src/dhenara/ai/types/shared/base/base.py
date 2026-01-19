@@ -29,7 +29,7 @@ class BaseModel(PydanticBaseModel):
         alias_generator=alias_generators.to_camel,
         populate_by_name=True,
         from_attributes=True,
-        protected_namespaces=set(),
+        protected_namespaces=(),
         # Enable detailed validation errors:
         validate_assignment=True,
         extra="forbid",
@@ -41,7 +41,7 @@ class BaseModel(PydanticBaseModel):
     )
 
     def model_dump(self, **kwargs: Any) -> dict[str, Any]:
-        dump_kwargs = {
+        dump_kwargs: dict[str, Any] = {
             "exclude_unset": False,
             "by_alias": False,
             "exclude_none": True,

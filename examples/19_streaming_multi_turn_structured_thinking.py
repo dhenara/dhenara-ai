@@ -30,7 +30,7 @@ from pydantic import BaseModel, Field
 
 from dhenara.ai import AIModelClient
 from dhenara.ai.types import AIModelCallConfig, AIModelEndpoint
-from dhenara.ai.types.genai.dhenara.request import MessageItem, Prompt
+from dhenara.ai.types.genai.dhenara.request import MessageItem, Prompt, PromptMessageRoleEnum
 
 # ------------------------
 # Pydantic schemas per turn
@@ -144,7 +144,7 @@ def run_turn(
     )
 
     streaming_renderer = StreamingRenderer()
-    prompt = Prompt(role="user", text=prompt_text)
+    prompt = Prompt(role=PromptMessageRoleEnum.USER, text=prompt_text)
     # Persist the user's prompt into the messages history so subsequent turns include it
     messages = [*messages, prompt]
     stream = client.generate(messages=messages)

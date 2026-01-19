@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Sequence
 from typing import Any
 
 from openai.types import ImagesResponse as OpenAIImagesResponse
@@ -15,6 +16,7 @@ from dhenara.ai.types.genai import (
     StreamingChatResponse,
 )
 from dhenara.ai.types.genai.ai_model import AIModelAPIProviderEnum
+from dhenara.ai.types.genai.dhenara.request import MessageItem, Prompt, SystemInstruction
 from dhenara.ai.types.shared.api import SSEErrorResponse
 
 logger = logging.getLogger(__name__)
@@ -30,10 +32,10 @@ class OpenAIImage(OpenAIClientBase):
 
     def get_api_call_params(
         self,
-        prompt: dict | None,
-        context: list[dict] | None = None,
-        instructions: dict | None = None,
-        messages: list | None = None,
+        prompt: str | dict | Prompt | None,
+        context: Sequence[str | dict | Prompt] | None = None,
+        instructions: dict[str, Any] | list[str | dict | SystemInstruction] | None = None,
+        messages: Sequence[MessageItem] | None = None,
     ) -> dict[str, Any]:
         if not self._client:
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
@@ -121,9 +123,10 @@ class OpenAIImage(OpenAIClientBase):
         # No usage data availabe in response. We will derive some params
         model = self.model_endpoint.ai_model.model_name
         model_options = self.model_endpoint.ai_model.get_options_with_defaults(self.config.options)
+        images = response.data or []
 
         return ImageResponseUsage(
-            number_of_images=len(response.data),
+            number_of_images=len(images),
             model=model,
             options=model_options,
         )
@@ -135,9 +138,12 @@ class OpenAIImage(OpenAIClientBase):
         """Parse OpenAI image response into standard format"""
 
         usage, usage_charge = self.get_usage_and_charge(response)
+        usage_img = usage if isinstance(usage, ImageResponseUsage) else None
+
+        images = response.data or []
 
         choices = []
-        for idx, image in enumerate(response.data):
+        for idx, image in enumerate(images):
             if self.response_format == "b64_json":
                 choices.append(
                     ImageResponseChoice(
@@ -178,6 +184,6 @@ class OpenAIImage(OpenAIClientBase):
             model=self.model_endpoint.ai_model.model_name,
             provider=self.model_endpoint.ai_model.provider,
             choices=choices,
-            usage=usage,
+            usage=usage_img,
             usage_charge=usage_charge,
         )

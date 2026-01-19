@@ -1,5 +1,6 @@
 import logging
-from typing import Any
+from collections.abc import Sequence
+from typing import Any, cast
 
 from google.genai.types import (
     GenerateContentConfig,
@@ -28,6 +29,7 @@ from dhenara.ai.types.genai import (
     ChatResponseUsage,
     StreamingChatResponse,
 )
+from dhenara.ai.types.genai.dhenara.request import MessageItem, Prompt, SystemInstruction
 from dhenara.ai.types.shared.api import SSEErrorResponse
 
 logger = logging.getLogger(__name__)
@@ -61,10 +63,10 @@ def _process_thought_signature(thought_signature: str | bytes | None) -> str | N
 class GoogleAIChat(GoogleAIClientBase):
     def get_api_call_params(
         self,
-        prompt: dict | None,
-        context: list[dict] | None = None,
-        instructions: dict | None = None,
-        messages: list[dict] | None = None,
+        prompt: str | dict | Prompt | None,
+        context: Sequence[str | dict | Prompt] | None = None,
+        instructions: dict[str, Any] | list[str | dict | SystemInstruction] | None = None,
+        messages: Sequence[MessageItem] | None = None,
     ) -> dict[str, Any]:
         if not self._client:
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
@@ -79,10 +81,20 @@ class GoogleAIChat(GoogleAIClientBase):
         generate_config_args = self.get_default_generate_config_args()
         generate_config = GenerateContentConfig(**generate_config_args)
 
+        context_list: list[dict[str, Any]] = []
+        if context:
+            ctx_items = list(context)
+            context_list = [item for item in ctx_items if isinstance(item, dict)]
+            if len(context_list) != len(ctx_items):
+                raise ValueError(
+                    "Invalid context format. Context should be processed and passed in prompt format (dict)."
+                )
+            # context_list already populated above
+
         # Process instructions
 
         if instructions:
-            if not (isinstance(instructions, dict) and "parts" in instructions.keys()):
+            if not isinstance(instructions, dict) or "parts" not in instructions:
                 raise ValueError(
                     f"Invalid Instructions format. "
                     f"Instructions should be processed and passed in prompt format. Value is {instructions} "
@@ -92,15 +104,12 @@ class GoogleAIChat(GoogleAIClientBase):
             if any(self.model_endpoint.ai_model.model_name.startswith(model) for model in ["gemini-1.0-pro"]):
                 instruction_as_prompt = instructions
 
-                if context:
-                    context.insert(0, instruction_as_prompt)
-                else:
-                    context = [instruction_as_prompt]
+                context_list.insert(0, instruction_as_prompt)
             else:
                 instructions_str = instructions["parts"][0]["text"]
                 generate_config.system_instruction = instructions_str
 
-        messages_list = []
+        messages_list: list[dict[str, Any]] = []
 
         # Add previous messages and current prompt
         if messages is not None:
@@ -111,9 +120,13 @@ class GoogleAIChat(GoogleAIClientBase):
             )
             messages_list = formatted_messages
         else:
-            if context:
-                messages_list.extend(context)
+            if context_list:
+                messages_list.extend(context_list)
             if prompt is not None:
+                if not isinstance(prompt, dict):
+                    raise ValueError(
+                        "Invalid prompt format. Prompt should be processed and passed in prompt format (dict)."
+                    )
                 messages_list.append(prompt)
 
         # ---  Tools ---
@@ -129,7 +142,7 @@ class GoogleAIChat(GoogleAIClientBase):
             ]
             _tools = [
                 Tool(
-                    function_declarations=function_declarations,
+                    function_declarations=cast(Any, function_declarations),
                 )
             ]
             generate_config.tools = _tools
@@ -143,10 +156,11 @@ class GoogleAIChat(GoogleAIClientBase):
             generate_config.tool_config = ToolConfig(**_tool_config)
 
         # --- Structured Output ---
-        if self.config.structured_output:
+        structured_output_config = self._get_structured_output_config()
+        if structured_output_config:
             generate_config.response_mime_type = "application/json"
             generate_config.response_schema = formatter.format_structured_output(
-                structured_output=self.config.structured_output,
+                structured_output=structured_output_config,
                 model_endpoint=self.model_endpoint,
             )
 
@@ -216,8 +230,8 @@ class GoogleAIChat(GoogleAIClientBase):
         model_settings = self.model_endpoint.ai_model.get_settings()
         safety_settings = [
             SafetySetting(
-                category="HARM_CATEGORY_DANGEROUS_CONTENT",
-                threshold="BLOCK_ONLY_HIGH",
+                category=cast(Any, "HARM_CATEGORY_DANGEROUS_CONTENT"),
+                threshold=cast(Any, "BLOCK_ONLY_HIGH"),
             )
         ]
 
@@ -245,7 +259,7 @@ class GoogleAIChat(GoogleAIClientBase):
 
                 config_params["thinking_config"] = ThinkingConfig(
                     include_thoughts=True,
-                    thinking_level=thinking_level,
+                    thinking_level=cast(Any, thinking_level),
                 )
             else:
                 config_params["thinking_config"] = ThinkingConfig(
@@ -281,11 +295,12 @@ class GoogleAIChat(GoogleAIClientBase):
                     continue
                 parts = getattr(content, "parts", None) or []
                 role = getattr(content, "role", None)
+                role_str = role if isinstance(role, str) else "assistant"
                 for part_index, part in enumerate(parts):
                     content_deltas.append(
                         self.process_content_item_delta(
                             index=part_index,
-                            role=role,
+                            role=role_str,
                             delta=part,
                         )
                     )
@@ -362,11 +377,16 @@ class GoogleAIChat(GoogleAIClientBase):
         response: GenerateContentResponse,
     ) -> ChatResponse:
         usage, usage_charge = self.get_usage_and_charge(response)
+
+        if usage is not None and not isinstance(usage, ChatResponseUsage):
+            raise TypeError(f"Unexpected usage type for chat response: {type(usage)}")
+
+        model_name = response.model_version or self.model_name_in_api_calls
         return ChatResponse(
-            model=response.model_version,
+            model=model_name,
             provider=self.model_endpoint.ai_model.provider,
             api_provider=self.model_endpoint.api.provider,
-            usage=usage,
+            usage=cast(ChatResponseUsage | None, usage),
             usage_charge=usage_charge,
             provider_response=self.serialize_provider_response(response),
             choices=[
@@ -376,11 +396,11 @@ class GoogleAIChat(GoogleAIClientBase):
                     stop_sequence=None,
                     contents=GoogleMessageConverter.provider_message_to_dai_content_items(
                         message=candidate.content,
-                        structured_output_config=self.config.structured_output,
+                        structured_output_config=self._get_structured_output_config(),
                     ),
                     metadata={},  # Choice metadata
                 )
-                for choice_index, candidate in enumerate(response.candidates)
+                for choice_index, candidate in enumerate(response.candidates or [])
             ],
             metadata=AIModelCallResponseMetaData(
                 streaming=False,

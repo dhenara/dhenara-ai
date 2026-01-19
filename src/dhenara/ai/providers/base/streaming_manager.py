@@ -247,13 +247,14 @@ class StreamingManager:
             logger.debug(f"Structured-output post-processing skipped due to error: {_e}")
 
         usage, usage_charge = self.get_streaming_usage_and_charge()
+        usage_chat = usage if isinstance(usage, ChatResponseUsage) else None
 
         if self.model_endpoint.ai_model.functional_type == AIModelFunctionalTypeEnum.TEXT_GENERATION:
             chat_response = ChatResponse(
                 model=self.model_endpoint.ai_model.model_name,
                 provider=self.model_endpoint.ai_model.provider,
                 api_provider=self.model_endpoint.api.provider,
-                usage=usage,
+                usage=usage_chat,
                 usage_charge=usage_charge,
                 choices=self.choices,
                 metadata=self.response_metadata,

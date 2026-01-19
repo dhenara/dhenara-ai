@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Sequence
 from typing import Any, Literal
 
 from pydantic import BaseModel as PydanticBaseModel
@@ -11,7 +12,7 @@ from dhenara.ai.types.genai.ai_model import (
     UsageCharge,
 )
 from dhenara.ai.types.genai.dhenara.request import PromptMessageRoleEnum
-from dhenara.ai.types.genai.dhenara.request.data import Content, Prompt, PromptConfig, PromptText
+from dhenara.ai.types.genai.dhenara.request.data import Content, ContentType, Prompt, PromptConfig, PromptText
 from dhenara.ai.types.shared.api import SSEEventType, SSEResponse
 from dhenara.ai.types.shared.base import BaseModel
 
@@ -61,7 +62,7 @@ class ChatResponseChoiceDelta(BaseModel):
     index: int
     finish_reason: Any | None = None
     stop_sequence: Any | None = None
-    content_deltas: list[ChatResponseContentItemDelta] | None = None
+    content_deltas: Sequence[ChatResponseContentItemDelta] | None = None
     metadata: dict = {}
 
 
@@ -110,7 +111,7 @@ class ChatResponse(BaseModel):
         text = "\n".join(text_parts)
 
         # Create Content object
-        content = Content(type="text", text=text)
+        content = Content(type=ContentType.TEXT, text=text)
 
         # Create PromptText object
         prompt_text = PromptText(content=content)
@@ -287,7 +288,8 @@ class ChatResponse(BaseModel):
         Returns:
             Properly typed content item instance
         """
-        content_type = content_data.get("type")
+        content_type_raw = content_data.get("type")
+        content_type = content_type_raw.strip() if isinstance(content_type_raw, str) else ""
 
         item_map = {
             "text": ChatResponseTextContentItem,

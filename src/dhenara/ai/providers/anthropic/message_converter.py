@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import Any, cast
 
 from anthropic.types import ContentBlock, Message
 from anthropic.types.redacted_thinking_block_param import RedactedThinkingBlockParam
@@ -144,18 +145,25 @@ class AnthropicMessageConverter(BaseMessageConverter):
 
             try:
                 _args = raw_response.get("input")
-                _parsed_args = ChatResponseToolCall.parse_args_str_or_dict(_args)
+                _parsed_args = ChatResponseToolCall.parse_args_str_or_dict(_args if _args is not None else {})
 
                 tool_call = ChatResponseToolCall(
-                    call_id=raw_response.get("id"),
+                    call_id=cast(str | None, raw_response.get("id")),
                     id=None,
-                    name=raw_response.get("name"),
-                    arguments=_parsed_args.get("arguments_dict"),
+                    name=cast(str | None, raw_response.get("name")) or "unknown_tool",
+                    arguments=cast(dict[str, Any], _parsed_args.get("arguments_dict") or {}),
                     raw_data=_parsed_args.get("raw_data"),
-                    parse_error=_parsed_args.get("parse_error"),
+                    parse_error=cast(str | None, _parsed_args.get("parse_error")),
                 )
-            except Exception:
-                tool_call = None
+            except Exception as e:
+                tool_call = ChatResponseToolCall(
+                    call_id=cast(str | None, raw_response.get("id")),
+                    id=None,
+                    name=cast(str | None, raw_response.get("name")) or "unknown_tool",
+                    arguments={},
+                    raw_data=raw_response,
+                    parse_error=str(e),
+                )
 
             if structured_output_config is not None:
                 structured_output = ChatResponseStructuredOutput.from_tool_call(
@@ -213,14 +221,18 @@ class AnthropicMessageConverter(BaseMessageConverter):
                         thinking_text = "".join(texts)
 
                 if thinking_text and content.thinking_signature:
-                    # Proper thinking block with signature
-                    content_blocks.append(
-                        ThinkingBlockParam(
-                            type="thinking",
-                            thinking=thinking_text,
-                            signature=content.thinking_signature if same_provider else None,
+                    # Proper thinking block with signature (Anthropic requires signature)
+                    if same_provider:
+                        content_blocks.append(
+                            ThinkingBlockParam(
+                                type="thinking",
+                                thinking=thinking_text,
+                                signature=content.thinking_signature,
+                            )
                         )
-                    )
+                    else:
+                        # Cross-provider replay: emit as plain text
+                        content_blocks.append(TextBlockParam(type="text", text=thinking_text))
                 elif content.thinking_summary:
                     # Redacted thinking (when signature but no text)
                     # If represented as summary parts, try to map redacted_thinking type to redacted block
@@ -233,7 +245,11 @@ class AnthropicMessageConverter(BaseMessageConverter):
                             content_blocks.append(
                                 RedactedThinkingBlockParam(
                                     type="redacted_thinking",
-                                    data=rt.metadata,
+                                    data=(
+                                        json.dumps(rt.metadata)
+                                        if isinstance(rt.metadata, dict)
+                                        else (str(rt.metadata) if rt.metadata is not None else "")
+                                    ),
                                 )
                             )
                             # handled as redacted
@@ -285,7 +301,7 @@ class AnthropicMessageConverter(BaseMessageConverter):
                 content_blocks.append(
                     ToolUseBlockParam(
                         type="tool_use",
-                        id=tool_call.call_id,
+                        id=tool_call.call_id or "unknown_tool_call",
                         name=tool_call.name,
                         input=tool_call.arguments,
                     )
@@ -369,7 +385,7 @@ class AnthropicMessageConverter(BaseMessageConverter):
     @staticmethod
     def dai_response_to_provider_message(
         dai_response: ChatResponse,
-        model_endpoint: object | None = None,
+        model_endpoint: AIModelEndpoint | None = None,
     ) -> dict[str, object] | list[dict[str, object]]:
         """Convert a complete ChatResponse to Anthropic provider message format.
 
@@ -378,6 +394,8 @@ class AnthropicMessageConverter(BaseMessageConverter):
         """
         if not dai_response or not dai_response.choices:
             return {"role": "assistant", "content": ""}
+        if model_endpoint is None:
+            raise ValueError("model_endpoint is required to convert ChatResponse to Anthropic provider message")
         return AnthropicMessageConverter.dai_choice_to_provider_message(
             choice=dai_response.choices[0],
             model_endpoint=model_endpoint,

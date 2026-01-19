@@ -450,6 +450,8 @@ class OpenAIFormatter(BaseFormatter):
             ]
 
         if isinstance(message_item, ChatResponse):
+            if model_endpoint is None:
+                raise ValueError("model_endpoint is required to convert ChatResponse to provider messages")
             return OpenAIMessageConverter.dai_response_to_provider_message(
                 dai_response=message_item,
                 model_endpoint=model_endpoint,

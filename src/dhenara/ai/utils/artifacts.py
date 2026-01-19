@@ -12,7 +12,7 @@ class ArtifactWriter:
     """Handles writing of artifacts during AI model execution."""
 
     @staticmethod
-    def write_json(artifact_root: Path, filename: str, data: Any, prefix: str | None = None) -> None:
+    def write_json(artifact_root: Path | str, filename: str, data: Any, prefix: str | None = None) -> None:
         """Write JSON artifact to disk.
 
         Args:
@@ -60,7 +60,7 @@ class ArtifactWriter:
             logger.warning(f"Failed to write artifact {filename}: {e}")
 
     @staticmethod
-    def write_text(artifact_root: Path, filename: str, content: str, prefix: str | None = None) -> None:
+    def write_text(artifact_root: Path | str, filename: str, content: str, prefix: str | None = None) -> None:
         """Write text artifact to disk.
 
         Args:
@@ -90,7 +90,7 @@ class ArtifactWriter:
 
     @staticmethod
     def write_jsonl(
-        artifact_root: Path,
+        artifact_root: Path | str,
         filename: str,
         rows: list[dict] | list[str],
         prefix: str | None = None,
@@ -133,7 +133,7 @@ class ArtifactWriter:
 
     @staticmethod
     def append_jsonl(
-        artifact_root: Path,
+        artifact_root: Path | str,
         filename: str,
         rows: list[dict] | list[str],
         prefix: str | None = None,

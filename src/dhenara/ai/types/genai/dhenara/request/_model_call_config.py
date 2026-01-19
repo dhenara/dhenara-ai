@@ -4,7 +4,7 @@ from typing import Literal
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import Field, model_validator
 
-from dhenara.ai.types.genai.ai_model import AIModel
+from dhenara.ai.types.genai.ai_model import BaseAIModel
 from dhenara.ai.types.genai.dhenara.request import (
     ArtifactConfig,
     StructuredOutputConfig,
@@ -76,7 +76,7 @@ class AIModelCallConfig(BaseModel):
 
         return user
 
-    def get_max_output_tokens(self, model: AIModel) -> tuple[int, int | None]:
+    def get_max_output_tokens(self, model: BaseAIModel) -> tuple[int, int | None]:
         """Returns max_output_tokens and max_reasoning_tokens based on the model settings and call-config"""
 
         if not model:

@@ -102,7 +102,7 @@ class SSEResponse(BaseModel, Generic[T]):  # noqa: UP046
     def parse_sse(cls, sse_str: str, data_type: type[T] | None = None) -> "SSEResponse[Any]":
         """Parse SSE format string into response object"""
         lines = sse_str.strip().split("\n")
-        event_data = {
+        event_data: dict[str, str | None] = {
             "event": None,
             "id": None,
             "retry": None,
@@ -139,20 +139,33 @@ class SSEResponse(BaseModel, Generic[T]):  # noqa: UP046
             )
 
         # Join and parse data
+        data: Any
+        error_data: SSEErrorData | None = None
+
         if data_lines:
             try:
                 raw_data = json.loads("".join(data_lines))
 
                 # Handle different event types
                 if event_type == SSEEventType.ERROR:
-                    data = SSEErrorData(
-                        error_code=SSEErrorCode(raw_data.get("error_code", SSEErrorCode.server_error)),
-                        message=raw_data.get("message", "Unknown error"),
-                        details=raw_data.get("details"),
-                    )
+                    if isinstance(raw_data, dict):
+                        error_data = SSEErrorData(
+                            error_code=SSEErrorCode(raw_data.get("error_code", SSEErrorCode.server_error)),
+                            message=str(raw_data.get("message") or "Unknown error"),
+                            details=raw_data.get("details"),
+                        )
+                    else:
+                        error_data = SSEErrorData(
+                            error_code=SSEErrorCode.server_error,
+                            message="Unknown error",
+                            details=raw_data,
+                        )
+                    data = error_data
                 else:
                     # For normal events, create T object
                     if data_type is not None:
+                        if not isinstance(raw_data, dict):
+                            raise ValueError("Expected object JSON for typed SSE payload")
                         data = data_type(**raw_data)
                     else:
                         data = raw_data
@@ -182,8 +195,14 @@ class SSEResponse(BaseModel, Generic[T]):  # noqa: UP046
         # Create response with proper typing
         try:
             if event_type == SSEEventType.ERROR:
+                if error_data is None:
+                    error_data = SSEErrorData(
+                        error_code=SSEErrorCode.server_error,
+                        message="Unknown error",
+                        details=data,
+                    )
                 return SSEErrorResponse(
-                    data=data,
+                    data=error_data,
                     id=event_data["id"],
                     retry=int(event_data["retry"]) if event_data["retry"] else None,
                 )

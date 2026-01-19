@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Sequence
 from typing import Any
 
 from google.genai.types import GenerateImagesConfig, GenerateImagesResponse
@@ -13,6 +14,7 @@ from dhenara.ai.types.genai import (
     ImageResponseContentItem,
     ImageResponseUsage,
 )
+from dhenara.ai.types.genai.dhenara.request import MessageItem, Prompt, SystemInstruction
 
 logger = logging.getLogger(__name__)
 
@@ -25,10 +27,10 @@ class GoogleAIImage(GoogleAIClientBase):
 
     def get_api_call_params(
         self,
-        prompt: dict | None,
-        context: list[dict] | None = None,
-        instructions: dict | None = None,
-        messages: list | None = None,
+        prompt: str | dict | Prompt | None,
+        context: Sequence[str | dict | Prompt] | None = None,
+        instructions: dict[str, Any] | list[str | dict | SystemInstruction] | None = None,
+        messages: Sequence[MessageItem] | None = None,
     ) -> dict[str, Any]:
         if not self._client:
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
@@ -119,9 +121,10 @@ class GoogleAIImage(GoogleAIClientBase):
         # No usage data availabe in response. We will derive some params
         model = self.model_endpoint.ai_model.model_name
         model_options = self.model_endpoint.ai_model.get_options_with_defaults(self.config.options)
+        images = response.generated_images or []
 
         return ImageResponseUsage(
-            number_of_images=len(response.generated_images),
+            number_of_images=len(images),
             model=model,
             options=model_options,
         )
@@ -133,8 +136,10 @@ class GoogleAIImage(GoogleAIClientBase):
         """Parse GoogleAI image response into standard format"""
 
         usage, usage_charge = self.get_usage_and_charge(response)
+        usage_img = usage if isinstance(usage, ImageResponseUsage) else None
+        images = response.generated_images or []
         choices = []
-        for idx, image in enumerate(response.generated_images):
+        for idx, image in enumerate(images):
             image_obj = getattr(image, "image", None)
             img_bytes = getattr(image_obj, "image_bytes", None) if image_obj is not None else None
             if img_bytes is None:
@@ -159,6 +164,6 @@ class GoogleAIImage(GoogleAIClientBase):
             model=self.model_endpoint.ai_model.model_name,
             provider=self.model_endpoint.ai_model.provider,
             choices=choices,
-            usage=usage,
+            usage=usage_img,
             usage_charge=usage_charge,
         )

@@ -44,12 +44,13 @@ class DummyAIModelResponseFns:
         )
 
         usage, usage_charge = self.get_dummy_usage_and_charge(ai_model_ep)
+        usage_chat = usage if isinstance(usage, ChatResponseUsage) else None
 
         parsed_response = ChatResponse(
             model="dummy_model",
             provider=ai_model_ep.ai_model.provider,
             api_provider=ai_model_ep.api.provider,
-            usage=usage,
+            usage=usage_chat,
             usage_charge=usage_charge,
             choices=[
                 ChatResponseChoice(

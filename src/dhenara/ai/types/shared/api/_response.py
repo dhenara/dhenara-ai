@@ -104,12 +104,31 @@ class ApiResponse(BaseModel, Generic[T]):  # noqa: UP046
         if error_msg:
             message = error_msg.message if isinstance(error_msg, ApiResponseMessage) else str(error_msg)
             fm = self.first_message
+
+            code = (
+                fm.status_code
+                if (fm is not None and fm.status_code is not None)
+                else ApiResponseMessageStatusCode.FAIL_SERVER_ERROR
+            )
+            http_status: int | None = 500
+            if code in {ApiResponseMessageStatusCode.INVALID_INPUTS, ApiResponseMessageStatusCode.FAIL_BAD_REQUEST}:
+                http_status = 400
+            elif code in {
+                ApiResponseMessageStatusCode.NOT_AUTHENTICATED,
+                ApiResponseMessageStatusCode.AUTH_MISSING_CREDENTIALS,
+                ApiResponseMessageStatusCode.AUTH_INVALID_CREDENTIALS,
+                ApiResponseMessageStatusCode.AUTH_INVALID_REQUEST,
+            }:
+                http_status = 401
+            elif code in {
+                ApiResponseMessageStatusCode.NOT_AUTHORIZED,
+                ApiResponseMessageStatusCode.FAIL_FORBIDDEN,
+                ApiResponseMessageStatusCode.PERMISSION_DENIED_GENERAL,
+                ApiResponseMessageStatusCode.PERMISSION_DENIED_BY_WORKSPACE,
+            }:
+                http_status = 403
             raise DhenaraAPIError(
                 message=message,
-                status_code=(
-                    fm.status_code
-                    if (fm is not None and fm.status_code is not None)
-                    else ApiResponseMessageStatusCode.FAIL_SERVER_ERROR
-                ),
+                status_code=http_status,
                 response={},
             )

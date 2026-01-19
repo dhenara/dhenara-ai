@@ -124,15 +124,18 @@ class OpenAIMessageConverter(BaseMessageConverter):
             # Build message_contents from content_obj when possible to preserve parts
             message_contents = None
             if isinstance(content_obj, list):
-                message_contents = [
-                    ChatMessageContentPart(
-                        type=_get(c, "type", "thinking"),
-                        text=_get(c, "text", None),
-                        annotations=None,
-                        metadata=None,
+                message_contents = []
+                for c in content_obj:
+                    t = _get(c, "type", None)
+                    part_type = t if isinstance(t, str) else "thinking"
+                    message_contents.append(
+                        ChatMessageContentPart(
+                            type=part_type,
+                            text=_get(c, "text", None),
+                            annotations=None,
+                            metadata=None,
+                        )
                     )
-                    for c in content_obj
-                ]
             else:
                 if content_text:
                     message_contents = [
@@ -181,7 +184,7 @@ class OpenAIMessageConverter(BaseMessageConverter):
                 tool_call=ChatResponseToolCall(
                     call_id=call_id,
                     id=_id,
-                    name=name,
+                    name=name if isinstance(name, str) else "unknown_tool",
                     arguments=args,
                     metadata={"type": item_type},
                 ),
@@ -272,8 +275,10 @@ class OpenAIMessageConverter(BaseMessageConverter):
         """
         # Always use the Dhenara content items as the source of truth
         # This works for both streaming (where provider_response=None) and non-streaming
+        if not dai_response.choices:
+            return []
         return OpenAIMessageConverter.dai_choice_to_provider_message(
-            dai_response.choices[0] if dai_response.choices else None,
+            dai_response.choices[0],
             model_endpoint=model_endpoint,
             source_provider=dai_response.provider,
         )
@@ -387,11 +392,14 @@ class OpenAIMessageConverter(BaseMessageConverter):
                         else str(tool_call.arguments)
                     )
 
+                    tool_call_id = tool_call.call_id or "unknown_tool_call"
+                    tool_id = tool_call.id if same_provider else None
+
                     fn_call_param = ResponseFunctionToolCallParam(
                         # NOTE: Always pass the call_id, as it will be needed to map tool call even if provider differs
                         # But do not pass any message-ids or similar
-                        call_id=tool_call.call_id,
-                        id=(tool_call.id if same_provider else None),
+                        call_id=tool_call_id,
+                        id=tool_id,
                         type="function_call",
                         name=tool_call.name,
                         arguments=args_str,

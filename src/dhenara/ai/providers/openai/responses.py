@@ -1,13 +1,14 @@
 import json
 import logging
-from collections.abc import AsyncIterator, Iterator
-from typing import Any
+from collections.abc import AsyncIterator, Iterator, Sequence
+from typing import Any, cast
 
 from dhenara.ai.providers.openai import OpenAIClientBase
 from dhenara.ai.providers.openai.formatter import OpenAIFormatter
 from dhenara.ai.providers.openai.message_converter import OpenAIMessageConverter
 from dhenara.ai.types.genai import (
     AIModelCallResponseMetaData,
+    ChatMessageContentPart,
     ChatResponse,
     ChatResponseChoice,
     ChatResponseChoiceDelta,
@@ -20,6 +21,7 @@ from dhenara.ai.types.genai import (
     StreamingChatResponse,
 )
 from dhenara.ai.types.genai.ai_model import AIModelAPIProviderEnum
+from dhenara.ai.types.genai.dhenara.request import MessageItem, Prompt, SystemInstruction
 from dhenara.ai.types.shared.api import SSEErrorCode, SSEErrorData, SSEErrorResponse
 
 logger = logging.getLogger(__name__)
@@ -39,9 +41,9 @@ class OpenAIResponses(OpenAIClientBase):
     def _build_responses_input(
         self,
         *,
-        prompt: dict | None,
-        context: list[dict] | None,
-        messages: list | None,
+        prompt: dict[str, Any] | None,
+        context: list[dict[str, Any]] | None,
+        messages: Sequence[MessageItem] | None,
     ) -> list[Any]:
         """Build the Responses API 'input' array of role/content items."""
         input_items: list[Any] = []
@@ -67,10 +69,10 @@ class OpenAIResponses(OpenAIClientBase):
 
     def get_api_call_params(
         self,
-        prompt: dict | None,
-        context: list[dict] | None = None,
-        instructions: dict | None = None,
-        messages: list | None = None,
+        prompt: str | dict | Prompt | None,
+        context: Sequence[str | dict | Prompt] | None = None,
+        instructions: dict[str, Any] | list[str | dict | SystemInstruction] | None = None,
+        messages: Sequence[MessageItem] | None = None,
     ) -> dict[str, Any]:
         if not self._client:
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
@@ -86,11 +88,25 @@ class OpenAIResponses(OpenAIClientBase):
         if api.provider != AIModelAPIProviderEnum.OPEN_AI:
             raise ValueError("OpenAIResponses only supports AIModelAPIProviderEnum.OPEN_AI in Phase 1")
 
-        input_messages = self._build_responses_input(
-            prompt=prompt,
-            context=context or [],
-            messages=messages,
-        )
+        context_list: list[dict[str, Any]] = []
+        if context:
+            ctx_items = list(context)
+            context_list = [item for item in ctx_items if isinstance(item, dict)]
+            if len(context_list) != len(ctx_items):
+                raise ValueError(
+                    "Invalid context format. Context should be processed and passed in prompt format (dict)."
+                )
+            # context_list already populated above
+
+        prompt_dict: dict[str, Any] | None
+        if prompt is None:
+            prompt_dict = None
+        elif isinstance(prompt, dict):
+            prompt_dict = prompt
+        else:
+            raise ValueError("Invalid prompt format. Prompt should be processed and passed in prompt format (dict).")
+
+        input_messages = self._build_responses_input(prompt=prompt_dict, context=context_list, messages=messages)
 
         # Base args
         args: dict[str, Any] = {
@@ -99,9 +115,12 @@ class OpenAIResponses(OpenAIClientBase):
             "stream": self.config.streaming,
         }
         if instructions:
-            # Instruction at this point are in Dhenara format
-            instructions_text = instructions.get("content") if isinstance(instructions, dict) else None
-            args["instructions"] = instructions_text
+            if not isinstance(instructions, dict):
+                raise ValueError(
+                    "Invalid Instructions format. Instructions should be processed and passed in prompt format (dict)."
+                )
+            # Instruction at this point are in provider prompt format
+            args["instructions"] = instructions.get("content")
 
         # Max tokens (Responses uses max_output_tokens)
         # Note: Responses API doesn't have a separate max_reasoning_tokens parameter.
@@ -165,7 +184,8 @@ class OpenAIResponses(OpenAIClientBase):
                 model_endpoint=self.model_endpoint,
             )
 
-        if self.config.structured_output:
+        structured_output_config = self._get_structured_output_config()
+        if structured_output_config:
             # INFO: Do not remove this comment block
 
             # # Structured output for responses API had buidl in pyd support along with a dedicated parsing via
@@ -182,7 +202,7 @@ class OpenAIResponses(OpenAIClientBase):
             # Always use JSON schema via text.format for structured output.
             # This avoids SDK-specific pydantic integration differences and lets us enforce strict schemas.
             schema_dict = formatter.convert_structured_output(
-                structured_output=self.config.structured_output,
+                structured_output=structured_output_config,
                 model_endpoint=self.model_endpoint,
             )
             # Extract json_schema from the formatted structure
@@ -299,14 +319,16 @@ class OpenAIResponses(OpenAIClientBase):
             if output_details:
                 reasoning_tokens = getattr(output_details, "reasoning_tokens", None)
 
-            if total is None and prompt is not None and completion is not None:
-                total = int(prompt) + int(completion)
+            prompt_i = int(prompt) if prompt is not None else 0
+            completion_i = int(completion) if completion is not None else 0
+            total_i = int(total) if total is not None else (prompt_i + completion_i)
+            reasoning_i = int(reasoning_tokens) if reasoning_tokens is not None else None
 
             return ChatResponseUsage(
-                total_tokens=total,
-                prompt_tokens=prompt,
-                completion_tokens=completion,
-                reasoning_tokens=reasoning_tokens,
+                total_tokens=total_i,
+                prompt_tokens=prompt_i,
+                completion_tokens=completion_i,
+                reasoning_tokens=reasoning_i,
             )
         except Exception as e:
             logger.debug(f"_get_usage_from_provider_response (Responses): {e}")
@@ -372,10 +394,11 @@ class OpenAIResponses(OpenAIClientBase):
             role="assistant",
             index_start=content_index,
             ai_model_provider=self.model_endpoint.ai_model.provider,
-            structured_output_config=self.config.structured_output,
+            structured_output_config=self._get_structured_output_config(),
         )
 
         usage, usage_charge = self.get_usage_and_charge(response)
+        usage_chat = usage if isinstance(usage, ChatResponseUsage) else None
 
         choice = ChatResponseChoice(
             index=0,
@@ -389,7 +412,7 @@ class OpenAIResponses(OpenAIClientBase):
             model=model,
             provider=self.model_endpoint.ai_model.provider,
             api_provider=self.model_endpoint.api.provider,
-            usage=usage,
+            usage=usage_chat,
             usage_charge=usage_charge,
             choices=[choice],
             provider_response=self.serialize_provider_response(response),
@@ -433,12 +456,20 @@ class OpenAIResponses(OpenAIClientBase):
             try:
                 output_details = getattr(usage, "output_tokens_details", None)
                 reasoning_tokens = getattr(output_details, "reasoning_tokens", None) if output_details else None
+
+                total = getattr(usage, "total_tokens", None)
+                prompt = getattr(usage, "prompt_tokens", None) or getattr(usage, "input_tokens", None)
+                completion = getattr(usage, "completion_tokens", None) or getattr(usage, "output_tokens", None)
+                prompt_i = int(prompt) if prompt is not None else 0
+                completion_i = int(completion) if completion is not None else 0
+                total_i = int(total) if total is not None else (prompt_i + completion_i)
+                reasoning_i = int(reasoning_tokens) if reasoning_tokens is not None else None
+
                 usage_obj = ChatResponseUsage(
-                    total_tokens=getattr(usage, "total_tokens", None),
-                    prompt_tokens=getattr(usage, "prompt_tokens", None) or getattr(usage, "input_tokens", None),
-                    completion_tokens=getattr(usage, "completion_tokens", None)
-                    or getattr(usage, "output_tokens", None),
-                    reasoning_tokens=reasoning_tokens,
+                    total_tokens=total_i,
+                    prompt_tokens=prompt_i,
+                    completion_tokens=completion_i,
+                    reasoning_tokens=reasoning_i,
                 )
                 sm.update_usage(usage_obj)
             except Exception as _e:
@@ -459,11 +490,20 @@ class OpenAIResponses(OpenAIClientBase):
             if delta_text:
                 # Check if we have a pending message ID for this output_index
                 message_id = None
-                message_contents = None
+                raw_message_contents: object | None = None
                 if hasattr(sm, "pending_message_ids"):
                     message_id = sm.pending_message_ids.get(output_index or 0)
                 if hasattr(sm, "pending_message_content"):
-                    message_contents = sm.pending_message_content.get(output_index or 0)
+                    raw_message_contents = sm.pending_message_content.get(output_index or 0)
+
+                message_contents: list[ChatMessageContentPart] | None = None
+                if message_id and isinstance(raw_message_contents, list):
+                    message_contents = []
+                    for part in raw_message_contents:
+                        if isinstance(part, ChatMessageContentPart):
+                            message_contents.append(part)
+                        elif isinstance(part, dict):
+                            message_contents.append(ChatMessageContentPart(**cast(dict[str, Any], part)))
 
                 content_delta = ChatResponseTextContentItemDelta(
                     index=0,

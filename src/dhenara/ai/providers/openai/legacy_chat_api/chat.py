@@ -1,5 +1,5 @@
 import logging
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Iterator, Sequence
 from typing import Any
 
 from openai.types.chat import ChatCompletion, ChatCompletionMessage
@@ -22,6 +22,7 @@ from dhenara.ai.types.genai import (
     StreamingChatResponse,
 )
 from dhenara.ai.types.genai.ai_model import AIModelAPIProviderEnum, AIModelProviderEnum
+from dhenara.ai.types.genai.dhenara.request import MessageItem, Prompt, SystemInstruction
 from dhenara.ai.types.shared.api import SSEErrorResponse
 
 logger = logging.getLogger(__name__)
@@ -31,10 +32,10 @@ logger = logging.getLogger(__name__)
 class OpenAIChatLEGACY(OpenAIClientBase):
     def get_api_call_params(
         self,
-        prompt: dict | None,
-        context: list[dict] | None = None,
-        instructions: dict | None = None,
-        messages: list | None = None,
+        prompt: str | dict | Prompt | None,
+        context: Sequence[str | dict | Prompt] | None = None,
+        instructions: dict[str, Any] | list[str | dict | SystemInstruction] | None = None,
+        messages: Sequence[MessageItem] | None = None,
     ) -> dict[str, Any]:
         # HARD GUARD: This legacy client must never be used for OpenAI provider.
         # The project has migrated to the Responses API; invoking this path for
@@ -51,11 +52,15 @@ class OpenAIChatLEGACY(OpenAIClientBase):
         if self._input_validation_pending:
             raise ValueError("inputs must be validated with `self.validate_inputs()` before api calls")
 
-        messages_list = []
+        messages_list: list[dict[str, Any]] = []
         user = self.config.get_user()
 
         # Process instructions
         if instructions:
+            if not isinstance(instructions, dict):
+                raise ValueError(
+                    "Invalid Instructions format. Instructions should be processed and passed in prompt format (dict)."
+                )
             messages_list.append(instructions)
 
         # Add previous messages and current prompt
@@ -68,8 +73,19 @@ class OpenAIChatLEGACY(OpenAIClientBase):
             messages_list.extend(formatted_messages)
         else:
             if context:
-                messages_list.extend(context)
+                context_dicts: list[dict[str, Any]] = []
+                for item in context:
+                    if not isinstance(item, dict):
+                        raise ValueError(
+                            "Invalid context format. Context should be processed and passed in prompt format (dict)."
+                        )
+                    context_dicts.append(item)
+                messages_list.extend(context_dicts)
             if prompt is not None:
+                if not isinstance(prompt, dict):
+                    raise ValueError(
+                        "Invalid prompt format. Prompt should be processed and passed in prompt format (dict)."
+                    )
                 messages_list.append(prompt)
 
         # Prepare API call arguments
@@ -118,9 +134,10 @@ class OpenAIChatLEGACY(OpenAIClientBase):
             )
 
         # --- Structured Output ---
-        if self.config.structured_output:
+        structured_output_cfg = self._get_structured_output_config()
+        if structured_output_cfg is not None:
             chat_args["response_format"] = formatter.format_structured_output(
-                structured_output=self.config.structured_output,
+                structured_output=structured_output_cfg,
                 model_endpoint=self.model_endpoint,
             )
 
@@ -278,6 +295,7 @@ class OpenAIChatLEGACY(OpenAIClientBase):
     ) -> ChatResponse:
         """Parse the OpenAI response into our standard format"""
         usage, usage_charge = self.get_usage_and_charge(response)
+        usage_chat = usage if isinstance(usage, ChatResponseUsage) else None
 
         choices = []
         for choice in response.choices:
@@ -302,7 +320,7 @@ class OpenAIChatLEGACY(OpenAIClientBase):
             model=response.model,
             provider=self.model_endpoint.ai_model.provider,
             api_provider=self.model_endpoint.api.provider,
-            usage=usage,
+            usage=usage_chat,
             usage_charge=usage_charge,
             choices=choices,
             metadata=AIModelCallResponseMetaData(
@@ -334,7 +352,7 @@ class OpenAIChatLEGACY(OpenAIClientBase):
             role=role,
             index_start=index,
             ai_model_provider=self.model_endpoint.ai_model.provider,
-            structured_output_config=self.config.structured_output,
+            structured_output_config=self._get_structured_output_config(),
         )
 
         if not converted_items:

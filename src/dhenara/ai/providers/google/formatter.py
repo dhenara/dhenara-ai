@@ -378,6 +378,8 @@ class GoogleFormatter(BaseFormatter):
         # Case 3: ChatResponse (model response with all content items)
         # Delegate to message converter (single source of truth for ChatResponse conversions)
         if isinstance(message_item, ChatResponse):
+            if model_endpoint is None:
+                raise ValueError("model_endpoint is required to convert ChatResponse to provider messages")
             return GoogleMessageConverter.dai_response_to_provider_message(
                 dai_response=message_item,
                 model_endpoint=model_endpoint,

@@ -8,6 +8,7 @@ from collections.abc import Iterable
 from openai.types.chat import ChatCompletionMessage
 
 from dhenara.ai.types.genai import (
+    ChatMessageContentPart,
     ChatResponseContentItem,
     ChatResponseReasoningContentItem,
     ChatResponseStructuredOutput,
@@ -52,10 +53,11 @@ class OpenAIMessageConverterCHATAPI:
                                 index=index_start,
                                 role=role,
                                 message_contents=[
-                                    {
-                                        "type": "thinking",
-                                        "text": reasoning_content,
-                                    }
+                                    ChatMessageContentPart(
+                                        type="thinking",
+                                        text=reasoning_content,
+                                        annotations=None,
+                                    )
                                 ],
                             )
                         )
@@ -90,7 +92,7 @@ class OpenAIMessageConverterCHATAPI:
                     ChatResponseTextContentItem(
                         index=index_start,
                         role=role,
-                        message_contents=[{"type": "text", "text": content_text}],
+                        message_contents=[ChatMessageContentPart(type="text", text=content_text, annotations=None)],
                     )
                 )
 
@@ -105,12 +107,17 @@ class OpenAIMessageConverterCHATAPI:
                     tool_payload = tool_call.model_dump()
 
                 _args = tool_payload.get("function", {}).get("arguments")
-                _parsed_args = ChatResponseToolCall.parse_args_str_or_dict(_args)
+                _parsed_args = ChatResponseToolCall.parse_args_str_or_dict(_args if _args is not None else {})
 
                 tool_call = ChatResponseToolCall(
                     id=tool_payload.get("id"),
-                    name=tool_payload.get("function", {}).get("name"),
-                    arguments=_parsed_args.get("arguments_dict"),
+                    name=(
+                        tool_payload.get("function", {}).get("name")
+                        if isinstance(tool_payload.get("function", {}).get("name"), str)
+                        else None
+                    )
+                    or "unknown_tool",
+                    arguments=_parsed_args.get("arguments_dict") or {},
                     raw_data=_parsed_args.get("raw_data"),
                     parse_error=_parsed_args.get("parse_error"),
                 )
