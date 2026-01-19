@@ -342,6 +342,9 @@ class BaseAIModel(BaseModel):
  If there are no options required for the models, set `valid_options` to an empty dict, but not as None"
             )
 
+        if self.foundation_model.valid_options is None:
+            raise ValueError("Foundation model valid_options must be set (not None)")
+
         # Validate that all options are present in foundation model
         invalid_options = set(self.valid_options.keys()) - set(
             self.foundation_model.valid_options.keys(),

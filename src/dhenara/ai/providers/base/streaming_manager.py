@@ -535,6 +535,12 @@ class StreamingManager:
                             # Update metadata for tool calls and generic content
                             matching_content.metadata.update(content_delta.metadata)
 
+                            # Ensure metadata dict exists for subscripting below
+                            _mc_meta = getattr(matching_content, "metadata", None)
+                            if _mc_meta is None:
+                                _mc_meta = {}
+                                matching_content.metadata = _mc_meta
+
                             # If it's a tool call, update the incremental arguments, name, or set full tool_call
                             if content_delta.type == ChatResponseContentItemType.TOOL_CALL:
                                 if hasattr(content_delta, "tool_call") and content_delta.tool_call:
@@ -547,10 +553,8 @@ class StreamingManager:
                                     matching_content.tool_call.name = _md.get("name")
                                 if _md.get("tool_name_delta") and getattr(matching_content, "tool_call", None):
                                     # Accumulate piecewise name in a buffer
-                                    name_buf = matching_content.metadata.get("name_buffer", "") + _md.get(
-                                        "tool_name_delta"
-                                    )
-                                    matching_content.metadata["name_buffer"] = name_buf
+                                    name_buf = _mc_meta.get("name_buffer", "") + (_md.get("tool_name_delta") or "")
+                                    _mc_meta["name_buffer"] = name_buf
                                     try:
                                         matching_content.tool_call.name = name_buf
                                     except Exception:
@@ -559,15 +563,15 @@ class StreamingManager:
                                 if hasattr(content_delta, "arguments_delta") and content_delta.arguments_delta:
                                     # Maintain a buffer for args in metadata
                                     buf_key = "arguments_buffer"
-                                    prev = matching_content.metadata.get(buf_key) or ""
-                                    matching_content.metadata[buf_key] = prev + content_delta.arguments_delta
+                                    prev = _mc_meta.get(buf_key) or ""
+                                    _mc_meta[buf_key] = prev + content_delta.arguments_delta
 
                                 # Finalize tool call arguments when signaled
                                 if hasattr(content_delta, "metadata") and content_delta.metadata.get(
                                     "finalize_tool_call"
                                 ):
                                     buf_key = "arguments_buffer"
-                                    raw_buf = matching_content.metadata.get(buf_key)
+                                    raw_buf = _mc_meta.get(buf_key)
                                     if raw_buf is not None:
                                         try:
                                             import json as _json
@@ -597,9 +601,9 @@ class StreamingManager:
 
                                         # Clear buffer
                                         try:
-                                            del matching_content.metadata[buf_key]
+                                            del _mc_meta[buf_key]
                                         except Exception:
-                                            matching_content.metadata[buf_key] = ""
+                                            _mc_meta[buf_key] = ""
 
         # Update token count
         self.progress.updates_count += 1
