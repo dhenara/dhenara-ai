@@ -128,7 +128,7 @@ class ChatResponse(BaseModel):
     def first(self, content_type: ChatResponseContentItemType):
         "Returns the first content of matching type"
         for choice in self.choices:
-            for content in choice.contents:
+            for content in choice.contents or []:
                 if content.type == content_type:
                     return content
         return None
@@ -162,7 +162,7 @@ class ChatResponse(BaseModel):
         text_parts = [
             content.get_text()
             for choice in self.choices
-            for content in choice.contents
+            for content in (choice.contents or [])
             if content.type in content_types_enum
         ]
         return "\n\n".join(text_parts) if text_parts else None
@@ -172,7 +172,7 @@ class ChatResponse(BaseModel):
         tools = [
             content
             for choice in self.choices
-            for content in choice.contents
+            for content in (choice.contents or [])
             if content.type == ChatResponseContentItemType.TOOL_CALL
         ]
         return tools

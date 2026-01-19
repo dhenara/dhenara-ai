@@ -194,7 +194,7 @@ class AnthropicMessageConverter(BaseMessageConverter):
 
         same_provider = True if str(source_provider) == str(model_endpoint.ai_model.provider) else False
 
-        for content in choice.contents:
+        for content in choice.contents or []:
             # IMPORTANT: ChatResponseReasoningContentItem subclasses ChatResponseTextContentItem.
             # We must handle reasoning BEFORE generic text; otherwise reasoning items will be treated as plain text
             # and their thinking blocks/signatures won't round-trip.
@@ -202,8 +202,9 @@ class AnthropicMessageConverter(BaseMessageConverter):
                 # Anthropic thinking blocks require thinking text + signature
                 # Prefer message_contents parts of type 'thinking' when present.
                 thinking_text = None
-                if content.message_contents:
-                    parts = content.message_contents
+                message_contents = content.message_contents
+                if message_contents:
+                    parts = message_contents
                     texts = [p.text for p in parts if p.text]
                     if texts:
                         thinking_text = "".join(texts)

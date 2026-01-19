@@ -277,10 +277,11 @@ class GoogleMessageConverter(BaseMessageConverter):
                     except Exception:
                         parts.append({"text": str(p), **extra_kv})
 
-        for content in choice.contents:
+        for content in choice.contents or []:
             if content.type == ChatResponseContentItemType.REASONING:
                 # Prefer explicit reasoning message_contents (type="thinking").
-                if content.message_contents:
+                message_contents = content.message_contents
+                if message_contents:
                     parts.extend(
                         [
                             {
@@ -288,7 +289,7 @@ class GoogleMessageConverter(BaseMessageConverter):
                                 "thought": True,
                                 "thought_signature": content.thinking_signature,
                             }
-                            for p in content.message_contents
+                            for p in message_contents
                             # if p.type in ("thinking", "text") and p.text is not None
                         ]
                     )

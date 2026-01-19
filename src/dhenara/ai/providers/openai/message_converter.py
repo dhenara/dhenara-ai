@@ -301,7 +301,7 @@ class OpenAIMessageConverter(BaseMessageConverter):
         output_items: list[ResponseReasoningItemParam | ResponseOutputMessageParam | ResponseFunctionToolCallParam] = []
 
         # First pass: collect all content by type
-        for item in choice.contents:
+        for item in choice.contents or []:
             try:
                 if item.type == ChatResponseContentItemType.REASONING:
                     # USE PRESERVED DATA if available for perfect round-tripping
@@ -312,19 +312,20 @@ class OpenAIMessageConverter(BaseMessageConverter):
                         param_data["id"] = item.thinking_id
 
                     # Use preserved summary structure (list[dict]) if available
-                    if item.thinking_summary is not None:
-                        if isinstance(item.thinking_summary, list):
+                    thinking_summary = item.thinking_summary
+                    if thinking_summary is not None:
+                        if isinstance(thinking_summary, list):
                             # Convert ChatMessageContentPart list to OpenAI summary list[dict]
                             summary_list = [
                                 {
                                     "type": p.type,
                                     "text": p.text,
                                 }
-                                for p in item.thinking_summary
+                                for p in thinking_summary
                             ]
                             param_data["summary"] = summary_list
                         else:
-                            logger.error(f"OpenAI: Unsupported thinking_summary type; {type(item.thinking_summary)}")
+                            logger.error(f"OpenAI: Unsupported thinking_summary type; {type(thinking_summary)}")
                     elif item.message_contents:
                         # May be from other providers
                         # Convert string to OpenAI format

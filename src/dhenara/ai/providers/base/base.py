@@ -674,7 +674,10 @@ class AIModelProviderClientBase(ABC):
 
         try:
             for chunk in stream:
-                processed_chunks = self.parse_stream_chunk(chunk)
+                processed = self.parse_stream_chunk(chunk)
+                if processed is None:
+                    continue
+                processed_chunks = processed if isinstance(processed, list) else [processed]
                 for pchunk in processed_chunks:
                     # If an SSE error is encountered, surface it and stop streaming immediately
                     if isinstance(pchunk, SSEErrorResponse):
@@ -753,7 +756,10 @@ class AIModelProviderClientBase(ABC):
 
         try:
             async for chunk in stream:
-                processed_chunks = self.parse_stream_chunk(chunk)
+                processed = self.parse_stream_chunk(chunk)
+                if processed is None:
+                    continue
+                processed_chunks = processed if isinstance(processed, list) else [processed]
                 for pchunk in processed_chunks:
                     if isinstance(pchunk, SSEErrorResponse):
                         yield pchunk, None
@@ -864,7 +870,10 @@ class AIModelProviderClientBase(ABC):
         pass
 
     @abstractmethod
-    def parse_stream_chunk(self, chunk) -> StreamingChatResponse | SSEErrorResponse | None:
+    def parse_stream_chunk(
+        self,
+        chunk,
+    ) -> StreamingChatResponse | SSEErrorResponse | None | list[StreamingChatResponse | SSEErrorResponse | None]:
         pass
 
     def serialize_provider_response(self, response: object) -> dict | None:

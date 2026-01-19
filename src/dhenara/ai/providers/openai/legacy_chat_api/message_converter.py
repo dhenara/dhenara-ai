@@ -135,7 +135,7 @@ class OpenAIMessageConverterCHATAPI:
         reasoning_parts: list[str] = []
         tool_calls_payload: list[dict[str, object]] = []
 
-        for content in choice.contents:
+        for content in choice.contents or []:
             if isinstance(content, ChatResponseTextContentItem):
                 t = content.get_text() if hasattr(content, "get_text") else None
                 if t:
