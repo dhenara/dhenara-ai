@@ -44,6 +44,10 @@ class OpenAIChatLEGACY(OpenAIClientBase):
         if not self._client:
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
 
+        formatter = self.formatter
+        if formatter is None:
+            raise RuntimeError("Formatter not initialized")
+
         if self._input_validation_pending:
             raise ValueError("inputs must be validated with `self.validate_inputs()` before api calls")
 
@@ -57,7 +61,7 @@ class OpenAIChatLEGACY(OpenAIClientBase):
         # Add previous messages and current prompt
         if messages is not None:
             # Convert MessageItem objects to OpenAI format
-            formatted_messages = self.formatter.format_messages(
+            formatted_messages = formatter.format_messages(
                 messages=messages,
                 model_endpoint=self.model_endpoint,
             )
@@ -102,20 +106,20 @@ class OpenAIChatLEGACY(OpenAIClientBase):
 
         # ---  Tools ---
         if self.config.tools:
-            chat_args["tools"] = self.formatter.format_tools(
+            chat_args["tools"] = formatter.format_tools(
                 tools=self.config.tools,
                 model_endpoint=self.model_endpoint,
             )
 
         if self.config.tool_choice:
-            chat_args["tool_choice"] = self.formatter.format_tool_choice(
+            chat_args["tool_choice"] = formatter.format_tool_choice(
                 tool_choice=self.config.tool_choice,
                 model_endpoint=self.model_endpoint,
             )
 
         # --- Structured Output ---
         if self.config.structured_output:
-            chat_args["response_format"] = self.formatter.format_structured_output(
+            chat_args["response_format"] = formatter.format_structured_output(
                 structured_output=self.config.structured_output,
                 model_endpoint=self.model_endpoint,
             )
@@ -127,10 +131,13 @@ class OpenAIChatLEGACY(OpenAIClientBase):
         api_call_params: dict,
     ) -> ChatCompletion:
         chat_args = api_call_params["chat_args"]
+        client = self._client
+        if client is None:
+            raise RuntimeError("Client not initialized. Use with 'async with' context manager")
         if self.model_endpoint.api.provider != AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
-            response = self._client.chat.completions.create(**chat_args)
+            response = client.chat.completions.create(**chat_args)
         else:
-            response = self._client.complete(**chat_args)
+            response = client.complete(**chat_args)
         return response
 
     async def do_api_call_async(
@@ -138,10 +145,13 @@ class OpenAIChatLEGACY(OpenAIClientBase):
         api_call_params: dict,
     ) -> ChatCompletion:
         chat_args = api_call_params["chat_args"]
+        client = self._client
+        if client is None:
+            raise RuntimeError("Client not initialized. Use with 'async with' context manager")
         if self.model_endpoint.api.provider != AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
-            response = await self._client.chat.completions.create(**chat_args)
+            response = await client.chat.completions.create(**chat_args)
         else:
-            response = await self._client.complete(**chat_args)
+            response = await client.complete(**chat_args)
         return response
 
     def do_streaming_api_call_sync(
@@ -149,10 +159,13 @@ class OpenAIChatLEGACY(OpenAIClientBase):
         api_call_params,
     ) -> Iterator[ChatCompletionChunk]:
         chat_args = api_call_params["chat_args"]
+        client = self._client
+        if client is None:
+            raise RuntimeError("Client not initialized. Use with 'async with' context manager")
         if self.model_endpoint.api.provider != AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
-            stream = self._client.chat.completions.create(**chat_args)
+            stream = client.chat.completions.create(**chat_args)
         else:
-            stream = self._client.complete(**chat_args)
+            stream = client.complete(**chat_args)
 
         return stream
 
@@ -161,10 +174,13 @@ class OpenAIChatLEGACY(OpenAIClientBase):
         api_call_params,
     ) -> AsyncIterator[ChatCompletionChunk]:
         chat_args = api_call_params["chat_args"]
+        client = self._client
+        if client is None:
+            raise RuntimeError("Client not initialized. Use with 'async with' context manager")
         if self.model_endpoint.api.provider != AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
-            stream = await self._client.chat.completions.create(**chat_args)
+            stream = await client.chat.completions.create(**chat_args)
         else:
-            stream = await self._client.complete(**chat_args)
+            stream = await client.complete(**chat_args)
 
         return stream
 
@@ -176,11 +192,15 @@ class OpenAIChatLEGACY(OpenAIClientBase):
         """Handle streaming response with progress tracking and final response"""
         processed_chunks: list[StreamingChatResponse] = []
 
-        self.streaming_manager.provider_metadata = {}
-        self.streaming_manager.persistant_choice_metadata_list = []
+        sm = self.streaming_manager
+        if sm is None:
+            raise RuntimeError("Streaming manager not initialized")
 
-        if not self.streaming_manager.provider_metadata:  # Grab the metadata once
-            self.streaming_manager.provider_metadata = {
+        sm.provider_metadata = {}
+        sm.persistant_choice_metadata_list = []
+
+        if not sm.provider_metadata:  # Grab the metadata once
+            sm.provider_metadata = {
                 "id": chunk.id,
                 "created": str(chunk.created),  # Microsoft sdk returns datetim obj
                 "object": chunk.object if hasattr(chunk, "object") else None,
@@ -194,22 +214,22 @@ class OpenAIChatLEGACY(OpenAIClientBase):
                 prompt_tokens=chunk.usage.prompt_tokens,
                 completion_tokens=chunk.usage.completion_tokens,
             )
-            self.streaming_manager.update_usage(usage)
+            sm.update_usage(usage)
 
         # Process content
         if chunk.choices:
             choice_deltas = []
             for choice in chunk.choices:
                 # Only first chunk has few fields
-                if len(self.streaming_manager.persistant_choice_metadata_list) < choice.index + 1:
-                    self.streaming_manager.persistant_choice_metadata_list.append(
+                if len(sm.persistant_choice_metadata_list) < choice.index + 1:
+                    sm.persistant_choice_metadata_list.append(
                         {
                             "role": choice.delta.role,
                             "refusal": choice.delta.refusal if hasattr(choice.delta, "refusal") else None,
                         }
                     )
 
-                role = choice.delta.role or self.streaming_manager.persistant_choice_metadata_list[choice.index]["role"]
+                role = choice.delta.role or sm.persistant_choice_metadata_list[choice.index]["role"]
 
                 choice_deltas.append(
                     ChatResponseChoiceDelta(
@@ -227,7 +247,7 @@ class OpenAIChatLEGACY(OpenAIClientBase):
                     )
                 )
 
-            response_chunk = self.streaming_manager.update(choice_deltas=choice_deltas)
+            response_chunk = sm.update(choice_deltas=choice_deltas)
             stream_response = StreamingChatResponse(
                 id=chunk.id,
                 data=response_chunk,
@@ -242,10 +262,13 @@ class OpenAIChatLEGACY(OpenAIClientBase):
         self,
         response: ChatCompletion,
     ) -> ChatResponseUsage:
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            return ChatResponseUsage(total_tokens=0, prompt_tokens=0, completion_tokens=0)
         return ChatResponseUsage(
-            total_tokens=response.usage.total_tokens,
-            prompt_tokens=response.usage.prompt_tokens,
-            completion_tokens=response.usage.completion_tokens,
+            total_tokens=getattr(usage, "total_tokens", 0) or 0,
+            prompt_tokens=getattr(usage, "prompt_tokens", 0) or 0,
+            completion_tokens=getattr(usage, "completion_tokens", 0) or 0,
         )
 
     # -------------------------------------------------------------------------
@@ -336,6 +359,9 @@ class OpenAIChatLEGACY(OpenAIClientBase):
     ) -> ChatResponseContentItemDelta:
         # if isinstance(delta, (ChoiceDelta, AzureStreamingChatResponseMessageUpdate)):
         if hasattr(delta, "content"):
+            sm = self.streaming_manager
+            if sm is None:
+                raise RuntimeError("Streaming manager not initialized")
             if self.model_endpoint.ai_model.provider == AIModelProviderEnum.DEEPSEEK:
                 content = delta.content or ""
 
@@ -345,7 +371,7 @@ class OpenAIChatLEGACY(OpenAIClientBase):
 
                 # If we see a start tag, everything after it goes to reasoning
                 if think_start:
-                    self.streaming_manager.progress.in_thinking_block = True
+                    sm.progress.in_thinking_block = True
                     # Split content at the tag
                     _, reasoning_part = content.split("<think>", 1)
                     return ChatResponseReasoningContentItemDelta(
@@ -356,7 +382,7 @@ class OpenAIChatLEGACY(OpenAIClientBase):
 
                 # If we see an end tag, everything before it goes to reasoning
                 elif think_end:
-                    self.streaming_manager.progress.in_thinking_block = False
+                    sm.progress.in_thinking_block = False
                     reasoning_part, answer_part = content.split("</think>", 1)
                     return (
                         ChatResponseReasoningContentItemDelta(
@@ -373,7 +399,7 @@ class OpenAIChatLEGACY(OpenAIClientBase):
                     )
 
                 # If we're inside a thinking block, content goes to reasoning
-                elif self.streaming_manager.progress.in_thinking_block:
+                elif sm.progress.in_thinking_block:
                     return ChatResponseReasoningContentItemDelta(
                         index=index,
                         role=role,

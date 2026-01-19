@@ -37,7 +37,10 @@ class PromptText(BaseModel):
                 return "\n".join(str(v) for v in value)
             return str(value)
         else:
-            return self.template.format(**kwargs)
+            template = self.template
+            if template is None:
+                raise ValueError("PromptText.template is required when content is not provided")
+            return template.format(**kwargs)
 
 
 class PromptConfig(BaseModel):

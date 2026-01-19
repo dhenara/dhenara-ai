@@ -72,10 +72,13 @@ class OpenAIImage(OpenAIClientBase):
         api_call_params: dict,
     ) -> OpenAIImagesResponse:
         image_args = api_call_params["image_args"]
+        client = self._client
+        if client is None:
+            raise RuntimeError("OpenAI client not initialized")
         if self.model_endpoint.api.provider != AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
-            response = self._client.images.generate(**image_args)
+            response = client.images.generate(**image_args)
         else:
-            response = self._client.complete(**image_args)  # Images on Azure NOT tested
+            response = client.complete(**image_args)  # Images on Azure NOT tested
 
         return response
 
@@ -84,10 +87,13 @@ class OpenAIImage(OpenAIClientBase):
         api_call_params: dict,
     ) -> OpenAIImagesResponse:
         image_args = api_call_params["image_args"]
+        client = self._client
+        if client is None:
+            raise RuntimeError("OpenAI client not initialized")
         if self.model_endpoint.api.provider != AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
-            response = await self._client.images.generate(**image_args)
+            response = await client.images.generate(**image_args)
         else:
-            response = await self._client.complete(**image_args)  # Images on Azure NOT tested
+            response = await client.complete(**image_args)  # Images on Azure NOT tested
         return response
 
     def do_streaming_api_call_sync(

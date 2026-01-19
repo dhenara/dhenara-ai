@@ -56,7 +56,10 @@ class GoogleAIImage(GoogleAIClientBase):
         self,
         api_call_params: dict,
     ) -> GenerateImagesResponse:
-        response = self._client.models.generate_images(
+        client = self._client
+        if client is None:
+            raise RuntimeError("Google client not initialized")
+        response = client.models.generate_images(
             model=self.model_name_in_api_calls,
             config=api_call_params["generate_config"],
             prompt=api_call_params["prompt"],
@@ -67,7 +70,10 @@ class GoogleAIImage(GoogleAIClientBase):
         self,
         api_call_params: dict,
     ) -> GenerateImagesResponse:
-        response = await self._client.models.generate_images(
+        client = self._client
+        if client is None:
+            raise RuntimeError("Google client not initialized")
+        response = await client.models.generate_images(
             model=self.model_name_in_api_calls,
             config=api_call_params["generate_config"],
             prompt=api_call_params["prompt"],
@@ -129,6 +135,10 @@ class GoogleAIImage(GoogleAIClientBase):
         usage, usage_charge = self.get_usage_and_charge(response)
         choices = []
         for idx, image in enumerate(response.generated_images):
+            image_obj = getattr(image, "image", None)
+            img_bytes = getattr(image_obj, "image_bytes", None) if image_obj is not None else None
+            if img_bytes is None:
+                continue
             choices.append(
                 ImageResponseChoice(
                     index=idx,
@@ -136,7 +146,7 @@ class GoogleAIImage(GoogleAIClientBase):
                         ImageResponseContentItem(
                             index=0,
                             content_format=ImageContentFormat.BYTES,
-                            content_bytes=image.image.image_bytes,
+                            content_bytes=img_bytes,
                             metadata={
                                 "rai_filtered_reason": image.rai_filtered_reason,
                             },

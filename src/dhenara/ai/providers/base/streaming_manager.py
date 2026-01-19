@@ -234,11 +234,15 @@ class StreamingManager:
                             items_to_remove.append(i)
 
                     # Remove text items in reverse order to maintain indices
+                    contents = getattr(choice, "contents", None)
+                    if contents is None:
+                        contents = []
+                        choice.contents = contents
                     for i in reversed(items_to_remove):
-                        choice.contents.pop(i)
+                        contents.pop(i)
 
                     # Add structured items
-                    choice.contents.extend(items_to_add)
+                    contents.extend(items_to_add)
         except Exception as _e:
             logger.debug(f"Structured-output post-processing skipped due to error: {_e}")
 
@@ -575,13 +579,13 @@ class StreamingManager:
                             ChatResponseContentItemType.GENERIC,
                         ):
                             # Update metadata for tool calls and generic content
-                            matching_content.metadata.update(typed_delta.metadata)
-
                             # Ensure metadata dict exists for subscripting below
                             _mc_meta = getattr(matching_content, "metadata", None)
                             if _mc_meta is None:
                                 _mc_meta = {}
                                 matching_content.metadata = _mc_meta
+
+                            _mc_meta.update(typed_delta.metadata)
 
                             # If it's a tool call, update the incremental arguments, name, or set full tool_call
                             if content_delta.type == ChatResponseContentItemType.TOOL_CALL:

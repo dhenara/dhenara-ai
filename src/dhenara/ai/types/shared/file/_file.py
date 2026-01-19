@@ -64,9 +64,10 @@ class ProcessedFile(GenericFile):
 
     def get_mime_type(self) -> str | None:
         """Get the mime type of the file"""
-        mime_type = self.get_metadata()
-        if mime_type:
-            return mime_type.mime_type.lower()
+        metadata = self.get_metadata()
+        mt = getattr(metadata, "mime_type", None) if metadata is not None else None
+        if mt:
+            return mt.lower()
         return None
 
     def get_processed_file_data(self, max_words: int | None = None) -> str:

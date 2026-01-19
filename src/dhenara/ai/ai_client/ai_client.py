@@ -141,14 +141,17 @@ class AIModelClient:
 
     def _execute_with_timeout_sync(self, *args, **kwargs) -> AIModelCallResponse:
         """Synchronous timeout handling using threading instead of signals"""
+        provider = self._provider_client
+        if provider is None:
+            raise RuntimeError("Provider client not initialized")
         if not self.config.timeout:
             # If no timeout is set, just execute directly
-            return self._provider_client._format_and_generate_response_sync(*args, **kwargs)
+            return provider._format_and_generate_response_sync(*args, **kwargs)
 
         # Use a thread pool to run the generation function
         with ThreadPoolExecutor(max_workers=1) as executor:
             # Submit the function to the executor
-            future = executor.submit(self._provider_client._format_and_generate_response_sync, *args, **kwargs)
+            future = executor.submit(provider._format_and_generate_response_sync, *args, **kwargs)
 
             try:
                 # Wait for the result with a timeout
@@ -162,10 +165,13 @@ class AIModelClient:
 
     async def _execute_with_timeout_async(self, *args, **kwargs) -> AIModelCallResponse:
         """Asynchronous timeout handling"""
+        provider = self._provider_client
+        if provider is None:
+            raise RuntimeError("Provider client not initialized")
         async with AsyncExitStack() as stack:
             if self.config.timeout:
                 await stack.enter_async_context(asyncio.timeout(self.config.timeout))
-            return await self._provider_client._format_and_generate_response_async(*args, **kwargs)
+            return await provider._format_and_generate_response_async(*args, **kwargs)
 
     # Genereate Response Fns
     def generate(

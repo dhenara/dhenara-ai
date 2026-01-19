@@ -103,8 +103,13 @@ class ApiResponse(BaseModel, Generic[T]):  # noqa: UP046
         error_msg = self.check_for_status_errors()
         if error_msg:
             message = error_msg.message if isinstance(error_msg, ApiResponseMessage) else str(error_msg)
+            fm = self.first_message
             raise DhenaraAPIError(
                 message=message,
-                status_code=self.first_message.status_code or ApiResponseMessageStatusCode.FAIL_SERVER_ERROR,
+                status_code=(
+                    fm.status_code
+                    if (fm is not None and fm.status_code is not None)
+                    else ApiResponseMessageStatusCode.FAIL_SERVER_ERROR
+                ),
                 response={},
             )

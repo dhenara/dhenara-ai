@@ -79,6 +79,8 @@ class ResourceConfigItem(BaseModel):
     @model_validator(mode="after")
     def validate_exclusive_fields(self) -> "ResourceConfigItem":
         """Validates mutually exclusive fields and query structure."""
+        if self.query is None:
+            return self
         # Validate query keys based on model type
         for key in self.query.keys():
             allowed_fields = ResourceQueryMapping.get_allowed_fields(self.item_type)

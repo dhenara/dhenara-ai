@@ -52,6 +52,10 @@ class AnthropicChat(AnthropicClientBase):
         if not self._client:
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
 
+        formatter = self.formatter
+        if formatter is None:
+            raise RuntimeError("Formatter not initialized")
+
         if self._input_validation_pending:
             raise ValueError("inputs must be validated with validate_inputs() before api calls")
 
@@ -71,7 +75,7 @@ class AnthropicChat(AnthropicClientBase):
         # Add previous messages and current prompt
         if messages is not None:
             # Convert MessageItem objects to Anthropic format
-            formatted_messages = self.formatter.format_messages(
+            formatted_messages = formatter.format_messages(
                 messages=messages,
                 model_endpoint=self.model_endpoint,
             )
@@ -110,13 +114,15 @@ class AnthropicChat(AnthropicClientBase):
 
         # ---  Tools ---
         if self.config.tools:
-            chat_args["tools"] = self.formatter.format_tools(
+            tools_formatted = formatter.format_tools(
                 tools=self.config.tools,
                 model_endpoint=self.model_endpoint,
             )
+            if tools_formatted:
+                chat_args["tools"] = tools_formatted
 
         if self.config.tool_choice:
-            chat_args["tool_choice"] = self.formatter.format_tool_choice(
+            chat_args["tool_choice"] = formatter.format_tool_choice(
                 tool_choice=self.config.tool_choice,
                 model_endpoint=self.model_endpoint,
             )
@@ -125,11 +131,13 @@ class AnthropicChat(AnthropicClientBase):
         # Anthropic uses the tool system for structured output
         if self.config.structured_output:
             # For Anthropic, we need to set up tool calling
-            if "tools" not in chat_args:
-                chat_args["tools"] = []
+            existing_tools = chat_args.get("tools")
+            if not isinstance(existing_tools, list):
+                existing_tools = []
+            chat_args["tools"] = existing_tools
 
             # Add structured output as a tool
-            structured_tool = self.formatter.format_structured_output(
+            structured_tool = formatter.format_structured_output(
                 structured_output=self.config.structured_output,
                 model_endpoint=self.model_endpoint,
             )
@@ -164,7 +172,10 @@ class AnthropicChat(AnthropicClientBase):
         api_call_params: dict,
     ) -> Message:
         chat_args = api_call_params["chat_args"]
-        response = self._client.messages.create(**chat_args)
+        client = self._client
+        if client is None:
+            raise RuntimeError("Client not initialized. Use with 'async with' context manager")
+        response = client.messages.create(**chat_args)
         return response
 
     async def do_api_call_async(
@@ -172,7 +183,10 @@ class AnthropicChat(AnthropicClientBase):
         api_call_params: dict,
     ) -> Message:
         chat_args = api_call_params["chat_args"]
-        response = await self._client.messages.create(**chat_args)
+        client = self._client
+        if client is None:
+            raise RuntimeError("Client not initialized. Use with 'async with' context manager")
+        response = await client.messages.create(**chat_args)
         return response
 
     def do_streaming_api_call_sync(
@@ -181,11 +195,15 @@ class AnthropicChat(AnthropicClientBase):
     ) -> Generator[MessageStreamEvent]:
         chat_args = api_call_params["chat_args"]
 
+        client = self._client
+        if client is None:
+            raise RuntimeError("Client not initialized. Use with 'async with' context manager")
+
         def _wrapper() -> Generator[MessageStreamEvent]:
             # Use SDK stream context to access final aggregated message
             _args = dict(chat_args)
             _args.pop("stream", None)
-            with self._client.messages.stream(**_args) as stream:
+            with client.messages.stream(**_args) as stream:
                 yield from stream
                 try:
                     # Get native final message and prefer it for finalization
@@ -203,11 +221,15 @@ class AnthropicChat(AnthropicClientBase):
     ) -> AsyncGenerator[MessageStreamEvent]:
         chat_args = api_call_params["chat_args"]
 
+        client = self._client
+        if client is None:
+            raise RuntimeError("Client not initialized. Use with 'async with' context manager")
+
         async def _awrapper() -> AsyncGenerator[MessageStreamEvent]:
             # Use SDK async stream context to access final aggregated message
             _args = dict(chat_args)
             _args.pop("stream", None)
-            async with self._client.messages.stream(**_args) as stream:
+            async with client.messages.stream(**_args) as stream:
                 async for event in stream:
                     yield event
                 try:
@@ -224,22 +246,28 @@ class AnthropicChat(AnthropicClientBase):
         Stores both the provider-native payload (for dai_provider_response.json)
         and the normalized DAI ChatResponse (for dai_response.json via StreamingManager).
         """
+        sm = self.streaming_manager
+        if sm is None:
+            raise RuntimeError("Streaming manager not initialized")
+
         # Store native SDK payload for diagnostics and provenance
         try:
-            self.streaming_manager.native_final_response_sdk = (
-                final_msg.model_dump() if hasattr(final_msg, "model_dump") else None
-            )
+            sm.native_final_response_sdk = final_msg.model_dump() if hasattr(final_msg, "model_dump") else None
         except Exception:
-            self.streaming_manager.native_final_response_sdk = None
+            sm.native_final_response_sdk = None
 
         # Parse to our canonical ChatResponse (includes provider_response for artifacts writer)
-        self.streaming_manager.native_final_response_dai = self.parse_response(final_msg)
+        sm.native_final_response_dai = self.parse_response(final_msg)
 
     def parse_stream_chunk(
         self,
         chunk: MessageStreamEvent,
     ) -> StreamingChatResponse | SSEErrorResponse | list[StreamingChatResponse | SSEErrorResponse] | None:
         """Handle streaming response with progress tracking and final response"""
+
+        sm = self.streaming_manager
+        if sm is None:
+            raise RuntimeError("Streaming manager not initialized")
 
         processed_chunks = []
 
@@ -248,7 +276,7 @@ class AnthropicChat(AnthropicClientBase):
             message = chunk.message
 
             # Initialize message metadata
-            self.streaming_manager.message_metadata = {
+            sm.message_metadata = {
                 "id": message.id,
                 "model": message.model,
                 "role": message.role,
@@ -266,19 +294,22 @@ class AnthropicChat(AnthropicClientBase):
                     prompt_tokens=_usage.input_tokens,
                     completion_tokens=_usage.output_tokens,
                 )
-                self.streaming_manager.update_usage(usage)
+                sm.update_usage(usage)
 
             # Track active tool_use block indices for correct delta routing
-            if not hasattr(self.streaming_manager, "anthropic_tool_use_indices"):
-                self.streaming_manager.anthropic_tool_use_indices = set()
+            if not hasattr(sm, "anthropic_tool_use_indices"):
+                sm.anthropic_tool_use_indices = set()
 
         elif isinstance(chunk, RawContentBlockStartEvent):
+            mm = sm.message_metadata
+            if not isinstance(mm, dict):
+                return None
             block_type = chunk.content_block.type
             if block_type == "redacted_thinking":
                 content_deltas = [
                     ChatResponseReasoningContentItem(
                         index=chunk.index,
-                        role=self.streaming_manager.message_metadata["role"],
+                        role=mm.get("role"),
                         metadata={
                             "redacted_thinking_data": getattr(chunk.content_block, "data", None),
                         },
@@ -287,15 +318,15 @@ class AnthropicChat(AnthropicClientBase):
 
                 choice_deltas = [
                     ChatResponseChoiceDelta(
-                        index=self.streaming_manager.message_metadata["index"],
+                        index=mm.get("index"),
                         content_deltas=content_deltas,
                         metadata={},
                     )
                 ]
 
-                response_chunk = self.streaming_manager.update(choice_deltas=choice_deltas)
+                response_chunk = sm.update(choice_deltas=choice_deltas)
                 stream_response = StreamingChatResponse(
-                    id=self.streaming_manager.message_metadata["id"],
+                    id=mm.get("id"),
                     data=response_chunk,
                 )
 
@@ -308,14 +339,14 @@ class AnthropicChat(AnthropicClientBase):
                 tool_name = getattr(chunk.content_block, "name", None)
                 # Remember this index as a tool_use block for subsequent deltas
                 try:
-                    self.streaming_manager.anthropic_tool_use_indices.add(chunk.index)
+                    sm.anthropic_tool_use_indices.add(chunk.index)
                 except Exception:
                     pass
 
                 content_deltas = [
                     ChatResponseToolCallContentItemDelta(
                         index=chunk.index,
-                        role=self.streaming_manager.message_metadata["role"],
+                        role=mm.get("role"),
                         tool_call=ChatResponseToolCall(
                             call_id=tool_id,
                             id=None,
@@ -328,14 +359,14 @@ class AnthropicChat(AnthropicClientBase):
 
                 choice_deltas = [
                     ChatResponseChoiceDelta(
-                        index=self.streaming_manager.message_metadata["index"],
+                        index=mm.get("index"),
                         content_deltas=content_deltas,
                         metadata={},
                     )
                 ]
-                response_chunk = self.streaming_manager.update(choice_deltas=choice_deltas)
+                response_chunk = sm.update(choice_deltas=choice_deltas)
                 stream_response = StreamingChatResponse(
-                    id=self.streaming_manager.message_metadata["id"],
+                    id=mm.get("id"),
                     data=response_chunk,
                 )
                 processed_chunks.append(stream_response)
@@ -343,10 +374,13 @@ class AnthropicChat(AnthropicClientBase):
                 logger.debug(f"anthropic: Unhandled content_block_type {block_type}")
 
         elif isinstance(chunk, RawContentBlockDeltaEvent):
+            mm = sm.message_metadata
+            if not isinstance(mm, dict):
+                return None
             # Tool use arguments typically stream as input_json deltas; detect by tracked indices
             is_tool_use = False
             try:
-                is_tool_use = chunk.index in getattr(self.streaming_manager, "anthropic_tool_use_indices", set())
+                is_tool_use = chunk.index in getattr(sm, "anthropic_tool_use_indices", set())
             except Exception:
                 is_tool_use = False
             if is_tool_use:
@@ -369,7 +403,7 @@ class AnthropicChat(AnthropicClientBase):
                 content_deltas = [
                     ChatResponseToolCallContentItemDelta(
                         index=chunk.index,
-                        role=self.streaming_manager.message_metadata["role"],
+                        role=mm.get("role"),
                         arguments_delta=arguments_delta,
                         metadata={"tool_use_args_delta": True},
                     )
@@ -378,77 +412,85 @@ class AnthropicChat(AnthropicClientBase):
                 content_deltas = [
                     self.process_content_item_delta(
                         index=chunk.index,
-                        role=self.streaming_manager.message_metadata["role"],
+                        role=mm.get("role"),
                         delta=chunk.delta,
                     )
                 ]
 
             choice_deltas = [
                 ChatResponseChoiceDelta(
-                    index=self.streaming_manager.message_metadata["index"],
+                    index=mm.get("index"),
                     content_deltas=content_deltas,
                     metadata={},
                 )
             ]
-            response_chunk = self.streaming_manager.update(choice_deltas=choice_deltas)
+            response_chunk = sm.update(choice_deltas=choice_deltas)
             stream_response = StreamingChatResponse(
-                id=self.streaming_manager.message_metadata["id"],
+                id=mm.get("id"),
                 data=response_chunk,
             )
             processed_chunks.append(stream_response)
         elif isinstance(chunk, RawContentBlockStopEvent):
+            mm = sm.message_metadata
+            if not isinstance(mm, dict):
+                return None
             # For tool_use, emit a finalize delta to parse accumulated arguments buffer
             finalize_tool = False
             try:
-                finalize_tool = chunk.index in getattr(self.streaming_manager, "anthropic_tool_use_indices", set())
+                finalize_tool = chunk.index in getattr(sm, "anthropic_tool_use_indices", set())
             except Exception:
                 finalize_tool = False
             if finalize_tool:
                 content_deltas = [
                     ChatResponseToolCallContentItemDelta(
                         index=chunk.index,
-                        role=self.streaming_manager.message_metadata["role"],
+                        role=mm.get("role"),
                         metadata={"finalize_tool_call": True},
                     )
                 ]
                 choice_deltas = [
                     ChatResponseChoiceDelta(
-                        index=self.streaming_manager.message_metadata["index"],
+                        index=mm.get("index"),
                         content_deltas=content_deltas,
                         metadata={},
                     )
                 ]
-                response_chunk = self.streaming_manager.update(choice_deltas=choice_deltas)
+                response_chunk = sm.update(choice_deltas=choice_deltas)
                 stream_response = StreamingChatResponse(
-                    id=self.streaming_manager.message_metadata["id"],
+                    id=mm.get("id"),
                     data=response_chunk,
                 )
                 processed_chunks.append(stream_response)
                 # Clear the index tracking for this block
                 try:
-                    self.streaming_manager.anthropic_tool_use_indices.discard(chunk.index)
+                    sm.anthropic_tool_use_indices.discard(chunk.index)
                 except Exception:
                     pass
         elif isinstance(chunk, RawMessageDeltaEvent):
+            mm = sm.message_metadata
+            if not isinstance(mm, dict):
+                return None
             # Update output tokens
-            self.streaming_manager.usage.completion_tokens += chunk.usage.output_tokens
-            self.streaming_manager.usage.total_tokens = (
-                self.streaming_manager.usage.prompt_tokens + self.streaming_manager.usage.completion_tokens
-            )
+            usage = sm.usage
+            if usage is None:
+                usage = ChatResponseUsage(total_tokens=0, prompt_tokens=0, completion_tokens=0)
+                sm.update_usage(usage)
+            usage.completion_tokens += chunk.usage.output_tokens
+            usage.total_tokens = usage.prompt_tokens + usage.completion_tokens
 
             # Update choice metatdata
             choice_deltas = [
                 ChatResponseChoiceDelta(
-                    index=self.streaming_manager.message_metadata["index"],
+                    index=mm.get("index"),
                     finish_reason=chunk.delta.stop_reason,
                     stop_sequence=chunk.delta.stop_sequence,
                     content_deltas=[],
                     metadata={},
                 )
             ]
-            response_chunk = self.streaming_manager.update(choice_deltas=choice_deltas)
+            response_chunk = sm.update(choice_deltas=choice_deltas)
             stream_response = StreamingChatResponse(
-                id=self.streaming_manager.message_metadata["id"],
+                id=mm.get("id"),
                 data=response_chunk,
             )
             processed_chunks.append(stream_response)

@@ -49,6 +49,8 @@ class OpenAIFormatter(BaseFormatter):
         files: list[GenericFile] | None = None,
         max_words_file: int | None = None,
     ) -> dict[str, Any] | str:
+        if model_endpoint is None:
+            raise ValueError("convert_prompt: model_endpoint is required")
         # Map Dhenara formats to provider format
         file_contents: list[dict[str, Any]] | str | None = None
         if files:
@@ -85,6 +87,8 @@ class OpenAIFormatter(BaseFormatter):
         formatted_prompt: FormattedPrompt,
         model_endpoint: AIModelEndpoint | None = None,
     ) -> dict[str, Any]:
+        if model_endpoint is None:
+            raise ValueError("convert_instruction_prompt: model_endpoint is required")
         # For Responses API, instructions are just text
         role = cls.role_map.get(formatted_prompt.role)
         return {"role": role, "content": formatted_prompt.text}
@@ -96,6 +100,8 @@ class OpenAIFormatter(BaseFormatter):
         model_endpoint: AIModelEndpoint | None = None,
         max_words: int | None = None,
     ) -> list[dict[str, Any]] | str:
+        if model_endpoint is None:
+            raise ValueError("convert_files_to_provider_content: model_endpoint is required")
         if model_endpoint.ai_model.functional_type == AIModelFunctionalTypeEnum.IMAGE_GENERATION:
             return cls._convert_files_for_image_models(
                 files=files,

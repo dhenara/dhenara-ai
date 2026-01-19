@@ -903,6 +903,17 @@ class AIModelProviderClientBase(ABC):
             return response.model_dump()
         elif isinstance(response, dict):
             return response
+
+        # Some provider SDK objects expose `model_dump()` but are not Pydantic BaseModel instances
+        # (or may be shimmed in tests). Prefer using it when present.
+        model_dump = getattr(response, "model_dump", None)
+        if callable(model_dump):
+            try:
+                dumped = model_dump()
+                if isinstance(dumped, dict):
+                    return dumped
+            except Exception:
+                pass
         return None
 
     @abstractmethod

@@ -75,6 +75,10 @@ class OpenAIResponses(OpenAIClientBase):
         if not self._client:
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
 
+        formatter = self.formatter
+        if formatter is None:
+            raise RuntimeError("Formatter not initialized")
+
         if self._input_validation_pending:
             raise ValueError("inputs must be validated with `self.validate_inputs()` before api calls")
 
@@ -96,7 +100,7 @@ class OpenAIResponses(OpenAIClientBase):
         }
         if instructions:
             # Instruction at this point are in Dhenara format
-            instructions_text = instructions.get("content")
+            instructions_text = instructions.get("content") if isinstance(instructions, dict) else None
             args["instructions"] = instructions_text
 
         # Max tokens (Responses uses max_output_tokens)
@@ -146,7 +150,7 @@ class OpenAIResponses(OpenAIClientBase):
             # Use Responses-specific tool schema (top-level name)
             tools_formatted = None
             try:
-                tools_formatted = self.formatter.format_tools(
+                tools_formatted = formatter.format_tools(
                     tools=self.config.tools,
                     model_endpoint=self.model_endpoint,
                 )
@@ -156,7 +160,7 @@ class OpenAIResponses(OpenAIClientBase):
             if tools_formatted:
                 args["tools"] = tools_formatted
         if self.config.tool_choice:
-            args["tool_choice"] = self.formatter.format_tool_choice(
+            args["tool_choice"] = formatter.format_tool_choice(
                 tool_choice=self.config.tool_choice,
                 model_endpoint=self.model_endpoint,
             )
@@ -177,7 +181,7 @@ class OpenAIResponses(OpenAIClientBase):
 
             # Always use JSON schema via text.format for structured output.
             # This avoids SDK-specific pydantic integration differences and lets us enforce strict schemas.
-            schema_dict = self.formatter.convert_structured_output(
+            schema_dict = formatter.convert_structured_output(
                 structured_output=self.config.structured_output,
                 model_endpoint=self.model_endpoint,
             )
@@ -219,12 +223,15 @@ class OpenAIResponses(OpenAIClientBase):
         api_call_params: dict,
     ) -> object:
         args = dict(api_call_params["response_args"])
+        client = self._client
+        if client is None:
+            raise RuntimeError("Client not initialized. Use with 'async with' context manager")
         if self.model_endpoint.api.provider == AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
             raise ValueError("OpenAIResponses doens't supports AIModelAPIProviderEnum.MICROSOFT_AZURE_AI in Phase 1")
         else:
             # Use create() for both streaming and non-streaming.
             # We always pass text.format when structured output is requested.
-            response = self._client.responses.create(**args)
+            response = client.responses.create(**args)
         return response
 
     async def do_api_call_async(
@@ -232,12 +239,15 @@ class OpenAIResponses(OpenAIClientBase):
         api_call_params: dict,
     ) -> object:
         args = dict(api_call_params["response_args"])
+        client = self._client
+        if client is None:
+            raise RuntimeError("Client not initialized. Use with 'async with' context manager")
         if self.model_endpoint.api.provider == AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
             raise ValueError("OpenAIResponses doens't supports AIModelAPIProviderEnum.MICROSOFT_AZURE_AI in Phase 1")
         else:
             # Use create() for both streaming and non-streaming.
             # We always pass text.format when structured output is requested.
-            response = await self._client.responses.create(**args)
+            response = await client.responses.create(**args)
         return response
 
     def do_streaming_api_call_sync(
@@ -245,11 +255,14 @@ class OpenAIResponses(OpenAIClientBase):
         api_call_params,
     ) -> Iterator[object]:
         args = dict(api_call_params["response_args"])
+        client = self._client
+        if client is None:
+            raise RuntimeError("Client not initialized. Use with 'async with' context manager")
         if self.model_endpoint.api.provider == AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
             raise ValueError("OpenAIResponses doens't supports AIModelAPIProviderEnum.MICROSOFT_AZURE_AI in Phase 1")
         else:
             # Never use parse() for streaming calls; rely on text-based fallback
-            stream = self._client.responses.create(**args)
+            stream = client.responses.create(**args)
 
         return stream
 
@@ -258,11 +271,14 @@ class OpenAIResponses(OpenAIClientBase):
         api_call_params,
     ) -> AsyncIterator[object]:
         args = dict(api_call_params["response_args"])
+        client = self._client
+        if client is None:
+            raise RuntimeError("Client not initialized. Use with 'async with' context manager")
         if self.model_endpoint.api.provider == AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
             raise ValueError("OpenAIResponses doens't supports AIModelAPIProviderEnum.MICROSOFT_AZURE_AI in Phase 1")
         else:
             # Never use parse() for streaming calls; rely on text-based fallback
-            stream = await self._client.responses.create(**args)
+            stream = await client.responses.create(**args)
 
         return stream
 
@@ -395,11 +411,15 @@ class OpenAIResponses(OpenAIClientBase):
         Returns a list of StreamingChatResponse (zero or more), a list containing SSEErrorResponse
         for error events, or None for ignorable events.
         """
+        sm = self.streaming_manager
+        if sm is None:
+            raise RuntimeError("Streaming manager not initialized")
+
         processed: list[StreamingChatResponse] = []
 
         # Provider metadata (grab once)
-        if not self.streaming_manager.provider_metadata:
-            self.streaming_manager.provider_metadata = {
+        if not sm.provider_metadata:
+            sm.provider_metadata = {
                 "id": getattr(chunk, "id", None),
                 "created": str(getattr(chunk, "created", "")),
                 "object": getattr(chunk, "object", None),
@@ -420,7 +440,7 @@ class OpenAIResponses(OpenAIClientBase):
                     or getattr(usage, "output_tokens", None),
                     reasoning_tokens=reasoning_tokens,
                 )
-                self.streaming_manager.update_usage(usage_obj)
+                sm.update_usage(usage_obj)
             except Exception as _e:
                 logger.warning(f"oai_stream_chunk: failed usage parse: {_e}")
 
@@ -440,10 +460,10 @@ class OpenAIResponses(OpenAIClientBase):
                 # Check if we have a pending message ID for this output_index
                 message_id = None
                 message_contents = None
-                if hasattr(self.streaming_manager, "pending_message_ids"):
-                    message_id = self.streaming_manager.pending_message_ids.get(output_index or 0)
-                if hasattr(self.streaming_manager, "pending_message_content"):
-                    message_contents = self.streaming_manager.pending_message_content.get(output_index or 0)
+                if hasattr(sm, "pending_message_ids"):
+                    message_id = sm.pending_message_ids.get(output_index or 0)
+                if hasattr(sm, "pending_message_content"):
+                    message_contents = sm.pending_message_content.get(output_index or 0)
 
                 content_delta = ChatResponseTextContentItemDelta(
                     index=0,
@@ -460,7 +480,7 @@ class OpenAIResponses(OpenAIClientBase):
                     content_deltas=[content_delta],
                     metadata={},
                 )
-                response_chunk = self.streaming_manager.update(choice_deltas=[choice_delta])
+                response_chunk = sm.update(choice_deltas=[choice_delta])
                 processed.append(StreamingChatResponse(id=getattr(chunk, "id", None), data=response_chunk))
 
         # 2) Reasoning deltas
@@ -472,8 +492,8 @@ class OpenAIResponses(OpenAIClientBase):
             output_index = getattr(chunk, "output_index", None)
             if delta_text:
                 # Use captured item_id if available, or fall back to chunk's item_id
-                if not item_id and hasattr(self.streaming_manager, "oai_pending_reasoning_ids"):
-                    item_id = self.streaming_manager.oai_pending_reasoning_ids.get(output_index or 0)
+                if not item_id and hasattr(sm, "oai_pending_reasoning_ids"):
+                    item_id = sm.oai_pending_reasoning_ids.get(output_index or 0)
                 content_delta = ChatResponseReasoningContentItemDelta(
                     index=0,
                     role="assistant",
@@ -489,7 +509,7 @@ class OpenAIResponses(OpenAIClientBase):
                     content_deltas=[content_delta],
                     metadata={},
                 )
-                response_chunk = self.streaming_manager.update(choice_deltas=[choice_delta])
+                response_chunk = sm.update(choice_deltas=[choice_delta])
                 processed.append(StreamingChatResponse(id=getattr(chunk, "id", None), data=response_chunk))
 
         # Reasoning summary delta (condensed reasoning for o3-mini)
@@ -500,8 +520,8 @@ class OpenAIResponses(OpenAIClientBase):
             output_index = getattr(chunk, "output_index", None)
             if delta_text:
                 # Use captured item_id if available
-                if not item_id and hasattr(self.streaming_manager, "oai_pending_reasoning_ids"):
-                    item_id = self.streaming_manager.oai_pending_reasoning_ids.get(output_index or 0)
+                if not item_id and hasattr(sm, "oai_pending_reasoning_ids"):
+                    item_id = sm.oai_pending_reasoning_ids.get(output_index or 0)
                 content_delta = ChatResponseReasoningContentItemDelta(
                     index=0,
                     role="assistant",
@@ -517,7 +537,7 @@ class OpenAIResponses(OpenAIClientBase):
                     content_deltas=[content_delta],
                     metadata={},
                 )
-                response_chunk = self.streaming_manager.update(choice_deltas=[choice_delta])
+                response_chunk = sm.update(choice_deltas=[choice_delta])
                 processed.append(StreamingChatResponse(id=getattr(chunk, "id", None), data=response_chunk))
 
         # 3) Tool call streaming (name + arguments)
@@ -527,8 +547,8 @@ class OpenAIResponses(OpenAIClientBase):
             output_index = getattr(chunk, "output_index", None)
             # Pass along any known tool call id/name captured earlier for this output index
             meta: dict = {}
-            if hasattr(self.streaming_manager, "pending_tool_ids"):
-                _ids = self.streaming_manager.pending_tool_ids.get(output_index or 0)
+            if hasattr(sm, "pending_tool_ids"):
+                _ids = sm.pending_tool_ids.get(output_index or 0)
                 if _ids:
                     meta.update(_ids)
             if delta_text:
@@ -545,7 +565,7 @@ class OpenAIResponses(OpenAIClientBase):
                     content_deltas=[content_delta],
                     metadata={},
                 )
-                response_chunk = self.streaming_manager.update(choice_deltas=[choice_delta])
+                response_chunk = sm.update(choice_deltas=[choice_delta])
                 processed.append(StreamingChatResponse(id=getattr(chunk, "id", None), data=response_chunk))
 
         elif event_type == "response.function_call.name.delta":
@@ -553,8 +573,8 @@ class OpenAIResponses(OpenAIClientBase):
             name_piece = getattr(chunk, "delta", None)
             output_index = getattr(chunk, "output_index", None)
             meta: dict = {"tool_name_delta": name_piece, "name": name_piece}
-            if hasattr(self.streaming_manager, "pending_tool_ids"):
-                _ids = self.streaming_manager.pending_tool_ids.get(output_index or 0)
+            if hasattr(sm, "pending_tool_ids"):
+                _ids = sm.pending_tool_ids.get(output_index or 0)
                 if _ids:
                     meta.update(_ids)
             if name_piece:
@@ -571,7 +591,7 @@ class OpenAIResponses(OpenAIClientBase):
                     content_deltas=[content_delta],
                     metadata={},
                 )
-                response_chunk = self.streaming_manager.update(choice_deltas=[choice_delta])
+                response_chunk = sm.update(choice_deltas=[choice_delta])
                 processed.append(StreamingChatResponse(id=getattr(chunk, "id", None), data=response_chunk))
 
         elif event_type == "response.function_call_arguments.done":
@@ -606,7 +626,7 @@ class OpenAIResponses(OpenAIClientBase):
                 content_deltas=[content_delta],
                 metadata={},
             )
-            response_chunk = self.streaming_manager.update(choice_deltas=[choice_delta])
+            response_chunk = sm.update(choice_deltas=[choice_delta])
             processed.append(StreamingChatResponse(id=getattr(chunk, "id", None), data=response_chunk))
 
         # 4) Lifecycle / markers
@@ -622,15 +642,15 @@ class OpenAIResponses(OpenAIClientBase):
                 output_index = getattr(chunk, "output_index", None)
                 if item_type == "message" and item_id:
                     # Store message ID in streaming manager for later retrieval
-                    if not hasattr(self.streaming_manager, "pending_message_ids"):
-                        self.streaming_manager.pending_message_ids = {}
-                    self.streaming_manager.pending_message_ids[output_index or 0] = item_id
+                    if not hasattr(sm, "pending_message_ids"):
+                        sm.pending_message_ids = {}
+                    sm.pending_message_ids[output_index or 0] = item_id
 
                     # Also capture the content array structure if available
                     content = getattr(item, "content", None)
                     if content:
-                        if not hasattr(self.streaming_manager, "pending_message_content"):
-                            self.streaming_manager.pending_message_content = {}
+                        if not hasattr(sm, "pending_message_content"):
+                            sm.pending_message_content = {}
                         # Convert to dicts for storage
                         content_array = []
                         for part in content:
@@ -638,12 +658,12 @@ class OpenAIResponses(OpenAIClientBase):
                                 content_array.append(part.model_dump())
                             elif isinstance(part, dict):
                                 content_array.append(part)
-                        self.streaming_manager.pending_message_content[output_index or 0] = content_array
+                        sm.pending_message_content[output_index or 0] = content_array
                 elif item_type == "reasoning" and item_id:
                     # Store reasoning ID for potential association with reasoning deltas
-                    if not hasattr(self.streaming_manager, "oai_pending_reasoning_ids"):
-                        self.streaming_manager.oai_pending_reasoning_ids = {}
-                    self.streaming_manager.oai_pending_reasoning_ids[output_index or 0] = item_id
+                    if not hasattr(sm, "oai_pending_reasoning_ids"):
+                        sm.oai_pending_reasoning_ids = {}
+                    sm.oai_pending_reasoning_ids[output_index or 0] = item_id
 
                     # CRITICAL FIX: Initialize reasoning content item when reasoning output_item is added
                     # Without this, reasoning deltas arrive but have no content item to attach to
@@ -663,16 +683,16 @@ class OpenAIResponses(OpenAIClientBase):
                         content_deltas=[content_delta],
                         metadata={},
                     )
-                    response_chunk = self.streaming_manager.update(choice_deltas=[choice_delta])
+                    response_chunk = sm.update(choice_deltas=[choice_delta])
                     processed.append(StreamingChatResponse(id=getattr(chunk, "id", None), data=response_chunk))
                 elif item_type in ("function_call", "custom_tool_call"):
                     # Store tool call identifiers (call_id may not be available yet)
-                    if not hasattr(self.streaming_manager, "pending_tool_ids"):
-                        self.streaming_manager.pending_tool_ids = {}
+                    if not hasattr(sm, "pending_tool_ids"):
+                        sm.pending_tool_ids = {}
                     # Some SDKs place name/call_id on item, else None
                     name = getattr(item, "name", None)
                     call_id = getattr(item, "call_id", None)
-                    self.streaming_manager.pending_tool_ids[output_index or 0] = {
+                    sm.pending_tool_ids[output_index or 0] = {
                         "item_id": item_id,
                         "call_id": call_id,
                         "name": name,
@@ -703,7 +723,7 @@ class OpenAIResponses(OpenAIClientBase):
                     content_deltas=[content_delta],
                     metadata={},
                 )
-                response_chunk = self.streaming_manager.update(choice_deltas=[choice_delta])
+                response_chunk = sm.update(choice_deltas=[choice_delta])
                 processed.append(StreamingChatResponse(id=getattr(chunk, "id", None), data=response_chunk))
 
         elif event_type == "response.refusal.delta":
@@ -722,7 +742,7 @@ class OpenAIResponses(OpenAIClientBase):
                     content_deltas=[content_delta],
                     metadata={},
                 )
-                response_chunk = self.streaming_manager.update(choice_deltas=[choice_delta])
+                response_chunk = sm.update(choice_deltas=[choice_delta])
                 processed.append(StreamingChatResponse(id=getattr(chunk, "id", None), data=response_chunk))
 
         elif event_type == "response.completed":
@@ -733,14 +753,14 @@ class OpenAIResponses(OpenAIClientBase):
                 if final_resp is not None:
                     # Convert provider-native response using existing parser
                     final_chat = self.parse_response(final_resp)
-                    self.streaming_manager.native_final_response_sdk = final_resp
-                    self.streaming_manager.native_final_response_dai = final_chat
+                    sm.native_final_response_sdk = final_resp
+                    sm.native_final_response_dai = final_chat
                 else:
                     logger.error("oai_stream_chunk: response.completed has no final response object")
             except Exception as _e:
                 logger.error(f"oai_stream_chunk: unable to attach final aggregated response: {_e}")
 
-            processed.append(self.streaming_manager.get_streaming_done_chunk())
+            processed.append(sm.get_streaming_done_chunk())
 
         # 5) Error
         elif event_type == "error":

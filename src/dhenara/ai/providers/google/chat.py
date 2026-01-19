@@ -69,6 +69,10 @@ class GoogleAIChat(GoogleAIClientBase):
         if not self._client:
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
 
+        formatter = self.formatter
+        if formatter is None:
+            raise RuntimeError("Formatter not initialized")
+
         if self._input_validation_pending:
             raise ValueError("inputs must be validated with `self.validate_inputs()` before api calls")
 
@@ -101,7 +105,7 @@ class GoogleAIChat(GoogleAIClientBase):
         # Add previous messages and current prompt
         if messages is not None:
             # Convert MessageItem objects to Google format
-            formatted_messages = self.formatter.format_messages(
+            formatted_messages = formatter.format_messages(
                 messages=messages,
                 model_endpoint=self.model_endpoint,
             )
@@ -117,7 +121,7 @@ class GoogleAIChat(GoogleAIClientBase):
             # NOTE: Google supports extra tools other than fns, so gather all fns together into function_declarations
             # --  _tools = [tool.to_google_format() for tool in self.config.tools]
             function_declarations = [
-                self.formatter.convert_function_definition(
+                formatter.convert_function_definition(
                     func_def=tool.function,
                     model_endpoint=self.model_endpoint,
                 )
@@ -131,7 +135,7 @@ class GoogleAIChat(GoogleAIClientBase):
             generate_config.tools = _tools
 
         if self.config.tool_choice:
-            _tool_config = self.formatter.format_tool_choice(
+            _tool_config = formatter.format_tool_choice(
                 tool_choice=self.config.tool_choice,
                 model_endpoint=self.model_endpoint,
             )
@@ -141,7 +145,7 @@ class GoogleAIChat(GoogleAIClientBase):
         # --- Structured Output ---
         if self.config.structured_output:
             generate_config.response_mime_type = "application/json"
-            generate_config.response_schema = self.formatter.format_structured_output(
+            generate_config.response_schema = formatter.format_structured_output(
                 structured_output=self.config.structured_output,
                 model_endpoint=self.model_endpoint,
             )
@@ -155,7 +159,10 @@ class GoogleAIChat(GoogleAIClientBase):
         self,
         api_call_params: dict,
     ) -> GenerateContentResponse:
-        response = self._client.models.generate_content(
+        client = self._client
+        if client is None:
+            raise RuntimeError("Client not initialized. Use with 'async with' context manager")
+        response = client.models.generate_content(
             model=self.model_name_in_api_calls,
             config=api_call_params["generate_config"],
             contents=api_call_params["contents"],
@@ -166,7 +173,10 @@ class GoogleAIChat(GoogleAIClientBase):
         self,
         api_call_params: dict,
     ) -> GenerateContentResponse:
-        response = await self._client.models.generate_content(
+        client = self._client
+        if client is None:
+            raise RuntimeError("Client not initialized. Use with 'async with' context manager")
+        response = await client.models.generate_content(
             model=self.model_name_in_api_calls,
             config=api_call_params["generate_config"],
             contents=api_call_params["contents"],
@@ -177,7 +187,10 @@ class GoogleAIChat(GoogleAIClientBase):
         self,
         api_call_params,
     ) -> AIModelCallResponse:
-        stream = self._client.models.generate_content_stream(
+        client = self._client
+        if client is None:
+            raise RuntimeError("Client not initialized. Use with 'async with' context manager")
+        stream = client.models.generate_content_stream(
             model=self.model_name_in_api_calls,
             config=api_call_params["generate_config"],
             contents=api_call_params["contents"],
@@ -188,7 +201,10 @@ class GoogleAIChat(GoogleAIClientBase):
         self,
         api_call_params,
     ) -> AIModelCallResponse:
-        stream = await self._client.models.generate_content_stream(
+        client = self._client
+        if client is None:
+            raise RuntimeError("Client not initialized. Use with 'async with' context manager")
+        stream = await client.models.generate_content_stream(
             model=self.model_name_in_api_calls,
             config=api_call_params["generate_config"],
             contents=api_call_params["contents"],
@@ -247,29 +263,36 @@ class GoogleAIChat(GoogleAIClientBase):
 
         processed_chunks = []
 
-        self.streaming_manager.provider_metadata = {}
+        sm = self.streaming_manager
+        if sm is None:
+            raise RuntimeError("Streaming manager not initialized")
+
+        sm.provider_metadata = {}
 
         # Process content
         if chunk.candidates:
             choice_deltas = []
+            last_finish_reason = None
             for candidate_index, candidate in enumerate(chunk.candidates):
+                last_finish_reason = getattr(candidate, "finish_reason", None)
                 content_deltas = []
-                for part_index, part in enumerate(candidate.content.parts or []):
+                content = getattr(candidate, "content", None)
+                if content is None:
+                    continue
+                parts = getattr(content, "parts", None) or []
+                role = getattr(content, "role", None)
+                for part_index, part in enumerate(parts):
                     content_deltas.append(
                         self.process_content_item_delta(
                             index=part_index,
-                            role=candidate.content.role,
+                            role=role,
                             delta=part,
                         )
                     )
 
                 # Serialize provider-native content for diagnostics (avoid odd keys)
                 try:
-                    provider_content = (
-                        candidate.content.model_dump()
-                        if hasattr(candidate.content, "model_dump")
-                        else str(candidate.content)
-                    )
+                    provider_content = content.model_dump() if hasattr(content, "model_dump") else str(content)
                 except Exception:
                     provider_content = None
 
@@ -286,7 +309,7 @@ class GoogleAIChat(GoogleAIClientBase):
                     )
                 )
 
-            response_chunk = self.streaming_manager.update(choice_deltas=choice_deltas)
+            response_chunk = sm.update(choice_deltas=choice_deltas)
             stream_response = StreamingChatResponse(
                 id=None,  # No 'id' from google
                 data=response_chunk,
@@ -295,11 +318,11 @@ class GoogleAIChat(GoogleAIClientBase):
             processed_chunks.append(stream_response)
 
             # Check if this is the final chunk
-            is_done = bool(candidate.finish_reason)
+            is_done = bool(last_finish_reason)
 
             if is_done:
                 usage = self._get_usage_from_provider_response(chunk)
-                self.streaming_manager.update_usage(usage)
+                sm.update_usage(usage)
 
                 # TODO: # Investigate if Google provides a final
                 # aggregated response natively either via fn or via chunks
@@ -311,23 +334,25 @@ class GoogleAIChat(GoogleAIClientBase):
         self,
         response: GenerateContentResponse,
     ) -> ChatResponseUsage:
-        candidates_tokens = response.usage_metadata.candidates_token_count or 0
+        usage_md = getattr(response, "usage_metadata", None)
+        if usage_md is None:
+            return ChatResponseUsage(total_tokens=0, prompt_tokens=0, completion_tokens=0)
+
+        candidates_tokens = getattr(usage_md, "candidates_token_count", 0) or 0
         thoughts_tokens = (
-            (response.usage_metadata.thoughts_token_count or 0)
-            if hasattr(response.usage_metadata, "thoughts_token_count")
-            else 0
+            (getattr(usage_md, "thoughts_token_count", 0) or 0) if hasattr(usage_md, "thoughts_token_count") else 0
         )
         tool_use_tokens = (
-            (response.usage_metadata.tool_use_prompt_token_count or 0)
-            if hasattr(response.usage_metadata, "tool_use_prompt_token_count")
+            (getattr(usage_md, "tool_use_prompt_token_count", 0) or 0)
+            if hasattr(usage_md, "tool_use_prompt_token_count")
             else 0
         )
 
         completion_tokens = candidates_tokens + thoughts_tokens + tool_use_tokens
 
         return ChatResponseUsage(
-            total_tokens=response.usage_metadata.total_token_count or 0,
-            prompt_tokens=response.usage_metadata.prompt_token_count or 0,
+            total_tokens=getattr(usage_md, "total_token_count", 0) or 0,
+            prompt_tokens=getattr(usage_md, "prompt_token_count", 0) or 0,
             completion_tokens=completion_tokens,
             reasoning_tokens=thoughts_tokens if thoughts_tokens > 0 else None,
         )
