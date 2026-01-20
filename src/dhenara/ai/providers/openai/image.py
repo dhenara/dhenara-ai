@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 class OpenAIImage(OpenAIClientBase):
     """OpenAI Image Generation Client"""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         # Additional params
         self.response_format = None
@@ -99,19 +99,19 @@ class OpenAIImage(OpenAIClientBase):
 
     def do_streaming_api_call_sync(
         self,
-        api_call_params,
+        api_call_params: dict[str, Any],
     ) -> Iterator[object]:
         raise ValueError("do_streaming_api_call_sync:  Streaming not supported for Image generation")
 
     async def do_streaming_api_call_async(
         self,
-        api_call_params,
+        api_call_params: dict[str, Any],
     ) -> AsyncIterator[object]:
         raise ValueError("do_streaming_api_call_async:  Streaming not supported for Image generation")
 
     def parse_stream_chunk(
         self,
-        chunk,
+        chunk: object,
     ) -> StreamingChatResponse | SSEErrorResponse | None:
         raise ValueError("parse_stream_chunk: Streaming not supported for Image generation")
 
@@ -132,9 +132,12 @@ class OpenAIImage(OpenAIClientBase):
 
     def parse_response(
         self,
-        response: OpenAIImagesResponse,
+        response: object,
     ) -> ImageResponse:
         """Parse OpenAI image response into standard format"""
+
+        if not isinstance(response, OpenAIImagesResponse):
+            raise TypeError(f"Unexpected response type for image response: {type(response)}")
 
         usage, usage_charge = self.get_usage_and_charge(response)
         usage_img = usage if isinstance(usage, ImageResponseUsage) else None

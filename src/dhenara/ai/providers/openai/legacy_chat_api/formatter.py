@@ -248,13 +248,13 @@ class OpenAIFormatterCHATAPI(BaseFormatter):
         model_endpoint: AIModelEndpoint | None = None,
     ) -> dict[str, Any]:
         """Convert FunctionDefinition to OpenAI format"""
-        res = {
+        res: dict[str, Any] = {
             "name": func_def.name,
             "parameters": cls.convert_function_parameters(func_def.parameters),
         }
-        # Only include description if present and non-empty
-        if getattr(func_def, "description", None):
-            res["description"] = func_def.description
+        desc = getattr(func_def, "description", None)
+        if isinstance(desc, str) and desc:
+            res["description"] = desc
         return res
 
     @classmethod
@@ -272,7 +272,7 @@ class OpenAIFormatterCHATAPI(BaseFormatter):
     @classmethod
     def convert_tool_choice(
         cls,
-        tool_choice: ToolChoice,
+        tool_choice: ToolChoice | None,
         model_endpoint: AIModelEndpoint | None = None,
     ) -> Any:
         """Convert ToolChoice to OpenAI format"""
@@ -340,7 +340,7 @@ class OpenAIFormatterCHATAPI(BaseFormatter):
         cls,
         message_item: MessageItem,
         model_endpoint: AIModelEndpoint | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> dict[str, Any] | list[dict[str, Any]]:
         """Convert a MessageItem to OpenAI message format.
 

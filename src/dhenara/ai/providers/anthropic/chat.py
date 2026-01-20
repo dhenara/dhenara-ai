@@ -97,7 +97,7 @@ class AnthropicChat(AnthropicClientBase):
                 messages_list.append(prompt)
 
         # Prepare API call arguments
-        chat_args = {
+        chat_args: dict[str, Any] = {
             "model": self.model_name_in_api_calls,
             "messages": messages_list,
             "stream": self.config.streaming,
@@ -110,8 +110,7 @@ class AnthropicChat(AnthropicClientBase):
             chat_args["metadata"] = {"user_id": user}
 
         max_output_tokens, max_reasoning_tokens = self.config.get_max_output_tokens(self.model_endpoint.ai_model)
-        if max_output_tokens is not None:
-            chat_args["max_tokens"] = max_output_tokens
+        chat_args["max_tokens"] = max_output_tokens
 
         if max_reasoning_tokens is not None:
             chat_args["thinking"] = {
@@ -202,7 +201,7 @@ class AnthropicChat(AnthropicClientBase):
 
     def do_streaming_api_call_sync(
         self,
-        api_call_params,
+        api_call_params: dict[str, Any],
     ) -> Generator[MessageStreamEvent]:
         chat_args = api_call_params["chat_args"]
 
@@ -228,7 +227,7 @@ class AnthropicChat(AnthropicClientBase):
 
     async def do_streaming_api_call_async(
         self,
-        api_call_params,
+        api_call_params: dict[str, Any],
     ) -> AsyncGenerator[MessageStreamEvent]:
         chat_args = api_call_params["chat_args"]
 
@@ -272,7 +271,7 @@ class AnthropicChat(AnthropicClientBase):
 
     def parse_stream_chunk(
         self,
-        chunk: MessageStreamEvent,
+        chunk: object,
     ) -> StreamingChatResponse | SSEErrorResponse | list[StreamingChatResponse | SSEErrorResponse] | None:
         """Handle streaming response with progress tracking and final response"""
 
@@ -313,8 +312,6 @@ class AnthropicChat(AnthropicClientBase):
 
         elif isinstance(chunk, RawContentBlockStartEvent):
             mm = sm.message_metadata
-            if not isinstance(mm, dict):
-                return None
             role = mm.get("role")
             if not isinstance(role, str):
                 raise ValueError("anthropic: Missing/invalid role in streaming metadata")
@@ -399,8 +396,6 @@ class AnthropicChat(AnthropicClientBase):
 
         elif isinstance(chunk, RawContentBlockDeltaEvent):
             mm = sm.message_metadata
-            if not isinstance(mm, dict):
-                return None
             role = mm.get("role")
             if not isinstance(role, str):
                 raise ValueError("anthropic: Missing/invalid role in streaming metadata")
@@ -465,8 +460,6 @@ class AnthropicChat(AnthropicClientBase):
             processed_chunks.append(stream_response)
         elif isinstance(chunk, RawContentBlockStopEvent):
             mm = sm.message_metadata
-            if not isinstance(mm, dict):
-                return None
             role = mm.get("role")
             if not isinstance(role, str):
                 raise ValueError("anthropic: Missing/invalid role in streaming metadata")
@@ -510,8 +503,6 @@ class AnthropicChat(AnthropicClientBase):
                     pass
         elif isinstance(chunk, RawMessageDeltaEvent):
             mm = sm.message_metadata
-            if not isinstance(mm, dict):
-                return None
             msg_id = mm.get("id")
             if not isinstance(msg_id, str):
                 raise ValueError("anthropic: Missing/invalid id in streaming metadata")
@@ -546,7 +537,7 @@ class AnthropicChat(AnthropicClientBase):
         elif isinstance(chunk, RawMessageStopEvent):
             pass
         else:
-            logger.debug(f"anthropic: Unhandled message type {chunk.type}")
+            logger.debug(f"anthropic: Unhandled message type {getattr(chunk, 'type', None)}")
 
         return processed_chunks
 
@@ -562,12 +553,14 @@ class AnthropicChat(AnthropicClientBase):
             completion_tokens=response.usage.output_tokens,
         )
 
-    def parse_response(self, response: Message) -> ChatResponse:
+    def parse_response(self, response: object) -> ChatResponse:
+        if not isinstance(response, Message):
+            raise TypeError(f"anthropic: parse_response expected Message, got {type(response)}")
         usage, usage_charge = self.get_usage_and_charge(response)
 
         if usage is not None and not isinstance(usage, ChatResponseUsage):
             raise TypeError(f"Unexpected usage type for chat response: {type(usage)}")
-        usage_chat = cast(ChatResponseUsage | None, usage)
+        usage_chat = usage
 
         return ChatResponse(
             model=response.model,
@@ -608,7 +601,7 @@ class AnthropicChat(AnthropicClientBase):
         role: str,
         content_item: ContentBlock,
     ) -> ChatResponseContentItem:
-        converted_items = AnthropicMessageConverter._content_block_to_items(
+        converted_items = AnthropicMessageConverter.content_block_to_items(
             content_block=content_item,
             index=index,
             role=role,
@@ -630,7 +623,7 @@ class AnthropicChat(AnthropicClientBase):
         self,
         index: int,
         role: str,
-        delta,
+        delta: object,
     ) -> ChatResponseContentItemDelta:
         if isinstance(delta, TextDelta):
             return ChatResponseTextContentItemDelta(

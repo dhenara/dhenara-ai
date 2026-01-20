@@ -188,8 +188,6 @@ class StreamingManager:
                         # Convert ChatResponseTextContentItem to ChatResponseStructuredOutputContentItem
                         if isinstance(content, ChatResponseTextContentItem):
                             raw_text = content.get_text()
-                            if raw_text is None:
-                                continue
 
                             # CRITICAL FIX: Only attempt to parse text that looks like JSON.
                             # With reasoning models, we may get multiple text items:
@@ -205,7 +203,7 @@ class StreamingManager:
                                 )
                                 continue
 
-                            parsed_data, error, post_processed = ChatResponseStructuredOutput._parse_and_validate(
+                            parsed_data, error, post_processed = ChatResponseStructuredOutput.parse_and_validate(
                                 raw_data=raw_text,
                                 config=self.structured_output_config,
                             )
@@ -333,8 +331,7 @@ class StreamingManager:
         if response_metadata:
             if self.response_metadata.provider_metadata is None:
                 self.response_metadata.provider_metadata = {}
-            if isinstance(self.response_metadata.provider_metadata, dict):
-                self.response_metadata.provider_metadata.update(response_metadata)
+            self.response_metadata.provider_metadata.update(response_metadata)
 
         # Update last token time
         self.progress.last_token_time = datetime_type.now()
@@ -368,29 +365,7 @@ class StreamingManager:
                         choice.contents = []
 
                     for content_delta in choice_delta.content_deltas:
-                        # Narrow delta to specific type for attribute access below
-                        if isinstance(content_delta, ChatResponseTextContentItemDelta):
-                            typed_delta: (
-                                ChatResponseTextContentItemDelta
-                                | ChatResponseReasoningContentItemDelta
-                                | ChatResponseToolCallContentItemDelta
-                                | ChatResponseGenericContentItemDelta
-                            ) = content_delta
-                        elif isinstance(content_delta, ChatResponseReasoningContentItemDelta):
-                            typed_delta = content_delta
-                        elif isinstance(content_delta, ChatResponseToolCallContentItemDelta):
-                            typed_delta = content_delta
-                        elif isinstance(content_delta, ChatResponseGenericContentItemDelta):
-                            typed_delta = content_delta
-                        else:
-                            # Fallback for unexpected delta types
-                            typed_delta = cast(
-                                ChatResponseTextContentItemDelta
-                                | ChatResponseReasoningContentItemDelta
-                                | ChatResponseToolCallContentItemDelta
-                                | ChatResponseGenericContentItemDelta,
-                                content_delta,
-                            )
+                        typed_delta = content_delta
 
                         # Find matching content by type and index, or create new
                         matching_content = None

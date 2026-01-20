@@ -3,7 +3,8 @@ import inspect
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Coroutine, Generator, Iterator, Sequence
-from typing import Any, Literal, cast, overload
+from types import TracebackType
+from typing import Any, Literal, TypedDict, cast, overload
 
 from pydantic import BaseModel as PydanticBaseModel
 
@@ -33,6 +34,16 @@ from dhenara.ai.utils.artifacts import ArtifactWriter
 logger = logging.getLogger(__name__)
 
 
+class _PyLogCaptureState(TypedDict):
+    handler: logging.Handler
+    buf: list[dict[str, Any]]
+    root_prev_level: int
+    level_value: int
+    artifact_root: str
+    combined_prefix: str
+    logger_overrides_prev: dict[str, dict[str, int | bool]]
+
+
 class AIModelProviderClientBase(ABC):
     """Base class for AI model provider handlers"""
 
@@ -50,12 +61,12 @@ class AIModelProviderClientBase(ABC):
         self.streaming_manager = None
         self.formatted_config = None
         # State for python log capture lifecycle (start -> stop)
-        self._pylog_cap = None
+        self._pylog_cap: _PyLogCaptureState | None = None
 
         if self.formatter is None:
             raise ValueError("Formatter is not set")
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "AIModelProviderClientBase":
         if self.is_async:
             if not self._initialized:
                 self._client = await self._setup_client_async()
@@ -64,7 +75,7 @@ class AIModelProviderClientBase(ABC):
             return self
         raise RuntimeError("Use 'with' for synchronous client")
 
-    def __enter__(self):
+    def __enter__(self) -> "AIModelProviderClientBase":
         if not self.is_async:
             if not self._initialized:
                 self._client = self._setup_client_sync()
@@ -73,14 +84,24 @@ class AIModelProviderClientBase(ABC):
             return self
         raise RuntimeError("Use 'async with' for asynchronous client")
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
         if self.is_async:
             await self._cleanup_async()
             # INFO: Don't close the client here, it will be managed by the provider client
             self._initialized = False
             self._initialized = False
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
         if not self.is_async:
             self._cleanup_sync()
             self._initialized = False
@@ -139,7 +160,7 @@ class AIModelProviderClientBase(ABC):
             raise NotImplementedError("_setup_client_async")
         raise RuntimeError("_setup_client_async called for sync client")
 
-    def _get_client_http_params(self, api=None) -> dict[str, Any]:
+    def _get_client_http_params(self, api: Any | None = None) -> dict[str, Any]:
         params = {}
         if self.config.timeout:
             params["timeout"] = self.config.timeout
@@ -289,7 +310,7 @@ class AIModelProviderClientBase(ABC):
             root_logger.addHandler(handler)
             # Set root to the more verbose of the two (lower numeric value)
             try:
-                root_logger.setLevel(min(root_prev_level if root_prev_level is not None else logging.INFO, level_value))
+                root_logger.setLevel(min(root_prev_level, level_value))
             except Exception:
                 root_logger.setLevel(level_value)
 
@@ -331,7 +352,7 @@ class AIModelProviderClientBase(ABC):
                 "buf": buf,
                 "root_prev_level": root_prev_level,
                 "level_value": level_value,
-                "artifact_root": artifact_root,
+                "artifact_root": str(artifact_root),
                 "combined_prefix": combined_prefix,
                 "logger_overrides_prev": overrides_prev,
             }
@@ -348,27 +369,24 @@ class AIModelProviderClientBase(ABC):
         if when in stop_events:
             state = self._pylog_cap
             # If not started, nothing to do
-            if not state:
+            if state is None:
                 return
             self._pylog_cap = None
             try:
                 root_logger = logging.getLogger()
-                handler = state.get("handler")
+                handler = state["handler"]
                 try:
                     root_logger.log(
-                        state.get("level_value", logging.INFO),
+                        state["level_value"],
                         "Python log capture stopped for prefix '%s'",
-                        state.get("combined_prefix"),
+                        state["combined_prefix"],
                     )
                 except Exception:
                     pass
-                if handler:
-                    root_logger.removeHandler(handler)
+                root_logger.removeHandler(handler)
                 # Restore previous root level
-                prev = state.get("root_prev_level")
-                if prev is not None:
-                    root_logger.setLevel(prev)
-                overrides_prev = state.get("logger_overrides_prev") or {}
+                root_logger.setLevel(state["root_prev_level"])
+                overrides_prev = state["logger_overrides_prev"]
                 for logger_name, prev_state in overrides_prev.items():
                     logger_obj = logging.getLogger(logger_name)
                     prev_level = prev_state.get("level")
@@ -381,14 +399,14 @@ class AIModelProviderClientBase(ABC):
                 pass
             # Persist JSONL rows
             try:
-                ar = state.get("artifact_root")
+                ar = state["artifact_root"]
                 if not ar:
                     return
                 ArtifactWriter.write_jsonl(
                     artifact_root=ar,
                     filename="dai_python_logs.jsonl",
-                    rows=state.get("buf") or [],
-                    prefix=state.get("combined_prefix"),
+                    rows=state["buf"],
+                    prefix=state["combined_prefix"],
                 )
             except Exception:
                 pass
@@ -676,17 +694,23 @@ class AIModelProviderClientBase(ABC):
                 messages=messages,
             )
 
-    def _get_ai_model_call_response(self, parsed_response, api_call_status):
+    def _get_ai_model_call_response(
+        self,
+        parsed_response: ChatResponse | ImageResponse | None,
+        api_call_status: ExternalApiCallStatus | None,
+    ) -> AIModelCallResponse:
         functional_type = self.model_endpoint.ai_model.functional_type
         if functional_type == AIModelFunctionalTypeEnum.TEXT_GENERATION:
+            chat_response = parsed_response if isinstance(parsed_response, ChatResponse) else None
             return AIModelCallResponse(
                 status=api_call_status,
-                chat_response=parsed_response,
+                chat_response=chat_response,
             )
         elif functional_type == AIModelFunctionalTypeEnum.IMAGE_GENERATION:
+            image_response = parsed_response if isinstance(parsed_response, ImageResponse) else None
             return AIModelCallResponse(
                 status=api_call_status,
-                image_response=parsed_response,
+                image_response=image_response,
             )
         else:
             raise ValueError(f"_get_ai_model_call_response: Unknown functional_type {functional_type}")
@@ -922,13 +946,13 @@ class AIModelProviderClientBase(ABC):
         pass
 
     @abstractmethod
-    def parse_response(self, response) -> ChatResponse | ImageResponse | None:
+    def parse_response(self, response: object) -> ChatResponse | ImageResponse | None:
         pass
 
     @abstractmethod
     def parse_stream_chunk(
         self,
-        chunk,
+        chunk: object,
     ) -> StreamingChatResponse | SSEErrorResponse | list[StreamingChatResponse | SSEErrorResponse] | None:
         pass
 
@@ -961,7 +985,7 @@ class AIModelProviderClientBase(ABC):
         context: Sequence[str | dict | Prompt] | None = None,
         instructions: list[str | dict | SystemInstruction] | None = None,
         messages: Sequence[MessageItem] | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> dict[str, Any] | None:
         """Format inputs into provider-specific formats"""
         try:
@@ -1052,8 +1076,8 @@ class AIModelProviderClientBase(ABC):
 
     def get_usage_and_charge(
         self,
-        response,
-        usage=None,
+        response: object,
+        usage: ChatResponseUsage | ImageResponseUsage | None = None,
     ) -> tuple[
         ChatResponseUsage | ImageResponseUsage | None,
         UsageCharge | None,
@@ -1156,16 +1180,10 @@ class AIModelProviderClientBase(ABC):
     ) -> ChatResponseGenericContentItemDelta | ChatResponseGenericContentItem:
         logger.debug(f"Unknown content item type {type(unknown_item)}")
 
-        item_dict = {
-            "index": index,
-            "role": role,
-            "metadata": {
-                "data": unknown_item.model_dump() if hasattr(unknown_item, "model_dump") else str(unknown_item),
-                "type": type(unknown_item),
-            },
+        metadata: dict[str, Any] = {
+            "data": unknown_item.model_dump() if hasattr(unknown_item, "model_dump") else str(unknown_item),
+            "type": type(unknown_item),
         }
-        return (
-            ChatResponseGenericContentItemDelta(**item_dict)
-            if streaming
-            else ChatResponseGenericContentItem(**item_dict)
-        )
+        if streaming:
+            return ChatResponseGenericContentItemDelta(index=index, role=role, metadata=metadata)
+        return ChatResponseGenericContentItem(index=index, role=role, metadata=metadata)

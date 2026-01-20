@@ -18,7 +18,6 @@ from dhenara.ai.types.genai.dhenara.request import (
     ToolDefinition,
 )
 from dhenara.ai.types.genai.dhenara.request.data import FormattedPrompt
-from dhenara.ai.types.genai.dhenara.response import ChatResponse
 from dhenara.ai.types.shared.file import FileFormatEnum, GenericFile, ProcessedFile
 
 logger = logging.getLogger(__name__)
@@ -147,7 +146,7 @@ class GoogleFormatter(BaseFormatter):
 
     # Tools & Structured output
     @classmethod
-    def _resolve_refs(cls, schema, root_schema):
+    def _resolve_refs(cls, schema: object, root_schema: dict[str, Any]) -> object:
         """Recursively resolve $ref pointers in schema"""
         if isinstance(schema, dict):
             # If this is a $ref, replace it with the referenced definition
@@ -175,7 +174,7 @@ class GoogleFormatter(BaseFormatter):
         return schema
 
     @classmethod
-    def _clean_schema_for_google(cls, schema):
+    def _clean_schema_for_google(cls, schema: object) -> object:
         """Remove Google-incompatible fields from schema"""
         if isinstance(schema, dict):
             # Remove additionalProperties: false
@@ -237,7 +236,7 @@ class GoogleFormatter(BaseFormatter):
         model_endpoint: AIModelEndpoint | None = None,
     ) -> dict[str, Any]:
         """Convert FunctionParameters to Google format (simple JSON Schema)."""
-        result = {
+        result: dict[str, Any] = {
             "type": "object",
             "properties": {name: cls.convert_function_parameter(param) for name, param in params.properties.items()},
         }
@@ -328,7 +327,7 @@ class GoogleFormatter(BaseFormatter):
         cls,
         message_item: MessageItem,
         model_endpoint: AIModelEndpoint | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> dict[str, Any] | list[dict[str, Any]]:
         """Convert a MessageItem to Google/Gemini message format.
 
@@ -387,13 +386,12 @@ class GoogleFormatter(BaseFormatter):
 
         # Case 3: ChatResponse (model response with all content items)
         # Delegate to message converter (single source of truth for ChatResponse conversions)
-        if isinstance(message_item, ChatResponse):
-            if model_endpoint is None:
-                raise ValueError("model_endpoint is required to convert ChatResponse to provider messages")
-            return GoogleMessageConverter.dai_response_to_provider_message(
-                dai_response=message_item,
-                model_endpoint=model_endpoint,
-            )
+        if model_endpoint is None:
+            raise ValueError("model_endpoint is required to convert ChatResponse to provider messages")
+        return GoogleMessageConverter.dai_response_to_provider_message(
+            dai_response=message_item,
+            model_endpoint=model_endpoint,
+        )
 
         # Should not reach here due to MessageItem type constraint
         raise ValueError(f"Unsupported message item type: {type(message_item)}")

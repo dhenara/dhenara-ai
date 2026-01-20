@@ -32,7 +32,7 @@ class BaseFormatter(ABC):
         cls,
         prompt: str | dict | Prompt,
         model_endpoint: AIModelEndpoint | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> dict[str, Any] | str:
         # First convert a prompt to Dhenara Prompt format
         if isinstance(prompt, str):
@@ -46,10 +46,8 @@ class BaseFormatter(ABC):
         else:
             if isinstance(prompt, dict):
                 pyd_prompt = Prompt(**prompt)
-            elif isinstance(prompt, Prompt):
-                pyd_prompt = prompt
             else:
-                raise ValueError(f"format_prompt: unknown prompt type {type(prompt)}. prompt={prompt}")
+                pyd_prompt = prompt
 
             files = pyd_prompt.files
             max_words_text = pyd_prompt.config.max_words_text if pyd_prompt.config else None
@@ -66,10 +64,6 @@ class BaseFormatter(ABC):
                 text=formatted_text,
             )
 
-            # Do files sanity checks
-            if (files and not isinstance(files, list)) or not all(isinstance(f, GenericFile) for f in files):
-                raise ValueError(f"Invalid type {type(files)} for files. Should be list of GenericFile")
-
         # Convert dhenara formated prompt and files to provider format
         return cls.convert_prompt(
             formatted_prompt=formatted_prompt,
@@ -83,7 +77,7 @@ class BaseFormatter(ABC):
         cls,
         context: list[str | dict | Prompt],
         model_endpoint: AIModelEndpoint | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> list[dict[str, Any] | str]:
         if not context:
             return []
@@ -103,7 +97,7 @@ class BaseFormatter(ABC):
         cls,
         instructions: list[str | dict | SystemInstruction] | str,
         model_endpoint: AIModelEndpoint | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> str:
         if not instructions:
             return ""
@@ -111,21 +105,19 @@ class BaseFormatter(ABC):
         if isinstance(instructions, str):
             return instructions
 
-        def _process_single_instruction(instr):
+        def _process_single_instruction(instr: str | dict[str, Any] | SystemInstruction) -> str:
             if isinstance(instr, str):
                 formatted = instr
             else:
                 if isinstance(instr, SystemInstruction):
                     _pyd_instr = instr
-                elif isinstance(instr, dict):
-                    _pyd_instr = SystemInstruction(**instr)
                 else:
-                    raise ValueError(f"Illegal instruction type {type(instr)}")
+                    _pyd_instr = SystemInstruction(**instr)
 
                 formatted = _pyd_instr.get_formatted_text(**kwargs)
             return formatted
 
-        formatted_instructions = [_process_single_instruction(instr, **kwargs) for instr in instructions]
+        formatted_instructions = [_process_single_instruction(instr) for instr in instructions]
 
         return " ".join(formatted_instructions)
 
@@ -134,7 +126,7 @@ class BaseFormatter(ABC):
         cls,
         instructions: list[str | dict | SystemInstruction] | str,
         model_endpoint: AIModelEndpoint | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> dict[str, Any] | None:
         if not instructions:
             return None
@@ -160,7 +152,7 @@ class BaseFormatter(ABC):
         cls,
         messages: Sequence[MessageItem],
         model_endpoint: AIModelEndpoint | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> list[dict[str, Any]]:
         """Convert a list of MessageItem objects to provider-specific message format.
 
@@ -201,7 +193,7 @@ class BaseFormatter(ABC):
         cls,
         message_item: MessageItem,
         model_endpoint: AIModelEndpoint | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> dict[str, Any] | list[dict[str, Any]]:
         """Convert a single MessageItem to provider-specific message format.
 

@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 from anthropic import (
     Anthropic,
@@ -11,7 +12,7 @@ from anthropic import (
 
 from dhenara.ai.providers.base import AIModelProviderClientBase
 from dhenara.ai.providers.shared import APIProviderSharedFns
-from dhenara.ai.types.genai.ai_model import AIModelAPIProviderEnum
+from dhenara.ai.types.genai.ai_model import AIModelAPI, AIModelAPIProviderEnum
 
 from .formatter import AnthropicFormatter
 
@@ -29,7 +30,7 @@ class AnthropicClientBase(AIModelProviderClientBase):
     def cleanup(self) -> None:
         pass
 
-    def _get_client_params(self, api) -> tuple[str, dict]:
+    def _get_client_params(self, api: AIModelAPI) -> tuple[str, dict[str, Any]]:
         """Common logic for both sync and async clients"""
         http_params = self._get_client_http_params(api) or {}
         if api.provider == AIModelAPIProviderEnum.ANTHROPIC:

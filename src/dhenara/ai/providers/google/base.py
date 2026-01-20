@@ -24,7 +24,7 @@ class GoogleAIClientBase(AIModelProviderClientBase):
     def cleanup(self) -> None:
         pass
 
-    def _get_client_params(self, api) -> tuple[str, dict]:
+    def _get_client_params(self, api: Any) -> tuple[str, dict]:
         """Common logic for both sync and async clients"""
 
         # _http_pars= self._get_client_http_params(api)

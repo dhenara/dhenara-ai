@@ -12,8 +12,10 @@ from dhenara.ai.types.genai import (
     ImageResponseChoice,
     ImageResponseContentItem,
     ImageResponseUsage,
+    StreamingChatResponse,
 )
 from dhenara.ai.types.genai.dhenara.request import MessageItem, Prompt, SystemInstruction
+from dhenara.ai.types.shared.api import SSEErrorResponse
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +23,7 @@ logger = logging.getLogger(__name__)
 class GoogleAIImage(GoogleAIClientBase):
     """GoogleAI Image Generation Client"""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
 
     def get_api_call_params(
@@ -109,14 +111,16 @@ class GoogleAIImage(GoogleAIClientBase):
 
     def parse_stream_chunk(
         self,
-        chunk,
-    ):
+        chunk: object,
+    ) -> StreamingChatResponse | SSEErrorResponse | list[StreamingChatResponse | SSEErrorResponse] | None:
         raise ValueError("parse_stream_chunk: Streaming not supported for Image generation")
 
     def _get_usage_from_provider_response(
         self,
-        response: GenerateImagesResponse,
-    ) -> ImageResponseUsage:
+        response: object,
+    ) -> ImageResponseUsage | None:
+        if not isinstance(response, GenerateImagesResponse):
+            return None
         # No usage data availabe in response. We will derive some params
         model = self.model_endpoint.ai_model.model_name
         model_options = self.model_endpoint.ai_model.get_options_with_defaults(self.config.options)
@@ -130,9 +134,12 @@ class GoogleAIImage(GoogleAIClientBase):
 
     def parse_response(
         self,
-        response: GenerateImagesResponse,
+        response: object,
     ) -> ImageResponse:
         """Parse GoogleAI image response into standard format"""
+
+        if not isinstance(response, GenerateImagesResponse):
+            raise TypeError(f"Unexpected Google image response type: {type(response)}")
 
         usage, usage_charge = self.get_usage_and_charge(response)
         usage_img = usage if isinstance(usage, ImageResponseUsage) else None

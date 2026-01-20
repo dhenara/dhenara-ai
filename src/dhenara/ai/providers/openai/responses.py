@@ -126,7 +126,7 @@ class OpenAIResponses(OpenAIClientBase):
         # Note: Responses API doesn't have a separate max_reasoning_tokens parameter.
         # Reasoning tokens come out of max_output_tokens budget.
         max_output_tokens, max_reasoning_tokens = self.config.get_max_output_tokens(self.model_endpoint.ai_model)
-        if max_output_tokens is not None:
+        if max_output_tokens:
             args["max_output_tokens"] = max_output_tokens
 
         # Reasoning configuration
@@ -143,7 +143,7 @@ class OpenAIResponses(OpenAIClientBase):
             if self.config.reasoning_effort is not None:
                 effort = self.config.reasoning_effort
                 # Normalize Dhenara "minimal" -> OpenAI "low"
-                if isinstance(effort, str) and effort.lower() == "minimal":
+                if effort.lower() == "minimal":
                     effort = "low"
                 reasoning_config["effort"] = effort
             else:
@@ -272,7 +272,7 @@ class OpenAIResponses(OpenAIClientBase):
 
     def do_streaming_api_call_sync(
         self,
-        api_call_params,
+        api_call_params: dict[str, Any],
     ) -> Iterator[object]:
         args = dict(api_call_params["response_args"])
         client = self._client
@@ -288,7 +288,7 @@ class OpenAIResponses(OpenAIClientBase):
 
     async def do_streaming_api_call_async(
         self,
-        api_call_params,
+        api_call_params: dict[str, Any],
     ) -> AsyncIterator[object]:
         args = dict(api_call_params["response_args"])
         client = self._client
@@ -303,7 +303,7 @@ class OpenAIResponses(OpenAIClientBase):
         return stream
 
     # ----------------------- Parsing -----------------------
-    def _get_usage_from_provider_response(self, response) -> ChatResponseUsage | None:
+    def _get_usage_from_provider_response(self, response: object) -> ChatResponseUsage | None:
         try:
             usage = getattr(response, "usage", None)
             if not usage:
@@ -334,19 +334,20 @@ class OpenAIResponses(OpenAIClientBase):
             logger.debug(f"_get_usage_from_provider_response (Responses): {e}")
             return None
 
-    def _parse_tool_arguments(self, arguments: str | dict) -> dict:
+    def _parse_tool_arguments(self, arguments: object) -> dict[str, Any]:
         """Parse tool call arguments from string or dict."""
         if isinstance(arguments, dict):
-            return arguments
+            return cast(dict[str, Any], arguments)
         if isinstance(arguments, str):
             try:
-                return json.loads(arguments)
+                parsed = json.loads(arguments)
+                if isinstance(parsed, dict):
+                    return cast(dict[str, Any], parsed)
             except Exception:
                 logger.debug(f"Failed to parse tool arguments as JSON: {arguments}")
-                return {}
         return {}
 
-    def parse_response(self, response) -> ChatResponse:
+    def parse_response(self, response: object) -> ChatResponse:
         """Parse OpenAI Responses API response into Dhenara ChatResponse.
 
         Response structure:
@@ -428,7 +429,7 @@ class OpenAIResponses(OpenAIClientBase):
         )
 
     # Streaming handlers: convert Responses events to StreamingChatResponse
-    def parse_stream_chunk(self, chunk) -> StreamingChatResponse | SSEErrorResponse | list | None:
+    def parse_stream_chunk(self, chunk: object) -> StreamingChatResponse | SSEErrorResponse | list | None:
         """Parse a single OpenAI Responses API streaming event into internal streaming objects.
 
         Returns a list of StreamingChatResponse (zero or more), a list containing SSEErrorResponse
@@ -502,8 +503,9 @@ class OpenAIResponses(OpenAIClientBase):
                     for part in raw_message_contents:
                         if isinstance(part, ChatMessageContentPart):
                             message_contents.append(part)
-                        elif isinstance(part, dict):
-                            message_contents.append(ChatMessageContentPart(**cast(dict[str, Any], part)))
+                        else:
+                            # NOTE: after excluding ChatMessageContentPart, this is expected to be dict-like
+                            message_contents.append(ChatMessageContentPart(**part))
 
                 content_delta = ChatResponseTextContentItemDelta(
                     index=0,

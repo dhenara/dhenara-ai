@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 # Helper to coerce dict-like access from SDK objects
-def _get(obj: object, attr: str, default=None):
+def _get(obj: object, attr: str, default: Any = None) -> Any:
     if isinstance(obj, dict):
         return obj.get(attr, default)
     return getattr(obj, attr, default)
@@ -161,7 +161,7 @@ class GoogleMessageConverter(BaseMessageConverter):
         # Plain text (after handling special cases). Apply structured output if requested.
         if text is not None:
             if structured_output_config is not None:
-                parsed_data, error, post_processed = ChatResponseStructuredOutput._parse_and_validate(
+                parsed_data, error, post_processed = ChatResponseStructuredOutput.parse_and_validate(
                     text, structured_output_config
                 )
 
@@ -313,12 +313,9 @@ class GoogleMessageConverter(BaseMessageConverter):
 
             elif isinstance(content, ChatResponseToolCallContentItem):
                 tool_call = content.tool_call
-                if tool_call is None:
-                    logger.warning("GoogleMessageConverter: ToolCallContentItem missing tool_call")
-                    continue
                 # Preserve Google thought_signature on function_call parts when continuing with the same provider
                 thought_sig = None
-                if same_provider and content.metadata is not None:
+                if same_provider:
                     thought_sig = content.metadata.get("thought_signature")
 
                 part_obj: dict[str, Any] = {
@@ -347,7 +344,7 @@ class GoogleMessageConverter(BaseMessageConverter):
                         parts.append({"text": json.dumps(output.structured_data)})
                 continue
 
-            elif isinstance(content, ChatResponseGenericContentItem):
+            else:
                 md = content.metadata or {}
                 if "video_metadata" in md:
                     parts.append({"video_metadata": md.get("video_metadata")})

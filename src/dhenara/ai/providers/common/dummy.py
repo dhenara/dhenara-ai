@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from collections.abc import AsyncGenerator, Generator
+from typing import Any
 
 from dhenara.ai.config import settings
 from dhenara.ai.providers.base import StreamingManager
@@ -176,8 +177,6 @@ class DummyAIModelResponseFns:
     def _get_stream_text(self, ai_model_ep: AIModelEndpoint) -> str:
         """Get the text to be streamed"""
         base_text = self._model_specific_message(ai_model_ep)
-
-        small_text = f"One\n Two\n Three\n Four\n Five\n Six Seven Eight Nine Ten"  # noqa: F541, F841
         large_text = """
 
 Here is a detailed analysis of the topic:
@@ -198,63 +197,6 @@ Here is a detailed analysis of the topic:
    - Next steps
 
 Let me know if you need any clarification!"""
-
-        markdown_text = """"
-The issue with newlines being stripped in your code appears to be in how you're handling the incoming text deltas.
-Looking at your logs, the newline characters (\n) are actually present in the `text_delta` values.
-
-Here are a few potential solutions:
-
-1. First, ensure your `onTextToken` callback preserves the newlines when displaying or processing the text. For example:
-
-```javascript
-onTextToken: (choice_index, content_index, text) => {
-  // Preserve newlines by using pre-formatted elements if displaying in HTML
-  const formattedText = text.replace(/\n/g, '<br>');
-  // Or if appending to a textarea/console
-  console.log(text); // Don't modify the text at all
-},
-```
-
-2. If you're concatenating the tokens, make sure you're not accidentally stripping newlines:
-
-```javascript
-let fullText = '';
-const processor = new StreamProcessor({
-  onTextToken: (choice_index, content_index, text) => {
-    fullText += text; // Don't modify the text, append as-is
-    // If displaying in HTML
-    element.innerHTML = fullText.replace(/\n/g, '<br>');
-  }
-});
-```
-
-3. You might also want to modify your `parseSSEEvent` method to explicitly preserve newlines:
-
-```javascript
-parseSSEEvent(eventString) {
-  const lines = eventString.split(/\r?\n/);
-  // ... rest of your parsing code ...
-
-  if (data.length) {
-    try {
-      const dataString = data.join('\n'); // Preserve newlines when joining
-      event.data = JSON.parse(dataString);
-    } catch (e) {
-      console.error('Error parsing JSON:', e);
-      return null;
-    }
-  }
-
-  return event;
-}
-```
-
-
-Looking at your log output, there are tokens containing newlines,
-so the issue is likely in how you're handling these tokens after receiving them rather than in the streaming process.
-
-        """  # noqa: F841
         return f"{base_text}\n\n\n{large_text}"
 
     def _create_streaming_response(self, chunk_deltas: list[ChatResponseChoiceDelta]) -> StreamingChatResponse | None:
@@ -270,7 +212,7 @@ so the issue is likely in how you're handling these tokens after receiving them 
 
         return stream_response
 
-    def _process_chunk(self, chunk) -> StreamingChatResponse | None:
+    def _process_chunk(self, chunk: Any) -> StreamingChatResponse | None:
         """Process a single chunk for both sync and async streaming"""
         if chunk.usage:
             usage = ChatResponseUsage(
@@ -323,7 +265,7 @@ so the issue is likely in how you're handling these tokens after receiving them 
 
     def handle_streaming_response_sync(
         self,
-        stream_generator,
+        stream_generator: Generator[Any],
         model_endpoint: AIModelEndpoint,
     ) -> Generator[tuple[StreamingChatResponse | SSEErrorResponse | None, AIModelCallResponse | None]]:
         """Handle synchronous streaming response"""
@@ -358,7 +300,7 @@ so the issue is likely in how you're handling these tokens after receiving them 
 
     async def handle_streaming_response_async(
         self,
-        stream_generator,
+        stream_generator: AsyncGenerator[Any],
         model_endpoint: AIModelEndpoint,
     ) -> AsyncGenerator[tuple[StreamingChatResponse | SSEErrorResponse | None, AIModelCallResponse | None]]:
         """Handle asynchronous streaming response"""

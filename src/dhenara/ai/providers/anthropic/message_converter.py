@@ -34,6 +34,21 @@ class AnthropicMessageConverter(BaseMessageConverter):
     """Bidirectional converter for Anthropic messages."""
 
     @staticmethod
+    def content_block_to_items(
+        *,
+        content_block: ContentBlock,
+        index: int,
+        role: str,
+        structured_output_config: StructuredOutputConfig | None,
+    ) -> list[ChatResponseContentItem]:
+        return AnthropicMessageConverter._content_block_to_items(
+            content_block=content_block,
+            index=index,
+            role=role,
+            structured_output_config=structured_output_config,
+        )
+
+    @staticmethod
     def provider_message_to_dai_content_items(
         *,
         message: Message,
@@ -236,30 +251,29 @@ class AnthropicMessageConverter(BaseMessageConverter):
                 elif content.thinking_summary:
                     # Redacted thinking (when signature but no text)
                     # If represented as summary parts, try to map redacted_thinking type to redacted block
-                    if isinstance(content.thinking_summary, list):
-                        rt = next(
-                            (p for p in content.thinking_summary if p.type == "redacted_thinking"),
-                            None,
-                        )
-                        if rt is not None:
-                            content_blocks.append(
-                                RedactedThinkingBlockParam(
-                                    type="redacted_thinking",
-                                    data=(
-                                        json.dumps(rt.metadata)
-                                        if isinstance(rt.metadata, dict)
-                                        else (str(rt.metadata) if rt.metadata is not None else "")
-                                    ),
-                                )
+                    thinking_summary = content.thinking_summary
+                    rt = next(
+                        (p for p in thinking_summary if p.type == "redacted_thinking"),
+                        None,
+                    )
+                    if rt is not None:
+                        content_blocks.append(
+                            RedactedThinkingBlockParam(
+                                type="redacted_thinking",
+                                data=(
+                                    json.dumps(rt.metadata)
+                                    if isinstance(rt.metadata, dict)
+                                    else (str(rt.metadata) if rt.metadata is not None else "")
+                                ),
                             )
-                            # handled as redacted
-                            continue
+                        )
+                        # handled as redacted
+                        continue
 
                     # If no redacted part but a textual summary exists, fallback to text emission
                     summary_text = None
-                    if isinstance(content.thinking_summary, list):
-                        summary_texts = [p.text for p in content.thinking_summary if p.text]
-                        summary_text = "".join(summary_texts) if summary_texts else None
+                    summary_texts = [p.text for p in thinking_summary if p.text]
+                    summary_text = "".join(summary_texts) if summary_texts else None
 
                     if summary_text:
                         if same_provider and not content.thinking_signature:
@@ -295,9 +309,6 @@ class AnthropicMessageConverter(BaseMessageConverter):
 
             elif isinstance(content, ChatResponseToolCallContentItem):
                 tool_call = content.tool_call
-                if tool_call is None:
-                    logger.warning("ant_convert: ToolCallContentItem has no tool_call")
-                    continue
                 content_blocks.append(
                     ToolUseBlockParam(
                         type="tool_use",

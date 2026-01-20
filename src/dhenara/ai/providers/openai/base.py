@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, OpenAI
 
@@ -22,7 +23,7 @@ class OpenAIClientBase(AIModelProviderClientBase):
     def cleanup(self) -> None:
         pass
 
-    def _get_client_params(self, api) -> tuple[str, dict]:
+    def _get_client_params(self, api: Any) -> tuple[str, dict]:
         """Common logic for both sync and async clients"""
         http_params = self._get_client_http_params(api) or {}
         if api.provider == AIModelAPIProviderEnum.OPEN_AI:

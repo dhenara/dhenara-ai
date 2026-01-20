@@ -173,7 +173,7 @@ class ChatResponseStructuredOutput(BaseModel):
             return None
 
     @classmethod
-    def _parse_and_validate(
+    def parse_and_validate(
         cls,
         raw_data: str | dict,
         config: StructuredOutputConfig,
@@ -272,7 +272,7 @@ class ChatResponseStructuredOutput(BaseModel):
         if tool_call is not None:
             if tool_call.arguments:
                 raw_response_to_parse = tool_call.arguments  # Get the dict directly
-                parsed_data, error, post_processed = cls._parse_and_validate(raw_response_to_parse, config)
+                parsed_data, error, post_processed = cls.parse_and_validate(raw_response_to_parse, config)
                 # Always keep the original raw response for downstream use
                 raw_data = raw_response
             else:

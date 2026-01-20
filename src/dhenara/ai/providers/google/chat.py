@@ -234,7 +234,7 @@ class GoogleAIChat(GoogleAIClientBase):
             )
         ]
 
-        config_params = {
+        config_params: dict[str, Any] = {
             "candidate_count": 1,
             "safety_settings": safety_settings,
         }
@@ -270,9 +270,12 @@ class GoogleAIChat(GoogleAIClientBase):
 
     def parse_stream_chunk(
         self,
-        chunk: GenerateContentResponse,
+        chunk: object,
     ) -> StreamingChatResponse | SSEErrorResponse | list[StreamingChatResponse | SSEErrorResponse] | None:
         """Handle streaming response with progress tracking and final response"""
+
+        if not isinstance(chunk, GenerateContentResponse):
+            raise TypeError(f"Unexpected chunk type for streaming chat response: {type(chunk)}")
 
         processed_chunks = []
 
@@ -373,11 +376,19 @@ class GoogleAIChat(GoogleAIClientBase):
 
     def parse_response(
         self,
-        response: GenerateContentResponse,
+        response: object,
     ) -> ChatResponse:
+        if not isinstance(response, GenerateContentResponse):
+            raise TypeError(f"Unexpected response type for chat response: {type(response)}")
+
         usage, usage_charge = self.get_usage_and_charge(response)
 
-        if usage is not None and not isinstance(usage, ChatResponseUsage):
+        usage_chat: ChatResponseUsage | None
+        if usage is None:
+            usage_chat = None
+        elif isinstance(usage, ChatResponseUsage):
+            usage_chat = usage
+        else:
             raise TypeError(f"Unexpected usage type for chat response: {type(usage)}")
 
         model_name = response.model_version or self.model_name_in_api_calls
@@ -385,7 +396,7 @@ class GoogleAIChat(GoogleAIClientBase):
             model=model_name,
             provider=self.model_endpoint.ai_model.provider,
             api_provider=self.model_endpoint.api.provider,
-            usage=cast(ChatResponseUsage | None, usage),
+            usage=usage_chat,
             usage_charge=usage_charge,
             provider_response=self.serialize_provider_response(response),
             choices=[
@@ -413,14 +424,24 @@ class GoogleAIChat(GoogleAIClientBase):
         self,
         index: int,
         role: str,
-        delta,
+        delta: object,
     ) -> ChatResponseContentItemDelta:
         # Accept both typed SDK objects and dict-like parts
         try:
 
-            def _get_attr(obj, attr, default=None):
+            def _try_model_dump(obj: object) -> dict[str, Any]:
+                if hasattr(obj, "model_dump"):
+                    try:
+                        dumped = cast(Any, obj).model_dump()
+                        if isinstance(dumped, dict):
+                            return cast(dict[str, Any], dumped)
+                    except Exception:
+                        pass
+                return {}
+
+            def _get_attr(obj: object, attr: str, default: Any = None) -> Any:
                 if not hasattr(obj, "__dict__") and hasattr(obj, "get"):
-                    return obj.get(attr, default)
+                    return cast(Any, obj).get(attr, default)
                 return getattr(obj, attr, default)
 
             # Reasoning/thought text: stream as text_delta into message_contents (type="thinking")
@@ -497,7 +518,7 @@ class GoogleAIChat(GoogleAIClientBase):
                         index=index,
                         role=role,
                         metadata={
-                            "part": getattr(delta, "model_dump", lambda: {})(),
+                            "part": _try_model_dump(delta),
                             "error": str(e),
                         },
                     )
@@ -526,7 +547,7 @@ class GoogleAIChat(GoogleAIClientBase):
             return ChatResponseGenericContentItemDelta(
                 index=index,
                 role=role,
-                metadata={"part": getattr(delta, "model_dump", lambda: {})()},
+                metadata={"part": _try_model_dump(delta)},
             )
         except Exception:
             return self.get_unknown_content_type_item(

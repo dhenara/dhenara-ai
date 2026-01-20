@@ -18,7 +18,6 @@ from dhenara.ai.types.genai.dhenara.request import (
     ToolDefinition,
 )
 from dhenara.ai.types.genai.dhenara.request.data import FormattedPrompt
-from dhenara.ai.types.genai.dhenara.response import ChatResponse
 from dhenara.ai.types.shared.file import FileFormatEnum, GenericFile, ProcessedFile
 
 logger = logging.getLogger(__name__)
@@ -243,13 +242,13 @@ class OpenAIFormatter(BaseFormatter):
         model_endpoint: AIModelEndpoint | None = None,
     ) -> dict[str, Any]:
         """Convert FunctionDefinition to OpenAI format"""
-        res = {
+        res: dict[str, Any] = {
             "name": func_def.name,
             "parameters": cls.convert_function_parameters(func_def.parameters),
         }
-        # Only include description if present and non-empty
-        if getattr(func_def, "description", None):
-            res["description"] = func_def.description
+        desc = getattr(func_def, "description", None)
+        if isinstance(desc, str) and desc:
+            res["description"] = desc
         return res
 
     @classmethod
@@ -287,7 +286,7 @@ class OpenAIFormatter(BaseFormatter):
     @classmethod
     def convert_tool_choice(
         cls,
-        tool_choice: ToolChoice,
+        tool_choice: ToolChoice | None,
         model_endpoint: AIModelEndpoint | None = None,
     ) -> Any:
         """Convert ToolChoice to OpenAI format"""
@@ -318,9 +317,6 @@ class OpenAIFormatter(BaseFormatter):
         schema = copy.deepcopy(schema)
 
         def clean_object(obj: dict[str, Any]) -> None:
-            if not isinstance(obj, dict):
-                return
-
             # If this has a $ref, keep only $ref
             if "$ref" in obj:
                 ref_value = obj["$ref"]
@@ -405,7 +401,7 @@ class OpenAIFormatter(BaseFormatter):
         cls,
         message_item: MessageItem,
         model_endpoint: AIModelEndpoint | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> dict[str, Any] | list[dict[str, Any]]:
         """Responses equivalent of convert_dai_message_item_to_provider.
 
@@ -442,12 +438,9 @@ class OpenAIFormatter(BaseFormatter):
                 for result in message_item.results
             ]
 
-        if isinstance(message_item, ChatResponse):
-            if model_endpoint is None:
-                raise ValueError("model_endpoint is required to convert ChatResponse to provider messages")
-            return OpenAIMessageConverter.dai_response_to_provider_message(
-                dai_response=message_item,
-                model_endpoint=model_endpoint,
-            )
-
-        raise ValueError(f"Unsupported message item type for Responses formatting: {type(message_item)}")
+        if model_endpoint is None:
+            raise ValueError("model_endpoint is required to convert ChatResponse to provider messages")
+        return OpenAIMessageConverter.dai_response_to_provider_message(
+            dai_response=message_item,
+            model_endpoint=model_endpoint,
+        )

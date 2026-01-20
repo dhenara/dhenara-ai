@@ -101,13 +101,11 @@ class OpenAIChatLEGACY(OpenAIClientBase):
 
         max_output_tokens, _max_reasoning_tokens = self.config.get_max_output_tokens(self.model_endpoint.ai_model)
 
-        if max_output_tokens is not None:
-            if self.model_endpoint.api.provider != AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
-                # NOTE: With resasoning models, max_output_tokens Deprecated in favour of max_completion_tokens
-                chat_args["max_completion_tokens"] = max_output_tokens
-
-            else:
-                chat_args["max_tokens"] = max_output_tokens
+        if self.model_endpoint.api.provider != AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
+            # NOTE: With resasoning models, max_output_tokens Deprecated in favour of max_completion_tokens
+            chat_args["max_completion_tokens"] = max_output_tokens
+        else:
+            chat_args["max_tokens"] = max_output_tokens
 
         model_settings = self.model_endpoint.ai_model.get_settings()
         if self.config.reasoning and model_settings.supports_reasoning and self.config.reasoning_effort is not None:
@@ -173,7 +171,7 @@ class OpenAIChatLEGACY(OpenAIClientBase):
 
     def do_streaming_api_call_sync(
         self,
-        api_call_params,
+        api_call_params: dict,
     ) -> Iterator[ChatCompletionChunk]:
         chat_args = api_call_params["chat_args"]
         client = self._client
@@ -188,7 +186,7 @@ class OpenAIChatLEGACY(OpenAIClientBase):
 
     async def do_streaming_api_call_async(
         self,
-        api_call_params,
+        api_call_params: dict,
     ) -> AsyncIterator[ChatCompletionChunk]:
         chat_args = api_call_params["chat_args"]
         client = self._client
@@ -204,9 +202,11 @@ class OpenAIChatLEGACY(OpenAIClientBase):
     # -------------------------------------------------------------------------
     def parse_stream_chunk(
         self,
-        chunk: ChatCompletionChunk,
+        chunk: object,
     ) -> StreamingChatResponse | SSEErrorResponse | list[StreamingChatResponse | SSEErrorResponse] | None:
         """Handle streaming response with progress tracking and final response"""
+        if not isinstance(chunk, ChatCompletionChunk):
+            raise TypeError(f"Unexpected OpenAI legacy stream chunk type: {type(chunk)}")
         processed_chunks: list[StreamingChatResponse | SSEErrorResponse] = []
 
         sm = self.streaming_manager
@@ -291,9 +291,11 @@ class OpenAIChatLEGACY(OpenAIClientBase):
     # -------------------------------------------------------------------------
     def parse_response(
         self,
-        response: ChatCompletion,
+        response: object,
     ) -> ChatResponse:
         """Parse the OpenAI response into our standard format"""
+        if not isinstance(response, ChatCompletion):
+            raise TypeError(f"Unexpected OpenAI legacy response type: {type(response)}")
         usage, usage_charge = self.get_usage_and_charge(response)
         usage_chat = usage if isinstance(usage, ChatResponseUsage) else None
 

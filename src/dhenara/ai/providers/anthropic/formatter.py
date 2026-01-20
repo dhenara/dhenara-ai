@@ -18,7 +18,6 @@ from dhenara.ai.types.genai.dhenara.request import (
     ToolDefinition,
 )
 from dhenara.ai.types.genai.dhenara.request.data import FormattedPrompt
-from dhenara.ai.types.genai.dhenara.response import ChatResponse
 from dhenara.ai.types.shared.file import FileFormatEnum, GenericFile, ProcessedFile
 
 logger = logging.getLogger(__name__)
@@ -154,7 +153,7 @@ class AnthropicFormatter(BaseFormatter):
     ) -> dict[str, Any]:
         """Convert FunctionParameters to Anthropic format"""
         # Create a new dictionary with transformed properties
-        result = {
+        result: dict[str, Any] = {
             "type": params.type,
             "properties": {name: cls.convert_function_parameter(param) for name, param in params.properties.items()},
         }
@@ -250,7 +249,7 @@ class AnthropicFormatter(BaseFormatter):
         cls,
         message_item: MessageItem,
         model_endpoint: AIModelEndpoint | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> dict[str, Any] | list[dict[str, Any]]:
         """Convert a MessageItem to Anthropic message format.
 
@@ -308,11 +307,7 @@ class AnthropicFormatter(BaseFormatter):
 
         # Case 3: ChatResponse (assistant response with all content items)
         # Delegate to message converter (single source of truth for ChatResponse conversions)
-        if isinstance(message_item, ChatResponse):
-            return AnthropicMessageConverter.dai_response_to_provider_message(
-                dai_response=message_item,
-                model_endpoint=model_endpoint,
-            )
-
-        # Should not reach here due to MessageItem type constraint
-        raise ValueError(f"Unsupported message item type: {type(message_item)}")
+        return AnthropicMessageConverter.dai_response_to_provider_message(
+            dai_response=message_item,
+            model_endpoint=model_endpoint,
+        )

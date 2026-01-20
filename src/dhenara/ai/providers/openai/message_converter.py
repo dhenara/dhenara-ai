@@ -79,7 +79,7 @@ class OpenAIMessageConverter(BaseMessageConverter):
         output_item = message_item
 
         # Helper to coerce dict-like access from SDK objects
-        def _get(obj: object, attr: str, default=None):
+        def _get(obj: object, attr: str, default: Any = None) -> Any:
             if isinstance(obj, dict):
                 return obj.get(attr, default)
             return getattr(obj, attr, default)
@@ -229,7 +229,7 @@ class OpenAIMessageConverter(BaseMessageConverter):
 
             # If structured output is requested, emit ONLY a StructuredOutput item (no duplicate text item)
             if structured_output_config is not None:
-                parsed_data, error, post_processed = ChatResponseStructuredOutput._parse_and_validate(
+                parsed_data, error, post_processed = ChatResponseStructuredOutput.parse_and_validate(
                     text_joined,
                     structured_output_config,
                 )
@@ -331,18 +331,15 @@ class OpenAIMessageConverter(BaseMessageConverter):
                     # Use preserved summary structure (list[dict]) if available
                     thinking_summary = item.thinking_summary
                     if thinking_summary is not None:
-                        if isinstance(thinking_summary, list):
-                            # Convert ChatMessageContentPart list to OpenAI summary list[dict]
-                            summary_list = [
-                                {
-                                    "type": p.type,
-                                    "text": p.text,
-                                }
-                                for p in thinking_summary
-                            ]
-                            param_data["summary"] = summary_list
-                        else:
-                            logger.error(f"OpenAI: Unsupported thinking_summary type; {type(thinking_summary)}")
+                        # Convert ChatMessageContentPart list to OpenAI summary list[dict]
+                        summary_list = [
+                            {
+                                "type": p.type,
+                                "text": p.text,
+                            }
+                            for p in thinking_summary
+                        ]
+                        param_data["summary"] = summary_list
                     elif item.message_contents:
                         # May be from other providers
                         # Convert string to OpenAI format
@@ -390,18 +387,11 @@ class OpenAIMessageConverter(BaseMessageConverter):
                     # Include tool calls in conversation history
                     # They must appear BEFORE their corresponding function_call_output items
                     tool_call = item.tool_call
-                    if tool_call is None:
-                        logger.warning("OpenAI: ToolCallContentItem missing tool_call")
-                        continue
 
                     # Convert arguments to JSON string if it's a dict
                     import json as _json
 
-                    args_str = (
-                        _json.dumps(tool_call.arguments)
-                        if isinstance(tool_call.arguments, dict)
-                        else str(tool_call.arguments)
-                    )
+                    args_str = _json.dumps(tool_call.arguments)
 
                     tool_call_id = tool_call.call_id or "unknown_tool_call"
                     tool_id = tool_call.id if same_provider else None
