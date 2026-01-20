@@ -1,12 +1,6 @@
 import logging
 from typing import Any
 
-from openai.types.responses import (
-    ResponseFunctionToolCallParam,
-    ResponseOutputMessageParam,
-    ResponseReasoningItemParam,
-)
-
 from dhenara.ai.providers.base import BaseFormatter
 from dhenara.ai.providers.openai.message_converter import OpenAIMessageConverter
 from dhenara.ai.types.genai.ai_model import AIModelEndpoint, AIModelFunctionalTypeEnum
@@ -412,11 +406,7 @@ class OpenAIFormatter(BaseFormatter):
         message_item: MessageItem,
         model_endpoint: AIModelEndpoint | None = None,
         **kwargs,
-    ) -> (
-        dict[str, Any]
-        | list[dict[str, Any]]
-        | list[ResponseReasoningItemParam | ResponseOutputMessageParam | ResponseFunctionToolCallParam]
-    ):
+    ) -> dict[str, Any] | list[dict[str, Any]]:
         """Responses equivalent of convert_dai_message_item_to_provider.
 
         - Prompt -> convert via format_prompt then convert_prompt_responses
@@ -424,11 +414,14 @@ class OpenAIFormatter(BaseFormatter):
         - ChatResponseChoice (assistant prior) -> flatten to {role: 'assistant', content: [{input_text}]}
         """
         if isinstance(message_item, Prompt):
-            return cls.format_prompt(
+            res = cls.format_prompt(
                 prompt=message_item,
                 model_endpoint=model_endpoint,
                 **kwargs,
             )
+            if isinstance(res, str):
+                raise ValueError("OpenAIFormatter: Prompt formatting returned a string; expected dict provider message")
+            return res
 
         if isinstance(message_item, ToolCallResult):
             # Responses API uses function_call_output, not role='tool'

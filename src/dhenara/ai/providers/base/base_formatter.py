@@ -33,7 +33,7 @@ class BaseFormatter(ABC):
         prompt: str | dict | Prompt,
         model_endpoint: AIModelEndpoint | None = None,
         **kwargs,
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | str:
         # First convert a prompt to Dhenara Prompt format
         if isinstance(prompt, str):
             # Formatted Prompt
@@ -84,7 +84,7 @@ class BaseFormatter(ABC):
         context: list[str | dict | Prompt],
         model_endpoint: AIModelEndpoint | None = None,
         **kwargs,
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, Any] | str]:
         if not context:
             return []
 
@@ -274,7 +274,7 @@ class BaseFormatter(ABC):
         model_endpoint: AIModelEndpoint | None = None,
         files: list[GenericFile] | None = None,
         max_words_file: int | None = None,
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | str:
         """Convert prompt to provider format"""
         pass
 
@@ -295,7 +295,7 @@ class BaseFormatter(ABC):
         files: list[GenericFile],
         model_endpoint: AIModelEndpoint | None = None,
         max_words: int | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, Any]] | str:
         """Convert File content to provider format"""
         pass
 

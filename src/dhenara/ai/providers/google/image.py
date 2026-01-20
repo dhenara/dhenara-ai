@@ -1,5 +1,5 @@
 import logging
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Iterator, Sequence
 from typing import Any
 
 from google.genai.types import GenerateImagesConfig, GenerateImagesResponse
@@ -7,7 +7,6 @@ from google.genai.types import GenerateImagesConfig, GenerateImagesResponse
 from dhenara.ai.providers.common.message_text import build_image_prompt_text
 from dhenara.ai.providers.google import GoogleAIClientBase
 from dhenara.ai.types.genai import (
-    AIModelCallResponse,
     ImageContentFormat,
     ImageResponse,
     ImageResponseChoice,
@@ -84,14 +83,14 @@ class GoogleAIImage(GoogleAIClientBase):
 
     def do_streaming_api_call_sync(
         self,
-        api_call_params,
-    ) -> AIModelCallResponse:
+        api_call_params: dict[str, Any],
+    ) -> Iterator[object]:
         raise ValueError("do_streaming_api_call_sync:  Streaming not supported for Image generation")
 
     async def do_streaming_api_call_async(
         self,
-        api_call_params,
-    ) -> AIModelCallResponse:
+        api_call_params: dict[str, Any],
+    ) -> AsyncIterator[object]:
         raise ValueError("do_streaming_api_call_async:  Streaming not supported for Image generation")
 
     def get_default_generate_config_args(self) -> dict:

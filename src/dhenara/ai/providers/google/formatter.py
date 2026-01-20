@@ -206,7 +206,6 @@ class GoogleFormatter(BaseFormatter):
     def convert_function_parameter(
         cls,
         param: FunctionParameter,
-        root_schema: dict | None = None,
         model_endpoint: AIModelEndpoint | None = None,
     ) -> dict[str, Any]:
         """Convert FunctionParameter to Google format (simple JSON Schema).
@@ -286,7 +285,9 @@ class GoogleFormatter(BaseFormatter):
 
         if tool_choice.type is None:
             return None
-        elif tool_choice.type == "zero_or_more":
+
+        _cfg: dict[str, Any] | None = None
+        if tool_choice.type == "zero_or_more":
             _cfg = {
                 "mode": "AUTO",
             }
@@ -299,6 +300,9 @@ class GoogleFormatter(BaseFormatter):
                 "mode": "AUTO",
                 "allowed_function_names": [tool_choice.specific_tool_name],
             }
+
+        if _cfg is None:
+            raise ValueError(f"Unsupported tool_choice.type for Google formatter: {tool_choice.type}")
 
         return {"function_calling_config": _cfg}
 
@@ -337,11 +341,14 @@ class GoogleFormatter(BaseFormatter):
         """
         # Case 1: Prompt object (new user/model messages) - may return list
         if isinstance(message_item, Prompt):
-            return cls.format_prompt(
+            res = cls.format_prompt(
                 prompt=message_item,
                 model_endpoint=model_endpoint,
                 **kwargs,
             )
+            if isinstance(res, str):
+                raise ValueError("GoogleFormatter: Prompt formatting returned a string; expected dict provider message")
+            return res
 
         # Case 2: ToolCallResult (tool execution result)
         if isinstance(message_item, ToolCallResult):

@@ -205,9 +205,9 @@ class OpenAIChatLEGACY(OpenAIClientBase):
     def parse_stream_chunk(
         self,
         chunk: ChatCompletionChunk,
-    ) -> list[StreamingChatResponse] | SSEErrorResponse | None:
+    ) -> StreamingChatResponse | SSEErrorResponse | list[StreamingChatResponse | SSEErrorResponse] | None:
         """Handle streaming response with progress tracking and final response"""
-        processed_chunks: list[StreamingChatResponse] = []
+        processed_chunks: list[StreamingChatResponse | SSEErrorResponse] = []
 
         sm = self.streaming_manager
         if sm is None:

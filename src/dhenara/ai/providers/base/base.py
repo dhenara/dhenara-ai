@@ -861,13 +861,23 @@ class AIModelProviderClientBase(ABC):
             self._capture_python_logs(when="stream_error")
 
     @abstractmethod
-    async def initialize(self) -> None:
-        """Initialize the provider"""
+    def initialize(self) -> Awaitable[None] | None:
+        """Initialize the provider.
+
+        Implementations may be synchronous (returning None) or asynchronous
+        (returning an awaitable). The base class will detect awaitables and
+        run/await them appropriately for sync/async contexts.
+        """
         pass
 
     @abstractmethod
-    async def cleanup(self) -> None:
-        """Cleanup resources"""
+    def cleanup(self) -> Awaitable[None] | None:
+        """Cleanup resources.
+
+        Implementations may be synchronous (returning None) or asynchronous
+        (returning an awaitable). The base class will detect awaitables and
+        run/await them appropriately for sync/async contexts.
+        """
         pass
 
     @abstractmethod
@@ -916,7 +926,7 @@ class AIModelProviderClientBase(ABC):
     def parse_stream_chunk(
         self,
         chunk,
-    ) -> StreamingChatResponse | SSEErrorResponse | None | list[StreamingChatResponse | SSEErrorResponse | None]:
+    ) -> StreamingChatResponse | SSEErrorResponse | list[StreamingChatResponse | SSEErrorResponse] | None:
         pass
 
     def serialize_provider_response(self, response: object) -> dict | None:

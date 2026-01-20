@@ -266,11 +266,16 @@ class AnthropicFormatter(BaseFormatter):
         """
         # Case 1: Prompt object (new user/assistant messages) - may return list
         if isinstance(message_item, Prompt):
-            return cls.format_prompt(
+            res = cls.format_prompt(
                 prompt=message_item,
                 model_endpoint=model_endpoint,
                 **kwargs,
             )
+            if isinstance(res, str):
+                raise ValueError(
+                    "AnthropicFormatter: Prompt formatting returned a string; expected dict provider message"
+                )
+            return res
 
         # Case 2: ToolCallResult (tool execution result)
         if isinstance(message_item, ToolCallResult):

@@ -37,17 +37,20 @@ class OpenAIMessageConverter(BaseMessageConverter):
     def provider_message_to_dai_content_items(
         *,
         message: Any,
-        role: str,
-        index_start: int,
-        ai_model_provider: AIModelProviderEnum,
+        role: str = "assistant",
+        index_start: int = 0,
+        ai_model_provider: AIModelProviderEnum = AIModelProviderEnum.OPEN_AI,
         structured_output_config: StructuredOutputConfig | None = None,
     ) -> list[ChatResponseContentItem]:
+        # NOTE: This method intentionally accepts optional OpenAI-specific kwargs
+        # (role/index_start/ai_model_provider) while still matching the BaseMessageConverter
+        # required signature.
         content_index = index_start
         content_items: list[ChatResponseContentItem] = []
         for item in message:  # message is `response.output` list
             converted = OpenAIMessageConverter.provider_message_item_to_dai_content_item(
                 message_item=item,
-                role="assistant",
+                role=role,
                 index=content_index,
                 ai_model_provider=ai_model_provider,
                 structured_output_config=structured_output_config,
@@ -266,7 +269,7 @@ class OpenAIMessageConverter(BaseMessageConverter):
     def dai_response_to_provider_message(
         dai_response: ChatResponse,
         model_endpoint: AIModelEndpoint,
-    ) -> list[ResponseReasoningItemParam | ResponseOutputMessageParam | ResponseFunctionToolCallParam]:
+    ) -> list[dict[str, Any]]:
         """Convert ChatResponse into OpenAI Responses API input format.
 
         Single source of truth: always converts from Dhenara content items,
@@ -288,7 +291,7 @@ class OpenAIMessageConverter(BaseMessageConverter):
         choice: ChatResponseChoice,
         model_endpoint: AIModelEndpoint,
         source_provider: AIModelProviderEnum,
-    ) -> list[ResponseReasoningItemParam | ResponseOutputMessageParam | ResponseFunctionToolCallParam]:
+    ) -> list[dict[str, Any]]:
         """Convert ChatResponseChoice into OpenAI Responses API input format.
 
         Returns a list of proper SDK param types for input:
@@ -302,7 +305,17 @@ class OpenAIMessageConverter(BaseMessageConverter):
         """
         same_provider = True if str(source_provider) == str(model_endpoint.ai_model.provider) else False
 
-        output_items: list[ResponseReasoningItemParam | ResponseOutputMessageParam | ResponseFunctionToolCallParam] = []
+        def _as_dict(obj: object) -> dict[str, Any]:
+            if isinstance(obj, dict):
+                return obj
+            model_dump = getattr(obj, "model_dump", None)
+            if callable(model_dump):
+                dumped = model_dump()
+                if isinstance(dumped, dict):
+                    return dumped
+            return {"value": obj}
+
+        output_items: list[dict[str, Any]] = []
 
         # First pass: collect all content by type
         for item in choice.contents or []:
@@ -343,8 +356,7 @@ class OpenAIMessageConverter(BaseMessageConverter):
                     if item.thinking_signature and same_provider:
                         param_data["encrypted_content"] = item.thinking_signature
 
-                    # reasoning_items.append(ResponseReasoningItemParam(**param_data))
-                    output_items.append(ResponseReasoningItemParam(**param_data))
+                    output_items.append(_as_dict(ResponseReasoningItemParam(**param_data)))
 
                 elif isinstance(item, ChatResponseTextContentItem):
                     # Structured output are nothing but text content in model responses
@@ -372,8 +384,7 @@ class OpenAIMessageConverter(BaseMessageConverter):
                     }
                     if same_provider and item.message_id:
                         param_data["id"] = item.message_id
-                    message_param = ResponseOutputMessageParam(**param_data)
-                    output_items.append(message_param)
+                    output_items.append(_as_dict(ResponseOutputMessageParam(**param_data)))
 
                 elif isinstance(item, ChatResponseToolCallContentItem):
                     # Include tool calls in conversation history
@@ -404,7 +415,7 @@ class OpenAIMessageConverter(BaseMessageConverter):
                         name=tool_call.name,
                         arguments=args_str,
                     )
-                    output_items.append(fn_call_param)
+                    output_items.append(_as_dict(fn_call_param))
 
                 else:
                     logger.warning(f"OpenAI: unsupported content item type: {type(item).__name__}")

@@ -1,5 +1,5 @@
 import logging
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Iterator, Sequence
 from typing import Any
 
 from openai.types import ImagesResponse as OpenAIImagesResponse
@@ -7,7 +7,6 @@ from openai.types import ImagesResponse as OpenAIImagesResponse
 from dhenara.ai.providers.common.message_text import build_image_prompt_text
 from dhenara.ai.providers.openai import OpenAIClientBase
 from dhenara.ai.types.genai import (
-    AIModelCallResponse,
     ImageContentFormat,
     ImageResponse,
     ImageResponseChoice,
@@ -101,13 +100,13 @@ class OpenAIImage(OpenAIClientBase):
     def do_streaming_api_call_sync(
         self,
         api_call_params,
-    ) -> AIModelCallResponse:
+    ) -> Iterator[object]:
         raise ValueError("do_streaming_api_call_sync:  Streaming not supported for Image generation")
 
     async def do_streaming_api_call_async(
         self,
         api_call_params,
-    ) -> AIModelCallResponse:
+    ) -> AsyncIterator[object]:
         raise ValueError("do_streaming_api_call_async:  Streaming not supported for Image generation")
 
     def parse_stream_chunk(

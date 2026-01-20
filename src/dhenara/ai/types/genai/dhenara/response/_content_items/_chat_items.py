@@ -104,7 +104,7 @@ class ChatResponseReasoningContentItem(ChatResponseTextContentItem):
     thinking_summary: list[ChatMessageContentPart] | None = None  # NOTE: Only applicable for OpenAI SDK
     thinking_signature: str | None = None
     thinking_status: str | None = None  # Provider status (in_progress, completed, etc.)
-    metadata: dict | None = None
+    metadata: dict = Field(default_factory=dict)
 
     def get_text(self) -> str:
         # Prefer reconstructed message_contents text; fallback to summary when present.

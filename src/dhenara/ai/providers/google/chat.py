@@ -1,5 +1,5 @@
 import logging
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Iterator, Sequence
 from typing import Any, cast
 
 from google.genai.types import (
@@ -15,7 +15,6 @@ from google.genai.types import (
 from dhenara.ai.providers.google import GoogleAIClientBase
 from dhenara.ai.providers.google.message_converter import GoogleMessageConverter
 from dhenara.ai.types.genai import (
-    AIModelCallResponse,
     AIModelCallResponseMetaData,
     ChatResponse,
     ChatResponseChoice,
@@ -199,8 +198,8 @@ class GoogleAIChat(GoogleAIClientBase):
 
     def do_streaming_api_call_sync(
         self,
-        api_call_params,
-    ) -> AIModelCallResponse:
+        api_call_params: dict[str, Any],
+    ) -> Iterator[object]:
         client = self._client
         if client is None:
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
@@ -213,8 +212,8 @@ class GoogleAIChat(GoogleAIClientBase):
 
     async def do_streaming_api_call_async(
         self,
-        api_call_params,
-    ) -> AIModelCallResponse:
+        api_call_params: dict[str, Any],
+    ) -> AsyncIterator[object]:
         client = self._client
         if client is None:
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
