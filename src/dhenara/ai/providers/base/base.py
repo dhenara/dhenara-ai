@@ -600,7 +600,7 @@ class AIModelProviderClientBase(ABC):
             self._capture_python_logs(when="error")
             return AIModelCallResponse(status=api_call_status)
 
-    def _format_and_generate_response_sync(
+    def format_and_generate_response_sync(
         self,
         prompt: str | dict | Prompt | None,
         context: Sequence[str | dict | Prompt] | None = None,
@@ -638,7 +638,7 @@ class AIModelProviderClientBase(ABC):
                 messages=messages,
             )
 
-    async def _format_and_generate_response_async(
+    async def format_and_generate_response_async(
         self,
         prompt: str | dict | Prompt | None,
         context: Sequence[str | dict | Prompt] | None = None,

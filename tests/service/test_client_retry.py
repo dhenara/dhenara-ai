@@ -19,7 +19,7 @@ class _FailingProvider:
     def __exit__(self, exc_type, exc, tb):
         return False
 
-    def _format_and_generate_response_sync(self, *args, **kwargs):
+    def format_and_generate_response_sync(self, *args, **kwargs):
         self.call_count += 1
         raise TimeoutError("simulated failure")
 

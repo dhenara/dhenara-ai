@@ -1,4 +1,4 @@
-from _resource_config import ResourceConfig
+from ._resource_config import ResourceConfig
 
 try:
     ResourceConfig.create_credentials_template()

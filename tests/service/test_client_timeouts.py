@@ -24,7 +24,7 @@ class _SlowSyncProvider:
     def __exit__(self, exc_type, exc, tb):
         return False
 
-    def _format_and_generate_response_sync(self, *args, **kwargs):
+    def format_and_generate_response_sync(self, *args, **kwargs):
         self.call_count += 1
         time.sleep(self.delay)
         return AIModelCallResponse()
@@ -43,7 +43,7 @@ class _SlowAsyncProvider:
     async def __aexit__(self, exc_type, exc, tb):
         return False
 
-    async def _format_and_generate_response_async(self, *args, **kwargs):
+    async def format_and_generate_response_async(self, *args, **kwargs):
         self.call_count += 1
         await asyncio.sleep(self.delay)
         return AIModelCallResponse()
