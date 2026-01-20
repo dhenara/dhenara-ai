@@ -37,6 +37,7 @@ class AIModelProviderClientBase(ABC):
     """Base class for AI model provider handlers"""
 
     formatter: type[BaseFormatter] | None = None
+    _client: Any | None
 
     def __init__(self, model_endpoint: AIModelEndpoint, config: AIModelCallConfig, is_async: bool = True):
         self.model_endpoint = model_endpoint
@@ -128,13 +129,15 @@ class AIModelProviderClientBase(ABC):
         so = self.config.structured_output
         return so if isinstance(so, StructuredOutputConfig) else None
 
-    def _setup_client_sync(self):
+    def _setup_client_sync(self) -> Any:
         if not self.is_async:
             raise NotImplementedError("_setup_client_sync")
+        raise RuntimeError("_setup_client_sync called for async client")
 
-    async def _setup_client_async(self):
+    async def _setup_client_async(self) -> Any:
         if self.is_async:
             raise NotImplementedError("_setup_client_async")
+        raise RuntimeError("_setup_client_async called for sync client")
 
     def _get_client_http_params(self, api=None) -> dict[str, Any]:
         params = {}
@@ -949,7 +952,7 @@ class AIModelProviderClientBase(ABC):
         return None
 
     @abstractmethod
-    def _get_usage_from_provider_response(self, response):
+    def _get_usage_from_provider_response(self, response: Any) -> ChatResponseUsage | ImageResponseUsage | None:
         pass
 
     def format_inputs(

@@ -1,4 +1,4 @@
-import collections
+from collections.abc import Mapping
 
 
 def generic_obj_to_dict(obj):
@@ -9,7 +9,7 @@ def generic_obj_to_dict(obj):
     if isinstance(obj, dict):
         # If obj is a dictionary, apply the function to each value
         return {key: generic_obj_to_dict(value) for key, value in obj.items()}
-    elif isinstance(obj, collections.abc.Mapping):
+    elif isinstance(obj, Mapping):
         # If obj is a mapping (including mappingproxy), convert to a dict
         return {key: generic_obj_to_dict(value) for key, value in obj.items()}
     elif isinstance(obj, list):

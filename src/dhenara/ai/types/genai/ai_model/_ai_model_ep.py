@@ -65,6 +65,15 @@ class AIModelEndpoint(BaseModel):
         usage: ChatResponseUsage | ImageResponseUsage,
     ):
         cost_data = self.get_cost_data()
+        if isinstance(cost_data, ChatModelCostData):
+            if not isinstance(usage, ChatResponseUsage):
+                raise TypeError(f"Expected ChatResponseUsage, got {type(usage)!r}")
+            return cost_data.calculate_usage_charge(usage)
+        if isinstance(cost_data, ImageModelCostData):
+            if not isinstance(usage, ImageResponseUsage):
+                raise TypeError(f"Expected ImageResponseUsage, got {type(usage)!r}")
+            return cost_data.calculate_usage_charge(usage)
+        # Fallback for unexpected cost model shapes
         return cost_data.calculate_usage_charge(usage)
 
 

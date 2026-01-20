@@ -322,15 +322,16 @@ class ChatResponse(BaseModel):
         # Add summary information about choices instead of full content
         choice_summaries = []
         for choice in self.choices:
+            contents = choice.contents or []
             choice_summary = {
                 "index": choice.index,
-                "content_count": len(choice.contents),
+                "content_count": len(contents),
                 "contents_summary": [
                     {
                         "index": content.index,
                         "type": str(content.type),
                     }
-                    for content in choice.contents
+                    for content in contents
                 ],
             }
             choice_summaries.append(choice_summary)

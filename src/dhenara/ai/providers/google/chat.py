@@ -419,13 +419,9 @@ class GoogleAIChat(GoogleAIClientBase):
         try:
 
             def _get_attr(obj, attr, default=None):
-                return getattr(obj, attr, default)
-
-            # If mapping-like, switch to dict getter
-            if not hasattr(delta, "__dict__") and hasattr(delta, "get"):
-
-                def _get_attr(obj, attr, default=None):
+                if not hasattr(obj, "__dict__") and hasattr(obj, "get"):
                     return obj.get(attr, default)
+                return getattr(obj, attr, default)
 
             # Reasoning/thought text: stream as text_delta into message_contents (type="thinking")
             if _get_attr(delta, "thought", default=False) is True:
@@ -458,8 +454,8 @@ class GoogleAIChat(GoogleAIClientBase):
             if fn is not None:
                 try:
                     # Normalize function object (SDK or dict)
-                    name = _get_attr(fn, "name", None) if hasattr(fn, "__dict__") else fn.get("name")
-                    args = _get_attr(fn, "args", None) if hasattr(fn, "__dict__") else fn.get("args")
+                    name = _get_attr(fn, "name", None)
+                    args = _get_attr(fn, "args", None)
                     # Capture thought_signature from this delta or any previously stashed one
                     thought_signature = _get_attr(delta, "thought_signature", None)
                     if not thought_signature:
@@ -467,11 +463,11 @@ class GoogleAIChat(GoogleAIClientBase):
 
                     from dhenara.ai.types.genai import ChatResponseToolCall as _Tool
 
-                    parsed = _Tool.parse_args_str_or_dict(args)
+                    parsed = _Tool.parse_args_str_or_dict(args or {})
                     tool_call = ChatResponseToolCall(
                         call_id=None,  # Google often omits IDs in streaming
                         id=None,
-                        name=name,
+                        name=str(name or ""),
                         arguments=parsed.get("arguments_dict") or {},
                         raw_data=parsed.get("raw_data"),
                         parse_error=parsed.get("parse_error"),

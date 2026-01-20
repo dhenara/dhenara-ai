@@ -67,7 +67,7 @@ class FileContentData(BaseModel):
                 "processing_message": self.processing_message,
             }
         elif self.contents:
-            all_contents = "".join([content.get_dict_without_content() for content in self.contents])
+            all_contents = "".join([str(content.get_dict_without_content()) for content in self.contents])
             return {
                 "name": self.name,
                 "metadata": self.metadata,

@@ -94,7 +94,8 @@ class AsyncToSyncWrapper:
         with self._lock:
             if self._executor:
                 try:
-                    self._executor.shutdown(wait=True, timeout=self._config.shutdown_timeout)
+                    # NOTE: ThreadPoolExecutor.shutdown does not accept a timeout argument (py3.13).
+                    self._executor.shutdown(wait=True)
                 except Exception:
                     logger.exception("Error during executor shutdown")
                 finally:

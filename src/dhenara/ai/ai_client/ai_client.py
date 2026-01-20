@@ -3,8 +3,7 @@ import time
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
-from contextlib import AsyncExitStack, ExitStack, contextmanager
-from typing import cast
+from contextlib import AsyncExitStack, ExitStack, asynccontextmanager, contextmanager
 
 from dhenara.ai.types import AIModelCallConfig, AIModelCallResponse, AIModelEndpoint
 from dhenara.ai.types.genai.dhenara.request import MessageItem, Prompt, SystemInstruction
@@ -43,11 +42,15 @@ class AIModelClient:
         self.config = config or AIModelCallConfig()
         self.is_async = is_async
         self._provider_client = None
-        self._client_stack = AsyncExitStack() if is_async else ExitStack()
+        self._async_stack: AsyncExitStack = AsyncExitStack()
+        self._sync_stack: ExitStack = ExitStack()
+        self._async_cm = None
+        self._sync_cm = None
 
+    @asynccontextmanager
     async def _async_context(self):
         try:
-            self._provider_client = await self._client_stack.enter_async_context(
+            self._provider_client = await self._async_stack.enter_async_context(
                 AIModelClientFactory.create_provider_client(
                     self.model_endpoint,
                     self.config,
@@ -56,13 +59,13 @@ class AIModelClient:
             )
             yield self
         finally:
-            await self._client_stack.aclose()
+            await self._async_stack.aclose()
             self._provider_client = None
 
     @contextmanager
     def _sync_context(self):
         try:
-            self._provider_client = self._client_stack.enter_context(
+            self._provider_client = self._sync_stack.enter_context(
                 AIModelClientFactory.create_provider_client(
                     self.model_endpoint,
                     self.config,
@@ -71,15 +74,15 @@ class AIModelClient:
             )
             yield self
         finally:
-            self._client_stack.close()
+            self._sync_stack.close()
             self._provider_client = None
 
     def __enter__(self):
         if self.is_async:
             raise RuntimeError("Use 'async with' for async client")
         # Store the context manager instance
-        self._sync_ctx = self._sync_context()
-        return self._sync_ctx.__enter__()
+        self._sync_cm = self._sync_context()
+        return self._sync_cm.__enter__()
 
     def __exit__(self, *exc):
         if self.is_async:
@@ -87,21 +90,22 @@ class AIModelClient:
                 f"This client is created with is_async={self.is_async}. Use 'async with' for async client"
             )
         # Use the stored context manager instance
-        return self._sync_ctx.__exit__(*exc)
+        if self._sync_cm is None:
+            return False
+        return self._sync_cm.__exit__(*exc)
 
     async def __aenter__(self):
         if not self.is_async:
             raise RuntimeError(f"This client is created with is_async={self.is_async}. Use 'with' for sync client")
-        self._async_ctx = self._async_context()
-        return await anext(self._async_ctx.__aiter__())
+        self._async_cm = self._async_context()
+        return await self._async_cm.__aenter__()
 
     async def __aexit__(self, *exc):
         if not self.is_async:
             raise RuntimeError("Use 'with' for sync client")
-        try:
-            await self._async_ctx.aclose()
-        except:
-            pass
+        if self._async_cm is None:
+            return False
+        return await self._async_cm.__aexit__(*exc)
 
     def _execute_with_retry_sync(self, *args, **kwargs) -> AIModelCallResponse:
         """Synchronous retry logic"""
@@ -288,7 +292,7 @@ class AIModelClient:
         messages: MessagesInput = None,
     ) -> AIModelCallResponse:
         if not self._provider_client:
-            self._provider_client = self._client_stack.enter_context(
+            self._provider_client = self._sync_stack.enter_context(
                 AIModelClientFactory.create_provider_client(
                     self.model_endpoint,
                     self.config,
@@ -320,7 +324,8 @@ class AIModelClient:
         """
         if self.is_async:
             raise RuntimeError("cleanup_sync called for an async client")
-        cast(ExitStack, self._client_stack).close()
+        self._sync_stack.close()
+        self._sync_stack = ExitStack()
         self._provider_client = None
 
     async def generate_with_existing_connection_async(
@@ -333,7 +338,7 @@ class AIModelClient:
         if not self.is_async:
             raise RuntimeError("generate_with_existing_connection_async called for a sync client")
         if not self._provider_client:
-            self._provider_client = await cast(AsyncExitStack, self._client_stack).enter_async_context(
+            self._provider_client = await self._async_stack.enter_async_context(
                 AIModelClientFactory.create_provider_client(
                     self.model_endpoint,
                     self.config,
@@ -365,5 +370,6 @@ class AIModelClient:
         """
         if not self.is_async:
             raise RuntimeError("cleanup_async called for a sync client")
-        await cast(AsyncExitStack, self._client_stack).aclose()
+        await self._async_stack.aclose()
+        self._async_stack = AsyncExitStack()
         self._provider_client = None

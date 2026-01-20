@@ -318,7 +318,10 @@ class GoogleFormatter(BaseFormatter):
         # First resolve all $ref pointers
         _schema = cls._resolve_refs(_schema, _schema)
         # Then clean up Google-incompatible fields
-        return cls._clean_schema_for_google(_schema)
+        cleaned = cls._clean_schema_for_google(_schema)
+        if not isinstance(cleaned, dict):
+            raise TypeError(f"Google structured output schema must be dict, got {type(cleaned)!r}")
+        return cleaned
 
     @classmethod
     def convert_dai_message_item_to_provider(
