@@ -23,7 +23,7 @@ class StructuredOutputConfig(BaseModel):
     )
 
     @classmethod
-    def from_model(cls, model_class: type[PydanticBaseModel]):
+    def from_model(cls, model_class: type[PydanticBaseModel]) -> "StructuredOutputConfig":
         """Create config from a model class"""
         return cls(
             output_schema=model_class.model_json_schema(),
@@ -49,7 +49,7 @@ class StructuredOutputConfig(BaseModel):
     )
 
     # Override model_dump to handle the model_class field
-    def model_dump(self, **kwargs):
+    def model_dump(self, **kwargs: Any) -> dict[str, Any]:
         # Get the default serialization
         data = super().model_dump(**kwargs)
         # Remove model_class if it's in the output

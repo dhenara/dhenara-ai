@@ -1,6 +1,7 @@
 """Artifact configuration for capturing AI model call details."""
 
 from pathlib import Path
+from typing import Any
 
 from pydantic import Field
 
@@ -64,7 +65,7 @@ class ArtifactConfig(BaseModel):
         description="Optional overrides for specific loggers (name -> level or 'OFF')",
     )
 
-    def model_post_init(self, __context) -> None:
+    def model_post_init(self, __context: Any) -> None:
         """Validate configuration after initialization."""
         if self.enabled and not self.artifact_root:
             raise ValueError("artifact_root is required when artifacts are enabled")

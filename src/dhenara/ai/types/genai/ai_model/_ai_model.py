@@ -65,10 +65,10 @@ class BaseCostData(BaseModel):
         ),
     )
 
-    def calculate_usage_charge(self, usage) -> UsageCharge:
+    def calculate_usage_charge(self, usage: Any) -> UsageCharge:
         raise NotImplementedError("calculate_usage_charge() not implemented")
 
-    def get_charge(self, cost: float):
+    def get_charge(self, cost: float) -> UsageCharge:
         if self.cost_multiplier_percentage:
             charge = round(
                 cost * (1 + (self.cost_multiplier_percentage / 100)),
@@ -152,7 +152,7 @@ class ImageModelCostData(BaseCostData):
             raise ValueError(f"calculate_usage_charge: Error: {e}")
 
     # -------------------------------------------------------------------------
-    def get_image_cost_with_options(self, used_options):
+    def get_image_cost_with_options(self, used_options: dict[str, Any]) -> float | None:
         if not self.image_options_cost_data:
             return None
 
@@ -170,7 +170,10 @@ class ImageModelCostData(BaseCostData):
                     matches = False
                     break
             if matches:
-                return cost_data["cost_per_image"]
+                raw = cost_data.get("cost_per_image")
+                if isinstance(raw, (int, float)):
+                    return float(raw)
+                raise ValueError("get_image_cost_with_options: cost_per_image is missing or not numeric")
 
         raise ValueError(
             f"get_image_cost_with_options: Failed to get price. "
@@ -494,7 +497,10 @@ class BaseAIModel(BaseModel):
 
     # -------------------------------------------------------------------------
     @classmethod
-    def get_pydantic_model_classes(cls, functional_type):
+    def get_pydantic_model_classes(
+        cls,
+        functional_type: AIModelFunctionalTypeEnum,
+    ) -> tuple[type[BaseModel], type[BaseCostData]]:
         if functional_type == AIModelFunctionalTypeEnum.TEXT_GENERATION:
             setting_model = ChatModelSettings
             cost_model = ChatModelCostData
@@ -520,7 +526,7 @@ class FoundationModel(BaseAIModel):
         valid_options: dict[str, ValidOptionValue] | None = None,
         metadata: dict[str, Any] | None = None,
         reference_number: str | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> "AIModel":
         """
         Creates an AIModel instance based on this foundation model.

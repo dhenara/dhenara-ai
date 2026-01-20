@@ -16,8 +16,8 @@ class ConversationNode(BaseModel):
 
     def get_prompt(
         self,
-        max_words_query=None,
-        max_words_file=None,
+        max_words_query: int | None = None,
+        max_words_file: int | None = None,
     ) -> Prompt:
         return Prompt(
             role=PromptMessageRoleEnum.USER,
@@ -31,9 +31,9 @@ class ConversationNode(BaseModel):
 
     def get_context(
         self,
-        max_words_query=None,
-        max_words_file=None,
-        max_words_response=None,
+        max_words_query: int | None = None,
+        max_words_file: int | None = None,
+        max_words_response: int | None = None,
     ) -> list[Prompt]:
         question_prompt = Prompt(
             role=PromptMessageRoleEnum.USER,

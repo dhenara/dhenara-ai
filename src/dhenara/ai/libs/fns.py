@@ -1,7 +1,8 @@
 from collections.abc import Mapping
+from typing import Any
 
 
-def generic_obj_to_dict(obj):
+def generic_obj_to_dict(obj: Any) -> Any:
     """
     Recursively convert an object to a dictionary.
     Handles lists, dictionaries, mappingproxy, protobuf messages, and objects with __dict__ attribute.

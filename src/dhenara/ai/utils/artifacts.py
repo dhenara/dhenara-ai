@@ -33,7 +33,7 @@ class ArtifactWriter:
             artifact_dir.mkdir(parents=True, exist_ok=True)
             artifact_path = artifact_dir / filename
 
-            def _json_default(obj):
+            def _json_default(obj: Any) -> object:
                 """Custom JSON serializer that handles Pydantic models and SDK objects."""
                 # Try model_dump for Pydantic v2 models and SDK objects
                 if hasattr(obj, "model_dump"):

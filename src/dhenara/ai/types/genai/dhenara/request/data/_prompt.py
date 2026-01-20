@@ -28,7 +28,7 @@ class PromptText(BaseModel):
             raise ValueError("Only one of Content or Template is allowed")
         return self
 
-    def format(self, **kwargs) -> str:
+    def format(self, **kwargs: Any) -> str:
         if self.content:
             value = self.content.get_content()
             if isinstance(value, str):
@@ -68,7 +68,7 @@ class BaseTextPrompt(BaseModel):
     def get_formatted_text(
         self,
         max_words: int | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> str:
         """Format the prompt as a generic dictionary"""
         if isinstance(self.text, PromptText):
@@ -106,9 +106,9 @@ class Prompt(BaseTextPrompt):
     def with_text(
         cls,
         text: str,
-        variables: dict | None = None,
+        variables: dict[str, Any] | None = None,
         disable_checks: bool = False,
-    ):
+    ) -> "Prompt":
         return cls(
             role=PromptMessageRoleEnum.USER,
             text=PromptText(
@@ -125,9 +125,9 @@ class Prompt(BaseTextPrompt):
     def with_dad_text(
         cls,
         text: str,
-        variables: dict | None = None,
+        variables: dict[str, Any] | None = None,
         disable_checks: bool = True,
-    ):
+    ) -> "Prompt":
         return cls(
             role=PromptMessageRoleEnum.USER,
             text=PromptText(

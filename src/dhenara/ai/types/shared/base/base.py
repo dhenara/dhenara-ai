@@ -66,10 +66,10 @@ class BaseModel(PydanticBaseModel):
     #        return None, e
 
     # TODO_FUTURE: Comeup with better soution to mask selective fields
-    def model_dump_safe(self, **kwargs):
+    def model_dump_safe(self, **kwargs: Any) -> dict[str, Any]:
         """Get a string representation with masked sensitive data"""
         # Get the regular model dump
-        data = self.model_dump()
+        data = self.model_dump(**kwargs)
         # Create a copy to avoid modifying the original data
         return self._mask_sensitive_data(data.copy())
 

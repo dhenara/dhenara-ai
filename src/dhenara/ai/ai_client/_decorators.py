@@ -3,9 +3,9 @@ import concurrent.futures
 import functools
 import logging
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
-from typing import ParamSpec, TypeVar
+from typing import Any, ParamSpec, TypeVar
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ class AsyncToSyncWrapper:
         self._executor: concurrent.futures.ThreadPoolExecutor | None = None
         self._lock = threading.Lock()
 
-    def __call__(self, async_func: Callable[P, T]) -> Callable[P, T]:
+    def __call__(self, async_func: Callable[P, Coroutine[Any, Any, T]]) -> Callable[P, T]:
         @functools.wraps(async_func)
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
             try:
@@ -63,15 +63,15 @@ class AsyncToSyncWrapper:
 
     def _run_in_new_loop(
         self,
-        async_func,
-        *args,
+        async_func: Callable[..., Coroutine[Any, Any, Any]],
+        *args: object,
         timeout: float | None = None,
-        **kwargs,
-    ):
-        future = concurrent.futures.Future()
+        **kwargs: object,
+    ) -> Any:
+        future: concurrent.futures.Future[Any] = concurrent.futures.Future()
         timeout = timeout or self._config.default_timeout
 
-        def run_in_thread():
+        def run_in_thread() -> None:
             try:
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
@@ -87,10 +87,10 @@ class AsyncToSyncWrapper:
         self._get_executor().submit(run_in_thread)
         return future.result(timeout=timeout)
 
-    def _run_async_func(self, async_func, *args, **kwargs):
+    def _run_async_func(self, async_func: Callable[P, Coroutine[Any, Any, T]], *args: P.args, **kwargs: P.kwargs) -> T:
         return asyncio.run(async_func(*args, **kwargs))
 
-    def cleanup(self):
+    def cleanup(self) -> None:
         with self._lock:
             if self._executor:
                 try:

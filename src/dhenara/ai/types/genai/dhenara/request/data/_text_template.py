@@ -60,7 +60,7 @@ class TextTemplate(BaseModel):
             # First replace all escaped patterns with a placeholder
             escaped_patterns = {}
 
-            def replace_escaped(match):
+            def replace_escaped(match: Any) -> str:
                 placeholder = f"__ESCAPED_{len(escaped_patterns)}__"
                 escaped_patterns[placeholder] = match.group(0)
                 return placeholder
@@ -94,7 +94,7 @@ class TextTemplate(BaseModel):
         """Get a dictionary of variable default values."""
         return {key: props.default for key, props in self.variables.items() if props and props.default is not None}
 
-    def format(self, **kwargs) -> str:
+    def format(self, **kwargs: Any) -> str:
         """
         Returns the template text without processing any variables or expressions.
         Variable substitution and expression evaluation are NOT handled within this package.

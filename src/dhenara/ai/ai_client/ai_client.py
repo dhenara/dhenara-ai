@@ -4,6 +4,8 @@ from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from contextlib import AsyncExitStack, ExitStack, asynccontextmanager, contextmanager
+from types import TracebackType
+from typing import Any
 
 from dhenara.ai.types import AIModelCallConfig, AIModelCallResponse, AIModelEndpoint
 from dhenara.ai.types.genai.dhenara.request import MessageItem, Prompt, SystemInstruction
@@ -77,14 +79,19 @@ class AIModelClient:
             self._sync_stack.close()
             self._provider_client = None
 
-    def __enter__(self):
+    def __enter__(self) -> "AIModelClient":
         if self.is_async:
             raise RuntimeError("Use 'async with' for async client")
         # Store the context manager instance
         self._sync_cm = self._sync_context()
         return self._sync_cm.__enter__()
 
-    def __exit__(self, *exc):
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> bool | None:
         if self.is_async:
             raise RuntimeError(
                 f"This client is created with is_async={self.is_async}. Use 'async with' for async client"
@@ -92,22 +99,27 @@ class AIModelClient:
         # Use the stored context manager instance
         if self._sync_cm is None:
             return False
-        return self._sync_cm.__exit__(*exc)
+        return self._sync_cm.__exit__(exc_type, exc, tb)
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "AIModelClient":
         if not self.is_async:
             raise RuntimeError(f"This client is created with is_async={self.is_async}. Use 'with' for sync client")
         self._async_cm = self._async_context()
         return await self._async_cm.__aenter__()
 
-    async def __aexit__(self, *exc):
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> bool | None:
         if not self.is_async:
             raise RuntimeError("Use 'with' for sync client")
         if self._async_cm is None:
             return False
-        return await self._async_cm.__aexit__(*exc)
+        return await self._async_cm.__aexit__(exc_type, exc, tb)
 
-    def _execute_with_retry_sync(self, *args, **kwargs) -> AIModelCallResponse:
+    def _execute_with_retry_sync(self, *args: Any, **kwargs: Any) -> AIModelCallResponse:
         """Synchronous retry logic"""
         last_exception = None
         for attempt in range(self.config.retries):
@@ -125,7 +137,7 @@ class AIModelClient:
 
         raise last_exception or RuntimeError("All retry attempts failed")
 
-    async def _execute_with_retry_async(self, *args, **kwargs) -> AIModelCallResponse:
+    async def _execute_with_retry_async(self, *args: Any, **kwargs: Any) -> AIModelCallResponse:
         """Asynchronous retry logic"""
         last_exception = None
         for attempt in range(self.config.retries):
@@ -143,7 +155,7 @@ class AIModelClient:
 
         raise last_exception or RuntimeError("All retry attempts failed")
 
-    def _execute_with_timeout_sync(self, *args, **kwargs) -> AIModelCallResponse:
+    def _execute_with_timeout_sync(self, *args: Any, **kwargs: Any) -> AIModelCallResponse:
         """Synchronous timeout handling using threading instead of signals"""
         provider = self._provider_client
         if provider is None:
@@ -167,7 +179,7 @@ class AIModelClient:
                 # Create a custom error message
                 raise TimeoutError(f"API call timed out after {self.config.timeout} seconds")
 
-    async def _execute_with_timeout_async(self, *args, **kwargs) -> AIModelCallResponse:
+    async def _execute_with_timeout_async(self, *args: Any, **kwargs: Any) -> AIModelCallResponse:
         """Asynchronous timeout handling"""
         provider = self._provider_client
         if provider is None:
@@ -191,7 +203,7 @@ class AIModelClient:
                 f"This client is created with is_async={self.is_async}. Use generate_async for async client"
             )
 
-        with self as client:  # noqa: F841
+        with self:
             capture_cb = None
             provider = getattr(self, "_provider_client", None)
             if provider is not None:
@@ -222,7 +234,7 @@ class AIModelClient:
         if not self.is_async:
             raise RuntimeError(f"This client is created with is_async={self.is_async}. Use generate for sync client")
 
-        async with self as client:  # noqa: F841
+        async with self:
             capture_cb = None
             provider = getattr(self, "_provider_client", None)
             if provider is not None:
