@@ -104,9 +104,7 @@ class ChatResponse(BaseModel):
             return None
 
         # Combine all content items into one text
-        # Filter out None values (e.g., from reasoning items with encrypted/no content)
         text_parts = [content_item.get_text() for content_item in choice.contents]
-        text_parts = [part for part in text_parts if part is not None]
 
         text = "\n".join(text_parts)
 

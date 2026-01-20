@@ -105,11 +105,7 @@ class ApiResponse(BaseModel, Generic[T]):  # noqa: UP046
             message = error_msg.message if isinstance(error_msg, ApiResponseMessage) else str(error_msg)
             fm = self.first_message
 
-            code = (
-                fm.status_code
-                if (fm is not None and fm.status_code is not None)
-                else ApiResponseMessageStatusCode.FAIL_SERVER_ERROR
-            )
+            code = fm.status_code if fm is not None else ApiResponseMessageStatusCode.FAIL_SERVER_ERROR
             http_status: int | None = 500
             if code in {ApiResponseMessageStatusCode.INVALID_INPUTS, ApiResponseMessageStatusCode.FAIL_BAD_REQUEST}:
                 http_status = 400
