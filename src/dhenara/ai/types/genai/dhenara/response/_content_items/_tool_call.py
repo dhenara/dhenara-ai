@@ -41,15 +41,8 @@ class ChatResponseToolCall(BaseModel):
             except Exception as e:
                 raw_data = arguments
                 parse_error = str(e)
-        elif isinstance(arguments, dict):
-            try:
-                arguments_dict = arguments
-            except Exception as e:
-                raw_data = arguments
-                parse_error = str(e)
         else:
-            raw_data = arguments
-            parse_error = f"Invalid arguments type {(type(arguments))}"
+            arguments_dict = arguments
 
         return {
             "arguments_dict": arguments_dict,

@@ -75,10 +75,8 @@ class BaseTextPrompt(BaseModel):
             var_dict = self.variables.copy()
             var_dict.update(**kwargs)
             formatted_text = self.text.format(**var_dict)
-        elif isinstance(self.text, str):
-            formatted_text = self.text
         else:
-            raise ValueError(f"get_formatted_text: unknown prompt.text type {type(self.text)}")
+            formatted_text = self.text
 
         if max_words:
             words = formatted_text.split()

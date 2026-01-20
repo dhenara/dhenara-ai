@@ -75,9 +75,6 @@ class BaseModel(PydanticBaseModel):
 
     def _mask_sensitive_data(self, data: dict) -> dict:
         """Recursively mask sensitive fields in a dictionary"""
-        if not isinstance(data, dict):
-            return data
-
         for key, value in data.items():
             if key == "api_key" and value:
                 data[key] = f"{str(value)[:4]}...{str(value)[-4:]}" if len(str(value)) > 8 else value

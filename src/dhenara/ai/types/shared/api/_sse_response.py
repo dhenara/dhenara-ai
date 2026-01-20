@@ -6,8 +6,9 @@ from pydantic import ConfigDict, Field
 
 from dhenara.ai.types.shared.base import BaseEnum, BaseModel
 
-# Type variable for generic data types
-T = TypeVar("T", bound=BaseModel)
+# Type variable for generic data types.
+# NOTE: SSE payloads are not restricted to BaseModel instances.
+T = TypeVar("T")
 
 
 class SSEEventType(BaseEnum):

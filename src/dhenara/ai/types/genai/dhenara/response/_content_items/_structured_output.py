@@ -47,9 +47,6 @@ def _extract_json_objects_from_text(text: str) -> list[Any]:
     in the order they appear. If none are found, returns an empty list.
     """
     results: list[Any] = []
-    if not isinstance(text, str):
-        return results
-
     s = text.strip()
 
     # Strip markdown fences: ```json\n{...}\n```
@@ -213,13 +210,10 @@ class ChatResponseStructuredOutput(BaseModel):
             model_cls: type[PydanticBaseModel] | None = None
             if isinstance(config.model_class_reference, type):
                 try:
-                    if issubclass(config.model_class_reference, PydanticBaseModel):
-                        model_cls = config.model_class_reference
+                    model_cls = config.model_class_reference
                 except TypeError:
                     # Guard against environments where the second arg isn't a class
                     model_cls = None
-            elif isinstance(config.model_class_reference, PydanticBaseModel):
-                model_cls = config.model_class_reference.__class__
 
             # Step 4: Validate with model class if available
             if model_cls:

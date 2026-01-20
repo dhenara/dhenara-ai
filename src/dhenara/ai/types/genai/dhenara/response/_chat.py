@@ -147,14 +147,8 @@ class ChatResponse(BaseModel):
 
         if content_types is None:
             content_types = ["text", "reasoning", "structured_output", "tool_call", "generic"]
-        else:
-            # Ensure content_types is a list
-            if not isinstance(content_types, list):
-                raise ValueError("content_types must be a list of ChatResponseContentItemType")
         try:
-            content_types_enum = [
-                ChatResponseContentItemType(ct) if isinstance(ct, str) else ct for ct in content_types
-            ]
+            content_types_enum = [ChatResponseContentItemType(ct) for ct in content_types]
         except ValueError as e:
             raise ValueError(f"Invalid content type in content_types: {e}")
 
@@ -257,7 +251,7 @@ class ChatResponse(BaseModel):
             ChatResponse with properly reconstructed content items
         """
         # Make a deep copy to avoid mutating the input
-        data_copy = data.copy() if isinstance(data, dict) else data
+        data_copy = data.copy()
 
         # Process choices to reconstruct content items properly
         if "choices" in data_copy:
