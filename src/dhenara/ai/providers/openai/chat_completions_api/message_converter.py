@@ -1,4 +1,4 @@
-"""Utilities for converting between OpenAI chat formats and Dhenara message types."""
+"""Utilities for converting between OpenAI Chat Completions formats and Dhenara message types."""
 
 from __future__ import annotations
 
@@ -22,8 +22,8 @@ from dhenara.ai.types.genai.dhenara.request import StructuredOutputConfig
 from dhenara.ai.types.genai.dhenara.response import ChatResponseChoice
 
 
-class OpenAIMessageConverterCHATAPI:
-    """Bidirectional converter for OpenAI chat messages."""
+class OpenAIMessageConverterChatCompletions:
+    """Bidirectional converter for OpenAI Chat Completions messages."""
 
     @staticmethod
     def provider_message_to_content_items(
@@ -40,7 +40,7 @@ class OpenAIMessageConverterCHATAPI:
             content_text = message.content
             items: list[ChatResponseContentItem] = []
 
-            # DeepSeek specific reasoning separation (uses <think> tags)
+            # DeepSeek reasoning separation (uses <think> tags)
             if ai_model_provider == AIModelProviderEnum.DEEPSEEK and isinstance(content_text, str):
                 import re
 
@@ -62,10 +62,7 @@ class OpenAIMessageConverterCHATAPI:
                             )
                         )
                     answer_content = re.sub(r"<think>.*?</think>", "", content_text, flags=re.DOTALL).strip()
-                    if answer_content:
-                        content_text = answer_content
-                    else:
-                        content_text = None
+                    content_text = answer_content or None
 
             if structured_output_config is not None and content_text:
                 parsed_data, error, post_processed = ChatResponseStructuredOutput.parse_and_validate(
@@ -75,7 +72,7 @@ class OpenAIMessageConverterCHATAPI:
                 structured_output = ChatResponseStructuredOutput(
                     config=structured_output_config,
                     structured_data=parsed_data,
-                    raw_data=content_text,  # Keep original response regardless of parsing
+                    raw_data=content_text,
                     parse_error=error,
                     post_processed=post_processed,
                 )
@@ -118,8 +115,7 @@ class OpenAIMessageConverterCHATAPI:
                     )
                     or "unknown_tool",
                     arguments=_parsed_args.get("arguments_dict") or {},
-                    raw_data=_parsed_args.get("raw_data"),
-                    parse_error=_parsed_args.get("parse_error"),
+                    metadata={},
                 )
 
                 tool_call_items.append(
@@ -130,58 +126,41 @@ class OpenAIMessageConverterCHATAPI:
                         metadata={},
                     )
                 )
+                index_start += 1
 
             return tool_call_items
 
+        # No known message content
         return []
 
     @staticmethod
-    def choice_to_provider_message(choice: ChatResponseChoice) -> dict[str, object]:
-        """Convert ChatResponseChoice into OpenAI-compatible assistant message."""
-        text_parts: list[str] = []
-        reasoning_parts: list[str] = []
-        tool_calls_payload: list[dict[str, object]] = []
+    def convert_choice_to_provider_message(choice: ChatResponseChoice) -> dict:
+        """Convert a Dhenara choice object back to an OpenAI chat message dict."""
+        role = "assistant"
+        content_parts: list[str] = []
 
-        for content in choice.contents or []:
-            if isinstance(content, ChatResponseTextContentItem):
-                t = content.get_text() if hasattr(content, "get_text") else None
-                if t:
-                    text_parts.append(t)
-            elif isinstance(content, ChatResponseReasoningContentItem):
-                t = content.get_text() if hasattr(content, "get_text") else None
-                if t:
-                    reasoning_parts.append(t)
-            elif isinstance(content, ChatResponseToolCallContentItem):
-                tool_call = content.tool_call
-                tool_calls_payload.append(
-                    {
-                        "id": tool_call.id,
-                        "type": "function",
-                        "function": {
-                            "name": tool_call.name,
-                            "arguments": json.dumps(tool_call.arguments),
-                        },
-                    }
-                )
-            elif isinstance(content, ChatResponseStructuredOutputContentItem):
-                output = content.structured_output
-                if output.structured_data:
-                    text_parts.append(json.dumps(output.structured_data))
+        for item in choice.contents or []:
+            try:
+                text = item.get_text()  # type: ignore[attr-defined]
+            except Exception:
+                text = None
+            if text:
+                content_parts.append(text)
 
-        message: dict[str, object] = {"role": "assistant"}
-
-        if text_parts:
-            message["content"] = "\n".join(text_parts)
-        elif reasoning_parts:
-            message["content"] = "\n".join(reasoning_parts)
-        else:
-            message["content"] = None
-
-        if tool_calls_payload:
-            message["tool_calls"] = tool_calls_payload
-
-        return message
+        content = "\n".join(content_parts)
+        return {"role": role, "content": content}
 
     @staticmethod
-    def choices_to_provider_messages(choices: Iterable[ChatResponseChoice]) -> list[dict[str, object]]:
-        return [OpenAIMessageConverterCHATAPI.choice_to_provider_message(choice) for choice in choices]
+    def parse_tool_call_args_str_or_dict(args: str | dict | None) -> dict:
+        if args is None:
+            return {}
+        if isinstance(args, dict):
+            return args
+        try:
+            return json.loads(args)
+        except Exception:
+            return {"raw": args}
+
+    @staticmethod
+    def _flatten_iterable(iterable: Iterable[object]) -> list[object]:
+        return list(iterable)

@@ -1,7 +1,7 @@
 from dhenara.ai.providers.anthropic import AnthropicChat
 from dhenara.ai.providers.base import AIModelCallConfig, AIModelProviderClientBase
 from dhenara.ai.providers.google import GoogleAIChat, GoogleAIImage
-from dhenara.ai.providers.openai import OPENAI_USE_RESPONSES_DEFAULT, OpenAIChatLEGACY, OpenAIImage, OpenAIResponses
+from dhenara.ai.providers.openai import OpenAIImage, OpenAIResponses
 from dhenara.ai.types.genai.ai_model import AIModelEndpoint, AIModelFunctionalTypeEnum, AIModelProviderEnum
 
 
@@ -10,11 +10,11 @@ class AIModelClientFactory:
 
     _provider_clients = {
         AIModelFunctionalTypeEnum.TEXT_GENERATION: {
-            # Select Responses path for OpenAI when switch is enabled
-            AIModelProviderEnum.OPEN_AI: OpenAIResponses if OPENAI_USE_RESPONSES_DEFAULT else OpenAIChatLEGACY,
+            # OpenAI uses the Responses API by default.
+            AIModelProviderEnum.OPEN_AI: OpenAIResponses,
             AIModelProviderEnum.ANTHROPIC: AnthropicChat,
             AIModelProviderEnum.GOOGLE_AI: GoogleAIChat,
-            AIModelProviderEnum.DEEPSEEK: OpenAIChatLEGACY,
+            AIModelProviderEnum.DEEPSEEK: OpenAIResponses,
         },
         AIModelFunctionalTypeEnum.IMAGE_GENERATION: {
             AIModelProviderEnum.OPEN_AI: OpenAIImage,

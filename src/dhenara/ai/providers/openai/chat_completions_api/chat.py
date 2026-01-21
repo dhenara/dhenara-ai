@@ -5,9 +5,9 @@ from typing import Any
 from openai.types.chat import ChatCompletion, ChatCompletionMessage
 from openai.types.chat.chat_completion_chunk import ChatCompletionChunk, ChoiceDelta
 
-from dhenara.ai.providers.openai import OpenAIClientBase
-from dhenara.ai.providers.openai.legacy_chat_api.message_converter import (
-    OpenAIMessageConverterCHATAPI as OpenAIMessageConverter,
+from dhenara.ai.providers.openai.base import OpenAIClientBase
+from dhenara.ai.providers.openai.chat_completions_api.message_converter import (
+    OpenAIMessageConverterChatCompletions as OpenAIMessageConverter,
 )
 from dhenara.ai.types.genai import (
     AIModelCallResponseMetaData,
@@ -28,8 +28,12 @@ from dhenara.ai.types.shared.api import SSEErrorResponse
 logger = logging.getLogger(__name__)
 
 
-# -----------------------------------------------------------------------------
-class OpenAIChatLEGACY(OpenAIClientBase):
+class OpenAIChatCompletions(OpenAIClientBase):
+    """OpenAI-compatible Chat Completions client.
+
+    Prefer `OpenAIResponses` for OpenAI's Responses API.
+    """
+
     def get_api_call_params(
         self,
         prompt: str | dict | Prompt | None,
@@ -37,11 +41,6 @@ class OpenAIChatLEGACY(OpenAIClientBase):
         instructions: dict[str, Any] | list[str | dict | SystemInstruction] | None = None,
         messages: Sequence[MessageItem] | None = None,
     ) -> dict[str, Any]:
-        # HARD GUARD: This legacy client must never be used for OpenAI provider.
-        # The project has migrated to the Responses API; invoking this path for
-        # OpenAI is a configuration error and should fail fast.
-        if self.model_endpoint.ai_model.provider == AIModelProviderEnum.OPEN_AI:
-            raise RuntimeError("OpenAIChatLEGACY is disabled for provider=OPEN_AI. Use Responses API client instead.")
         if not self._client:
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
 
@@ -65,7 +64,6 @@ class OpenAIChatLEGACY(OpenAIClientBase):
 
         # Add previous messages and current prompt
         if messages is not None:
-            # Convert MessageItem objects to OpenAI format
             formatted_messages = formatter.format_messages(
                 messages=messages,
                 model_endpoint=self.model_endpoint,
@@ -88,7 +86,6 @@ class OpenAIChatLEGACY(OpenAIClientBase):
                     )
                 messages_list.append(prompt)
 
-        # Prepare API call arguments
         chat_args: dict[str, Any] = {
             "model": self.model_name_in_api_calls,
             "messages": messages_list,
@@ -102,7 +99,7 @@ class OpenAIChatLEGACY(OpenAIClientBase):
         max_output_tokens, _max_reasoning_tokens = self.config.get_max_output_tokens(self.model_endpoint.ai_model)
 
         if self.model_endpoint.api.provider != AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
-            # NOTE: With resasoning models, max_output_tokens Deprecated in favour of max_completion_tokens
+            # NOTE: With reasoning models, `max_output_tokens` is deprecated in favour of `max_completion_tokens`.
             chat_args["max_completion_tokens"] = max_output_tokens
         else:
             chat_args["max_tokens"] = max_output_tokens
@@ -118,7 +115,7 @@ class OpenAIChatLEGACY(OpenAIClientBase):
         if self.config.options:
             chat_args.update(self.config.options)
 
-        # ---  Tools ---
+        # --- Tools ---
         if self.config.tools:
             chat_args["tools"] = formatter.format_tools(
                 tools=self.config.tools,
@@ -199,14 +196,13 @@ class OpenAIChatLEGACY(OpenAIClientBase):
 
         return stream
 
-    # -------------------------------------------------------------------------
     def parse_stream_chunk(
         self,
         chunk: object,
     ) -> StreamingChatResponse | SSEErrorResponse | list[StreamingChatResponse | SSEErrorResponse] | None:
-        """Handle streaming response with progress tracking and final response"""
+        """Handle streaming response with progress tracking and final response."""
         if not isinstance(chunk, ChatCompletionChunk):
-            raise TypeError(f"Unexpected OpenAI legacy stream chunk type: {type(chunk)}")
+            raise TypeError(f"Unexpected OpenAI stream chunk type: {type(chunk)}")
         processed_chunks: list[StreamingChatResponse | SSEErrorResponse] = []
 
         sm = self.streaming_manager
@@ -216,16 +212,16 @@ class OpenAIChatLEGACY(OpenAIClientBase):
         sm.provider_metadata = {}
         sm.persistant_choice_metadata_list = []
 
-        if not sm.provider_metadata:  # Grab the metadata once
+        if not sm.provider_metadata:
             sm.provider_metadata = {
                 "id": chunk.id,
-                "created": str(chunk.created),  # Microsoft sdk returns datetim obj
+                "created": str(chunk.created),
                 "object": chunk.object if hasattr(chunk, "object") else None,
                 "system_fingerprint": chunk.system_fingerprint if hasattr(chunk, "system_fingerprint") else None,
             }
 
-        # Process usage
-        if hasattr(chunk, "usage") and chunk.usage:  # Microsoft is slow in adopting openai changes 😶
+        # Process usage (some SDKs lag behind and may omit usage on early chunks)
+        if hasattr(chunk, "usage") and chunk.usage:
             usage = ChatResponseUsage(
                 total_tokens=chunk.usage.total_tokens,
                 prompt_tokens=chunk.usage.prompt_tokens,
@@ -233,11 +229,9 @@ class OpenAIChatLEGACY(OpenAIClientBase):
             )
             sm.update_usage(usage)
 
-        # Process content
         if chunk.choices:
             choice_deltas = []
             for choice in chunk.choices:
-                # Only first chunk has few fields
                 if len(sm.persistant_choice_metadata_list) < choice.index + 1:
                     sm.persistant_choice_metadata_list.append(
                         {
@@ -255,7 +249,7 @@ class OpenAIChatLEGACY(OpenAIClientBase):
                         stop_sequence=None,
                         content_deltas=[
                             self.process_content_item_delta(
-                                index=0,  # Only one content item. Might change with reasoing response?
+                                index=0,
                                 role=role,
                                 delta=choice.delta,
                             ),
@@ -274,7 +268,6 @@ class OpenAIChatLEGACY(OpenAIClientBase):
 
         return processed_chunks
 
-    # -------------------------------------------------------------------------
     def _get_usage_from_provider_response(
         self,
         response: ChatCompletion,
@@ -288,21 +281,20 @@ class OpenAIChatLEGACY(OpenAIClientBase):
             completion_tokens=getattr(usage, "completion_tokens", 0) or 0,
         )
 
-    # -------------------------------------------------------------------------
     def parse_response(
         self,
         response: object,
     ) -> ChatResponse:
-        """Parse the OpenAI response into our standard format"""
+        """Parse the provider response into our standard format."""
         if not isinstance(response, ChatCompletion):
-            raise TypeError(f"Unexpected OpenAI legacy response type: {type(response)}")
+            raise TypeError(f"Unexpected OpenAI chat completion response type: {type(response)}")
         usage, usage_charge = self.get_usage_and_charge(response)
         usage_chat = usage if isinstance(usage, ChatResponseUsage) else None
 
         choices = []
         for choice in response.choices:
             content_items = self.process_content_item(
-                index=0,  # Only one content item. Might change with reasoing response?
+                index=0,
                 role=choice.message.role,
                 content_item=choice.message,
             )
@@ -327,12 +319,11 @@ class OpenAIChatLEGACY(OpenAIClientBase):
             choices=choices,
             metadata=AIModelCallResponseMetaData(
                 streaming=False,
-                duration_seconds=0,  # TODO
+                duration_seconds=0,
                 provider_metadata={
                     "id": response.id,
-                    "created": str(response.created),  # Microsoft sdk returns datetim obj
+                    "created": str(response.created),
                     "object": response.object if hasattr(response, "object") else None,
-                    # TODO: Move to choice
                     "system_fingerprint": response.system_fingerprint
                     if hasattr(response, "system_fingerprint")
                     else None,
@@ -346,9 +337,6 @@ class OpenAIChatLEGACY(OpenAIClientBase):
         role: str,
         content_item: ChatCompletionMessage,
     ) -> ChatResponseContentItem | list[ChatResponseContentItem]:
-        # INFO: response type will vary with API/Model providers.
-        # if isinstance(content_item, (ChatCompletionMessage, AzureChatResponseMessage)):
-
         converted_items = OpenAIMessageConverter.provider_message_to_content_items(
             message=content_item,
             role=role,
@@ -370,14 +358,12 @@ class OpenAIChatLEGACY(OpenAIClientBase):
 
         return converted_items
 
-    # Streaming
     def process_content_item_delta(
         self,
         index: int,
         role: str,
         delta: ChoiceDelta,
     ) -> ChatResponseContentItemDelta:
-        # if isinstance(delta, (ChoiceDelta, AzureStreamingChatResponseMessageUpdate)):
         if hasattr(delta, "content"):
             sm = self.streaming_manager
             if sm is None:
@@ -385,14 +371,11 @@ class OpenAIChatLEGACY(OpenAIClientBase):
             if self.model_endpoint.ai_model.provider == AIModelProviderEnum.DEEPSEEK:
                 content = delta.content or ""
 
-                # Check for think tag markers
                 think_start = "<think>" in content
                 think_end = "</think>" in content
 
-                # If we see a start tag, everything after it goes to reasoning
                 if think_start:
                     sm.progress.in_thinking_block = True
-                    # Split content at the tag
                     _, reasoning_part = content.split("<think>", 1)
                     return ChatResponseReasoningContentItemDelta(
                         index=index,
@@ -400,7 +383,6 @@ class OpenAIChatLEGACY(OpenAIClientBase):
                         text_delta=reasoning_part,
                     )
 
-                # If we see an end tag, everything before it goes to reasoning
                 elif think_end:
                     sm.progress.in_thinking_block = False
                     reasoning_part, answer_part = content.split("</think>", 1)
@@ -418,7 +400,6 @@ class OpenAIChatLEGACY(OpenAIClientBase):
                         )
                     )
 
-                # If we're inside a thinking block, content goes to reasoning
                 elif sm.progress.in_thinking_block:
                     return ChatResponseReasoningContentItemDelta(
                         index=index,
@@ -426,7 +407,6 @@ class OpenAIChatLEGACY(OpenAIClientBase):
                         text_delta=content,
                     )
 
-                # Otherwise it's regular text content
                 else:
                     return ChatResponseTextContentItemDelta(
                         index=index + 1,
@@ -439,44 +419,15 @@ class OpenAIChatLEGACY(OpenAIClientBase):
                     role=role,
                     text_delta=delta.content,
                 )
-        # TODO: Tools Not supported in streaming yet
-        # elif hasattr(delta, "tool_calls") and delta.tool_calls:
-        #    tool_call_deltas = []
 
-        #    for tool_call in delta.tool_calls:
-        #        tool_call_delta = {
-        #            "id": tool_call.id if hasattr(tool_call, "id") else None,
-        #            "type": "function",  # OpenAI currently only supports function type
-        #            "function": {},
-        #        }
+        # NOTE: There is no way to identify content type for OpenAI streaming response.
+        # Also, providers may send a few extra chunks with no content.
+        # Eg: The very first chunk will only have the `role` set (and role in other chunks will be None)
+        # Therefore, don't send a generic delta item here as it will mess up streaming manager updates.
 
-        #        # Handle function name
-        #        if hasattr(tool_call, "function") and hasattr(tool_call.function, "name"):
-        #            tool_call_delta["function"]["name"] = tool_call.function.name
-
-        #        # Handle function arguments (can be streamed)
-        #        if hasattr(tool_call, "function") and hasattr(tool_call.function, "arguments"):
-        #            tool_call_delta["function"]["arguments"] = tool_call.function.arguments
-
-        #        tool_call_deltas.append(tool_call_delta)
-
-        #    return ChatResponseToolCallContentItemDelta(
-        #        index=index,
-        #        role=role,
-        #        tool_call_deltas=tool_call_deltas,
-        #        metadata={},
-        #    )
-
-        else:
-            # NOTE: There is no way to identify content type for OpenAI streaming response.
-            # Also they sends few extra chuckw with no content.
-            # Eg: The very first chunk will only have the `role` set (and role in other chunks will be None)
-            # Therefore, dont't send a `ChatResponseGenericContentItemDelta`  here,
-            # asit will messup streaming manager content updation
-
-            return self.get_unknown_content_type_item(
-                index=index,
-                role=role,
-                unknown_item=delta,
-                streaming=True,
-            )
+        return self.get_unknown_content_type_item(
+            index=index,
+            role=role,
+            unknown_item=delta,
+            streaming=True,
+        )
