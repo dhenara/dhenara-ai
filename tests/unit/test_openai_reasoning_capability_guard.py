@@ -15,7 +15,7 @@ from dhenara.ai.types.genai.dhenara.request import AIModelCallConfig
 
 
 @pytest.mark.unit
-@pytest.mark.case_id("DAI-007")
+@pytest.mark.case_id("DAI-062")
 def test_openai_responses_omits_reasoning_when_model_not_supported():
     model = FoundationModel(
         model_name="test-non-reasoning-model",

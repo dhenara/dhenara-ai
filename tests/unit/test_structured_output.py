@@ -19,7 +19,7 @@ class SampleOutputModel(PydanticBaseModel):
 
 
 @pytest.mark.unit
-@pytest.mark.case_id("DAI-006")
+@pytest.mark.case_id("DAI-061")
 def test_from_model_and_model_dump_excludes_flags():
     """
     GIVEN a StructuredOutputConfig created from a Pydantic model
