@@ -393,8 +393,8 @@ class OpenAIMessageConverter(BaseMessageConverter):
 
                     args_str = _json.dumps(tool_call.arguments)
 
-                    tool_call_id = tool_call.call_id or "unknown_tool_call"
-                    tool_id = tool_call.id if same_provider else None
+                    tool_call_id = tool_call.call_id or "unknown_tool_call_id"
+                    tool_id = tool_call.id if (same_provider and tool_call.id) else "unknown_tool_id"
 
                     fn_call_param = ResponseFunctionToolCallParam(
                         # NOTE: Always pass the call_id, as it will be needed to map tool call even if provider differs
