@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import base64
-import json
 import logging
 import uuid
 from typing import Any, cast
@@ -21,6 +20,7 @@ from dhenara.ai.types.genai import (
 from dhenara.ai.types.genai.ai_model import AIModelEndpoint, AIModelProviderEnum
 from dhenara.ai.types.genai.dhenara.request import StructuredOutputConfig
 from dhenara.ai.types.genai.dhenara.response import ChatResponse, ChatResponseChoice
+from dhenara.ai.utils.dai_disk import DAI_JSON
 
 logger = logging.getLogger(__name__)
 
@@ -275,7 +275,7 @@ class GoogleMessageConverter(BaseMessageConverter):
                 else:
                     # Fallback: serialize unknown parts as text
                     try:
-                        parts.append({"text": json.dumps(p.model_dump()), **extra_kv})
+                        parts.append({"text": DAI_JSON.dumps(p.model_dump()), **extra_kv})
                     except Exception:
                         parts.append({"text": str(p), **extra_kv})
 
@@ -341,7 +341,7 @@ class GoogleMessageConverter(BaseMessageConverter):
                 else:
                     output = content.structured_output
                     if output and output.structured_data is not None:
-                        parts.append({"text": json.dumps(output.structured_data)})
+                        parts.append({"text": DAI_JSON.dumps(output.structured_data)})
                 continue
 
             else:
@@ -364,7 +364,7 @@ class GoogleMessageConverter(BaseMessageConverter):
                     else:
                         parts.append({"function_response": fr})
                 else:
-                    parts.append({"text": json.dumps(md)})
+                    parts.append({"text": DAI_JSON.dumps(md)})
                 continue
 
             logger.debug(f"Google: Skipped unsupported content type {type(content)}")

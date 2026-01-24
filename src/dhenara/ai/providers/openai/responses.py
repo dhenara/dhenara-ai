@@ -1,4 +1,3 @@
-import json
 import logging
 from collections.abc import AsyncIterator, Iterator, Sequence
 from typing import Any, cast
@@ -23,6 +22,7 @@ from dhenara.ai.types.genai import (
 from dhenara.ai.types.genai.ai_model import AIModelAPIProviderEnum
 from dhenara.ai.types.genai.dhenara.request import MessageItem, Prompt, SystemInstruction
 from dhenara.ai.types.shared.api import SSEErrorCode, SSEErrorData, SSEErrorResponse
+from dhenara.ai.utils.dai_disk import DAI_JSON
 
 logger = logging.getLogger(__name__)
 
@@ -340,7 +340,7 @@ class OpenAIResponses(OpenAIClientBase):
             return cast(dict[str, Any], arguments)
         if isinstance(arguments, str):
             try:
-                parsed = json.loads(arguments)
+                parsed = DAI_JSON.loads(arguments)
                 if isinstance(parsed, dict):
                     return cast(dict[str, Any], parsed)
             except Exception:
@@ -645,7 +645,7 @@ class OpenAIResponses(OpenAIClientBase):
             tool_call_obj = None
             if name:
                 try:
-                    parsed_args = json.loads(args_str) if isinstance(args_str, str) else args_str
+                    parsed_args = DAI_JSON.loads(args_str) if isinstance(args_str, str) else args_str
                 except Exception:
                     parsed_args = {"raw": args_str}
                 tool_call_obj = ChatResponseToolCall(

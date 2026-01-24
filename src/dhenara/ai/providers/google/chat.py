@@ -30,6 +30,7 @@ from dhenara.ai.types.genai import (
 )
 from dhenara.ai.types.genai.dhenara.request import MessageItem, Prompt, SystemInstruction
 from dhenara.ai.types.shared.api import SSEErrorResponse
+from dhenara.ai.utils.dai_disk import DAI_JSON
 
 logger = logging.getLogger(__name__)
 
@@ -535,12 +536,11 @@ class GoogleAIChat(GoogleAIClientBase):
                     )
                 except Exception:
                     resp = None
-                import json as _json
 
                 return ChatResponseTextContentItemDelta(
                     index=index,
                     role=role,
-                    text_delta=_json.dumps(resp) if resp is not None else "",
+                    text_delta=DAI_JSON.dumps(resp) if resp is not None else "",
                 )
 
             # Fallback: generic

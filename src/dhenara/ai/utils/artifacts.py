@@ -1,9 +1,10 @@
 """Utilities for capturing and persisting artifacts during AI model calls."""
 
-import json
 import logging
 from pathlib import Path
 from typing import Any
+
+from .dai_disk import DAI_DISK
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,7 @@ class ArtifactWriter:
             else:
                 artifact_dir = artifact_root
 
-            artifact_dir.mkdir(parents=True, exist_ok=True)
+            DAI_DISK.ensure_dir(artifact_dir)
             artifact_path = artifact_dir / filename
 
             def _json_default(obj: Any) -> object:
@@ -45,14 +46,14 @@ class ArtifactWriter:
                 return str(obj)
 
             # Write UTF-8 JSON, preserve unicode (ensure_ascii=False) for readability
-            with open(artifact_path, "w", encoding="utf-8") as f:
-                json.dump(
-                    data,
-                    f,
-                    indent=2,
-                    default=_json_default,
-                    ensure_ascii=False,  # keep characters like smart quotes unescaped
-                )
+            DAI_DISK.write_json(
+                artifact_path,
+                data,
+                encoding="utf-8",
+                indent=2,
+                default=_json_default,
+                ensure_ascii=False,  # keep characters like smart quotes unescaped
+            )
 
             logger.debug(f"Wrote artifact: {artifact_path}")
 
@@ -77,11 +78,10 @@ class ArtifactWriter:
             else:
                 artifact_dir = artifact_root
 
-            artifact_dir.mkdir(parents=True, exist_ok=True)
+            DAI_DISK.ensure_dir(artifact_dir)
             artifact_path = artifact_dir / filename
 
-            with open(artifact_path, "w") as f:
-                f.write(content)
+            DAI_DISK.write_text(artifact_path, content, encoding="utf-8")
 
             logger.debug(f"Wrote artifact: {artifact_path}")
 
@@ -107,24 +107,17 @@ class ArtifactWriter:
             artifact_root = Path(artifact_root)
 
             artifact_dir = artifact_root / prefix if prefix else artifact_root
-            artifact_dir.mkdir(parents=True, exist_ok=True)
+            DAI_DISK.ensure_dir(artifact_dir)
             artifact_path = artifact_dir / filename
 
-            # Pre-serialize rows to avoid exceptions in the tight write loop
             # Preserve unicode in JSONL lines as well
-            serialized: list[str] = [
-                json.dumps(
-                    row,
-                    default=str,
-                    ensure_ascii=False,
-                )
-                for row in (rows or [])
-            ]
-
-            with open(artifact_path, "w", encoding="utf-8") as f:
-                for line in serialized:
-                    f.write(line)
-                    f.write("\n")
+            DAI_DISK.write_jsonl(
+                artifact_path,
+                rows or [],
+                encoding="utf-8",
+                ensure_ascii=False,
+                default=str,
+            )
 
             logger.debug(f"Wrote artifact: {artifact_path}")
 
@@ -150,15 +143,18 @@ class ArtifactWriter:
             artifact_root = Path(artifact_root)
 
             artifact_dir = artifact_root / prefix if prefix else artifact_root
-            artifact_dir.mkdir(parents=True, exist_ok=True)
+            DAI_DISK.ensure_dir(artifact_dir)
             artifact_path = artifact_dir / filename
 
-            serialized: list[str] = [json.dumps(row, default=str, ensure_ascii=False) for row in (rows or [])]
-
-            with open(artifact_path, "a", encoding="utf-8") as f:
-                for line in serialized:
-                    f.write(line)
-                    f.write("\n")
+            if rows:
+                DAI_DISK.write_jsonl(
+                    artifact_path,
+                    rows,
+                    encoding="utf-8",
+                    append=True,
+                    ensure_ascii=False,
+                    default=str,
+                )
 
             logger.debug(f"Appended artifact rows: {artifact_path}")
 

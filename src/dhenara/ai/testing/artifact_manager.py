@@ -7,6 +7,8 @@ from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
 
+from dhenara.ai.utils.dai_disk import DAI_DISK
+
 
 class ArtifactKind(str, Enum):
     LOG = "log"
@@ -41,7 +43,7 @@ def artifact_run_directory(base_root: Path | None = None) -> Path:
     )
     run_id = _generate_run_id()
     run_dir = base_dir / f"run_{run_id}"
-    run_dir.mkdir(parents=True, exist_ok=True)
+    DAI_DISK.ensure_dir(run_dir)
     return run_dir
 
 
@@ -62,7 +64,7 @@ class TestArtifactManager:
         self.retain_kinds = set(retain_kinds or [])
         self.cleanup_enabled = cleanup_enabled
         self._artifacts: dict[str, list[ArtifactMetadata]] = {}
-        self.base_dir.mkdir(parents=True, exist_ok=True)
+        DAI_DISK.ensure_dir(self.base_dir)
 
     def register(self, run_id: str, metadata: ArtifactMetadata) -> Path:
         run_bucket = self._artifacts.setdefault(run_id, [])
@@ -75,13 +77,13 @@ class TestArtifactManager:
         if not self.cleanup_enabled or self.max_files <= 0:
             return
         tracked: list[ArtifactMetadata] = [item for items in self._artifacts.values() for item in items]
-        tracked.sort(key=lambda meta: meta.path.stat().st_mtime if meta.path.exists() else 0)
+        tracked.sort(key=lambda meta: DAI_DISK.stat_mtime(meta.path) if DAI_DISK.exists(meta.path) else 0)
         while len(tracked) > self.max_files:
             meta = tracked.pop(0)
             if self.retain_kinds and meta.kind in self.retain_kinds:
                 continue
             try:
-                meta.path.unlink(missing_ok=True)
+                DAI_DISK.unlink(meta.path, missing_ok=True)
             except OSError:
                 pass
 

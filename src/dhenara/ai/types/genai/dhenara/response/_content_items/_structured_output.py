@@ -1,4 +1,3 @@
-import json
 import logging
 from typing import Any, TypeVar
 
@@ -7,6 +6,7 @@ from pydantic import Field
 
 from dhenara.ai.types.genai.dhenara import StructuredOutputConfig
 from dhenara.ai.types.shared.base import BaseModel
+from dhenara.ai.utils.dai_disk import DAI_JSON
 
 from ._tool_call import ChatResponseToolCall
 
@@ -26,8 +26,8 @@ def _coerce_json_strings(obj: Any) -> Any:
         s = obj.strip()
         if (s.startswith("{") and s.endswith("}")) or (s.startswith("[") and s.endswith("]")):
             try:
-                return _coerce_json_strings(json.loads(s))
-            except json.JSONDecodeError:
+                return _coerce_json_strings(DAI_JSON.loads(s))
+            except DAI_JSON.JSONDecodeError:
                 # Not valid JSON, return the original string
                 return obj
         return obj
@@ -61,7 +61,7 @@ def _extract_json_objects_from_text(text: str) -> list[Any]:
     # Fast path: try whole string first
     if (s.startswith("{") and s.endswith("}")) or (s.startswith("[") and s.endswith("]")):
         try:
-            obj = _coerce_json_strings(json.loads(s))
+            obj = _coerce_json_strings(DAI_JSON.loads(s))
             results.append(obj)
             return results
         except Exception:
@@ -84,7 +84,7 @@ def _extract_json_objects_from_text(text: str) -> list[Any]:
                     if depth == 0:
                         candidate = s[start : i + 1]
                         try:
-                            parsed = _coerce_json_strings(json.loads(candidate))
+                            parsed = _coerce_json_strings(DAI_JSON.loads(candidate))
                             results.append(parsed)
                         except Exception:
                             pass
@@ -188,8 +188,8 @@ class ChatResponseStructuredOutput(BaseModel):
             initial_data = raw_data
             if isinstance(raw_data, str):
                 try:
-                    initial_data = json.loads(raw_data)
-                except json.JSONDecodeError:
+                    initial_data = DAI_JSON.loads(raw_data)
+                except DAI_JSON.JSONDecodeError:
                     # Not valid JSON at top level, keep as string for extraction/validation
                     initial_data = raw_data
 

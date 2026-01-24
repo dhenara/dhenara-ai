@@ -1,10 +1,10 @@
-import json
 from typing import Any
 
 from pydantic import Field, field_validator, model_validator
 
 from dhenara.ai.types.genai.ai_model import PROVIDER_CONFIGS, AIModelAPIProviderEnum
 from dhenara.ai.types.shared.base import BaseModel
+from dhenara.ai.utils.dai_disk import DAI_JSON
 
 
 class AIModelAPI(BaseModel):
@@ -64,12 +64,12 @@ class AIModelAPI(BaseModel):
                         if isinstance(value, dict):
                             parsed_value = value
                         else:
-                            parsed_value = json.loads(value.strip())
+                            parsed_value = DAI_JSON.loads(value.strip())
 
                         if not isinstance(parsed_value, dict):
                             raise ValueError(f"JSON field {field_config.field_name} must be a dictionary")
 
-                    except json.JSONDecodeError as e:
+                    except DAI_JSON.JSONDecodeError as e:
                         raise ValueError(f"Invalid JSON in {field_config.field_name}: {e}")
 
         # Validate required config fields
@@ -101,8 +101,8 @@ class AIModelAPI(BaseModel):
             if isinstance(value, str) and key.endswith("_json"):  # TODO: Use get_credentials_fields_config_with_json()
                 try:
                     # Remove leading/trailing whitespace and newlines
-                    validated[key] = json.loads(value.strip())
-                except json.JSONDecodeError as e:
+                    validated[key] = DAI_JSON.loads(value.strip())
+                except DAI_JSON.JSONDecodeError as e:
                     raise ValueError(f"Invalid JSON in {key}: {e}")
 
         return validated

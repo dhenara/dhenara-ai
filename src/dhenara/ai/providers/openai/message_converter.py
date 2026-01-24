@@ -26,6 +26,7 @@ from dhenara.ai.types.genai import (
 from dhenara.ai.types.genai.ai_model import AIModelEndpoint, AIModelProviderEnum
 from dhenara.ai.types.genai.dhenara.request import StructuredOutputConfig
 from dhenara.ai.types.genai.dhenara.response import ChatResponse, ChatResponseChoice
+from dhenara.ai.utils.dai_disk import DAI_JSON
 
 logger = logging.getLogger(__name__)
 
@@ -166,9 +167,7 @@ class OpenAIMessageConverter(BaseMessageConverter):
 
             if isinstance(arguments, str):
                 try:
-                    import json as _json
-
-                    arguments = _json.loads(arguments)
+                    arguments = DAI_JSON.loads(arguments)
                 except Exception:
                     # Keep as raw string if not JSON
                     pass
@@ -389,9 +388,7 @@ class OpenAIMessageConverter(BaseMessageConverter):
                     tool_call = item.tool_call
 
                     # Convert arguments to JSON string if it's a dict
-                    import json as _json
-
-                    args_str = _json.dumps(tool_call.arguments)
+                    args_str = DAI_JSON.dumps(tool_call.arguments)
 
                     tool_call_id = tool_call.call_id or "unknown_tool_call_id"
                     tool_id = tool_call.id if (same_provider and tool_call.id) else "unknown_tool_id"

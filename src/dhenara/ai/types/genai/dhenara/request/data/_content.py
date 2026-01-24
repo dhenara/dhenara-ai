@@ -1,10 +1,10 @@
-import json
 from typing import Any
 
 # from urllib.request import urlopen
 from pydantic import ConfigDict, Field
 
 from dhenara.ai.types.shared.base import BaseEnum, BaseModel
+from dhenara.ai.utils.dai_disk import DAI_JSON
 
 
 class ContentType(BaseEnum):
@@ -122,9 +122,9 @@ class Content(BaseModel):
         if self.type == ContentType.TEXT:
             # Include JSON content if present
             if self.json_c:
-                text_list.append(json.dumps(self.json_c, ensure_ascii=False))
+                text_list.append(DAI_JSON.dumps(self.json_c, ensure_ascii=False))
             if self.jsonl_c:
-                text_list.extend(json.dumps(item, ensure_ascii=False) for item in self.jsonl_c)
+                text_list.extend(DAI_JSON.dumps(item, ensure_ascii=False) for item in self.jsonl_c)
             return separator.join(text_list)
 
         elif self.type == ContentType.LIST:

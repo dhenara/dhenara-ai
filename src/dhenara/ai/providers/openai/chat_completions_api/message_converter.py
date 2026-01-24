@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Iterable
 
 from openai.types.chat import ChatCompletionMessage
@@ -20,6 +19,7 @@ from dhenara.ai.types.genai import (
 from dhenara.ai.types.genai.ai_model import AIModelProviderEnum
 from dhenara.ai.types.genai.dhenara.request import StructuredOutputConfig
 from dhenara.ai.types.genai.dhenara.response import ChatResponseChoice
+from dhenara.ai.utils.dai_disk import DAI_JSON
 
 
 class OpenAIMessageConverterChatCompletions:
@@ -157,7 +157,7 @@ class OpenAIMessageConverterChatCompletions:
         if isinstance(args, dict):
             return args
         try:
-            return json.loads(args)
+            return DAI_JSON.loads(args)
         except Exception:
             return {"raw": args}
 

@@ -1,4 +1,3 @@
-import json
 import logging
 from collections.abc import AsyncGenerator, Generator, Sequence
 from typing import Any, cast
@@ -36,6 +35,7 @@ from dhenara.ai.types.genai import (
 )
 from dhenara.ai.types.genai.dhenara.request import MessageItem, Prompt, SystemInstruction
 from dhenara.ai.types.shared.api import SSEErrorResponse
+from dhenara.ai.utils.dai_disk import DAI_JSON
 
 logger = logging.getLogger(__name__)
 
@@ -424,7 +424,7 @@ class AnthropicChat(AnthropicClientBase):
                     elif isinstance(partial, str):
                         arguments_delta = partial
                     else:
-                        arguments_delta = json.dumps(partial)
+                        arguments_delta = DAI_JSON.dumps(partial)
                 except Exception:
                     arguments_delta = str(partial)
 

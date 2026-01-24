@@ -34,6 +34,7 @@ from dhenara.ai.types.genai import (
 )
 from dhenara.ai.types.genai.dhenara.request import StructuredOutputConfig
 from dhenara.ai.types.shared.base import BaseModel
+from dhenara.ai.utils.dai_disk import DAI_JSON
 
 logger = logging.getLogger(__name__)
 
@@ -602,9 +603,7 @@ class StreamingManager:
                                     raw_buf = _mc_meta.get(buf_key)
                                     if raw_buf is not None:
                                         try:
-                                            import json as _json
-
-                                            parsed = _json.loads(raw_buf)
+                                            parsed = DAI_JSON.loads(raw_buf)
                                             parse_error = None
                                         except Exception as e:
                                             parsed = {}

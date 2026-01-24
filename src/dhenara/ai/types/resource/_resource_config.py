@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 from pathlib import Path
@@ -11,6 +10,7 @@ from dhenara.ai.types.genai.ai_model import AIModel, AIModelAPI, AIModelEndpoint
 from dhenara.ai.types.genai.foundation_models import ALL_FOUNDATION_MODELS
 from dhenara.ai.types.resource._resource_config_item import ResourceConfigItem, ResourceConfigItemTypeEnum
 from dhenara.ai.types.shared.base import BaseModel
+from dhenara.ai.utils.dai_disk import DAI_DISK
 
 logger = logging.getLogger(__name__)
 
@@ -164,17 +164,16 @@ class ResourceConfig(BaseModel):
         expanded_path = os.path.expanduser(credentials_file)
         path = Path(expanded_path)
 
-        if not path.exists():
+        if not DAI_DISK.exists(path):
             raise FileNotFoundError(f"Credentials file not found: {credentials_file}")
 
         ext = path.suffix.lower()
-        with open(path) as f:
-            if ext == ".json":
-                credentials = json.load(f)
-            elif ext in [".yaml", ".yml"]:
-                credentials = yaml.safe_load(f)
-            else:
-                raise ValueError(f"Unsupported file format: {ext}. Use .json, .yaml, or .yml")
+        if ext == ".json":
+            credentials = DAI_DISK.read_json(path)
+        elif ext in [".yaml", ".yml"]:
+            credentials = yaml.safe_load(DAI_DISK.read_text(path, encoding="utf-8"))
+        else:
+            raise ValueError(f"Unsupported file format: {ext}. Use .json, .yaml, or .yml")
 
         # Validate loaded credentials
         return credentials
@@ -278,8 +277,7 @@ class ResourceConfig(BaseModel):
         ext = os.path.splitext(output_file)[1].lower()
 
         if ext == ".json":
-            with open(output_file, "w") as f:
-                json.dump(template, f, indent=2)
+            DAI_DISK.write_json(output_file, template, indent=2)
         else:
             # For YAML, we need to create the content manually to include comments properly
             yaml_content = header
@@ -323,9 +321,7 @@ class ResourceConfig(BaseModel):
                 # Add an extra newline between providers
                 yaml_content += "\n"
 
-            # Write the YAML content to file
-            with open(output_file, "w") as f:
-                f.write(yaml_content)
+            DAI_DISK.write_text(output_file, yaml_content, encoding="utf-8")
 
         logger.info(f"Created credentials template at {output_file}")
         logger.info("Edit this file with your API credentials before loading")

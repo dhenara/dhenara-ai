@@ -1,10 +1,10 @@
-import json
 from typing import Any, Generic, TypeVar
 from uuid import uuid4
 
 from pydantic import ConfigDict, Field
 
 from dhenara.ai.types.shared.base import BaseEnum, BaseModel
+from dhenara.ai.utils.dai_disk import DAI_JSON
 
 # Type variable for generic data types.
 # NOTE: SSE payloads are not restricted to BaseModel instances.
@@ -89,7 +89,7 @@ class SSEResponse(BaseModel, Generic[T]):  # noqa: UP046
         if isinstance(self.data, BaseModel):
             data_str = self.data.model_dump_json()
         elif isinstance(self.data, (dict, list)):
-            data_str = json.dumps(self.data)
+            data_str = DAI_JSON.dumps(self.data)
         else:
             data_str = str(self.data)
 
@@ -145,7 +145,7 @@ class SSEResponse(BaseModel, Generic[T]):  # noqa: UP046
 
         if data_lines:
             try:
-                raw_data = json.loads("".join(data_lines))
+                raw_data = DAI_JSON.loads("".join(data_lines))
 
                 # Handle different event types
                 if event_type == SSEEventType.ERROR:
@@ -171,7 +171,7 @@ class SSEResponse(BaseModel, Generic[T]):  # noqa: UP046
                     else:
                         data = raw_data
 
-            except json.JSONDecodeError:
+            except DAI_JSON.JSONDecodeError:
                 return SSEErrorResponse(
                     data=SSEErrorData(
                         error_code=SSEErrorCode.client_decode_error,

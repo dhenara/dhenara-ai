@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import json
 from typing import Any, Literal
 
 from pydantic import Field, field_validator
 
 from dhenara.ai.types.shared.base import BaseModel
+from dhenara.ai.utils.dai_disk import DAI_JSON
 
 
 class ToolCallResult(BaseModel):
@@ -37,9 +37,9 @@ class ToolCallResult(BaseModel):
         if isinstance(self.output, str):
             return self.output
         try:
-            return json.dumps(self.output, ensure_ascii=False)
+            return DAI_JSON.dumps(self.output, ensure_ascii=False)
         except TypeError:
-            return json.dumps(str(self.output), ensure_ascii=False)
+            return DAI_JSON.dumps(str(self.output), ensure_ascii=False)
 
     def as_json(self) -> Any:
         """Render the output as a JSON-compatible object suitable for providers expecting dict/list."""

@@ -1,9 +1,9 @@
-import json
 from typing import Any
 
 from pydantic import Field
 
 from dhenara.ai.types.shared.base import BaseModel
+from dhenara.ai.utils.dai_disk import DAI_JSON
 
 
 class ChatResponseToolCall(BaseModel):
@@ -37,7 +37,7 @@ class ChatResponseToolCall(BaseModel):
         parse_error = None
         if isinstance(arguments, str):
             try:
-                arguments_dict = json.loads(arguments)
+                arguments_dict = DAI_JSON.loads(arguments)
             except Exception as e:
                 raw_data = arguments
                 parse_error = str(e)

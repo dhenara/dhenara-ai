@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any, cast
 
@@ -26,6 +25,7 @@ from dhenara.ai.types.genai.ai_model import AIModelEndpoint, AIModelProviderEnum
 from dhenara.ai.types.genai.dhenara import ChatResponseToolCall
 from dhenara.ai.types.genai.dhenara.request import StructuredOutputConfig
 from dhenara.ai.types.genai.dhenara.response import ChatResponse, ChatResponseChoice
+from dhenara.ai.utils.dai_disk import DAI_JSON
 
 logger = logging.getLogger(__name__)
 
@@ -261,7 +261,7 @@ class AnthropicMessageConverter(BaseMessageConverter):
                             RedactedThinkingBlockParam(
                                 type="redacted_thinking",
                                 data=(
-                                    json.dumps(rt.metadata)
+                                    DAI_JSON.dumps(rt.metadata)
                                     if isinstance(rt.metadata, dict)
                                     else (str(rt.metadata) if rt.metadata is not None else "")
                                 ),
@@ -345,7 +345,7 @@ class AnthropicMessageConverter(BaseMessageConverter):
                             content_blocks.append(
                                 TextBlockParam(
                                     type="text",
-                                    text=json.dumps(fn_args),
+                                    text=DAI_JSON.dumps(fn_args),
                                 )
                             )
                             continue  # Proceed to next content item
@@ -358,7 +358,7 @@ class AnthropicMessageConverter(BaseMessageConverter):
                         content_blocks.append(
                             TextBlockParam(
                                 type="text",
-                                text=json.dumps(output.structured_data),
+                                text=DAI_JSON.dumps(output.structured_data),
                             )
                         )
 
@@ -379,7 +379,7 @@ class AnthropicMessageConverter(BaseMessageConverter):
                             content_blocks.append(
                                 TextBlockParam(
                                     type="text",
-                                    text=json.dumps(output.structured_data),
+                                    text=DAI_JSON.dumps(output.structured_data),
                                 )
                             )
 
