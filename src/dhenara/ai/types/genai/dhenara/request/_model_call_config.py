@@ -32,12 +32,15 @@ class AIModelCallConfig(BaseModel):
     reasoning: bool = False
     max_reasoning_tokens: int | None = Field(
         default=None,
-        description="Maximum reasoning tokens when reasoning is enabled. Ignored for OpenAI APIs",
+        description="Maximum reasoning tokens when reasoning is enabled. Ignored for OpenAI APIs. "
+        "Deprecated/ignored for Anthropic Opus 4.6 adaptive thinking.",
     )
-    reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = Field(
+    reasoning_effort: Literal["minimal", "low", "medium", "high", "max"] | None = Field(
         default=None,
-        description="OpenAI version to control thinking/reasoning tokens when reasoning is enabled. "
-        "Ignored for other providers",
+        description="Controls provider-specific thinking/reasoning depth when reasoning is enabled. "
+        "OpenAI supports low|medium|high (minimal is normalized to low; max is normalized to high). "
+        "Google supports low|high (minimal/low -> low; medium/high/max -> high). "
+        "Anthropic (> Claude-4.6) supports output_config.effort low|medium|high|max.",
     )
     options: dict = {}
 

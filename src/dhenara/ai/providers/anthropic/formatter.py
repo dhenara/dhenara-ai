@@ -245,6 +245,72 @@ class AnthropicFormatter(BaseFormatter):
         return tool
 
     @classmethod
+    def _transform_schema_for_native_structured_output(
+        cls,
+        structured_output: StructuredOutputConfig,
+    ) -> dict[str, Any]:
+        """Return an Anthropic-compatible JSON schema for `output_config.format`.
+
+        Keep this aligned with OpenAI/Google patterns: start from the Pydantic JSON schema
+        (via StructuredOutputConfig.get_schema()) and apply a lightweight compatibility transform.
+        """
+        schema = structured_output.get_schema()
+        if not schema:
+            return {"type": "object"}
+
+        # Manual transform: remove common unsupported constraints and force additionalProperties: false.
+        # This is intentionally conservative; Anthropic SDK transform_schema() is preferred.
+        unsupported_keys = {
+            "minimum",
+            "maximum",
+            "exclusiveMinimum",
+            "exclusiveMaximum",
+            "minLength",
+            "maxLength",
+            "minItems",
+            "maxItems",
+            "pattern",
+        }
+
+        def _walk(node: Any) -> Any:
+            if isinstance(node, list):
+                return [_walk(x) for x in node]
+            if not isinstance(node, dict):
+                return node
+
+            out: dict[str, Any] = {}
+            for k, v in node.items():
+                if k in unsupported_keys:
+                    continue
+                out[k] = _walk(v)
+
+            if out.get("type") == "object":
+                out.setdefault("additionalProperties", False)
+
+            # Normalize enum to list
+            if "enum" in out and isinstance(out["enum"], (set, tuple)):
+                out["enum"] = list(out["enum"])
+
+            return out
+
+        return _walk(schema)
+
+    @classmethod
+    def format_structured_output_output_config(
+        cls,
+        structured_output: StructuredOutputConfig,
+        model_endpoint: AIModelEndpoint | None = None,
+    ) -> dict[str, Any]:
+        """Build Anthropic `output_config` payload for native JSON-schema outputs."""
+        schema = cls._transform_schema_for_native_structured_output(structured_output)
+        return {
+            "format": {
+                "type": "json_schema",
+                "schema": schema,
+            }
+        }
+
+    @classmethod
     def convert_dai_message_item_to_provider(
         cls,
         message_item: MessageItem,

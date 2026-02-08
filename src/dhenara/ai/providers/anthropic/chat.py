@@ -18,6 +18,7 @@ from anthropic.types import (
 )
 
 from dhenara.ai.providers.anthropic import AnthropicClientBase
+from dhenara.ai.providers.anthropic.formatter import AnthropicFormatter
 from dhenara.ai.providers.anthropic.message_converter import AnthropicMessageConverter
 from dhenara.ai.types.genai import (
     AIModelCallResponseMetaData,
@@ -40,8 +41,76 @@ from dhenara.ai.utils.dai_disk import DAI_JSON
 logger = logging.getLogger(__name__)
 
 
+# NOTE:
+# We intentionally gate behaviors by explicit model-name allowlists/denylists.
+# - Structured outputs: keep the legacy tool workaround only for explicitly-listed legacy models.
+#   All other models (including future models) use native `output_config.format` with no fallback.
+# - Adaptive thinking: enable only for explicitly-listed models (conservative).
+_LEGACY_STRUCTURED_OUTPUT_TOOL_MODELS = frozenset(
+    {
+        "claude-sonnet-4-0",
+        "claude-opus-4-0",
+        "claude-3-7-sonnet",
+        "claude-3-5-sonnet",
+        "claude-3-5-haiku",
+        "claude-3-opus",
+    }
+)
+
+_NON_ADAPTIVE_THINKING_MODELS = frozenset(
+    {
+        *_LEGACY_STRUCTURED_OUTPUT_TOOL_MODELS,
+        "claude-opus-4-5",
+        "claude-sonnet-4-5",
+        "claude-haiku-4-5",
+    }
+)
+
+
 # -----------------------------------------------------------------------------
 class AnthropicChat(AnthropicClientBase):
+    def _get_base_model_name(self) -> str:
+        """Return the canonical foundation-model name (no version suffix)."""
+        model = getattr(self.model_endpoint, "ai_model", None)
+        name = getattr(model, "model_name", None)
+        return (name or "").lower()
+
+    def _get_anthropic_structured_output_mode(self) -> str:
+        """Return structured-output mode: 'native', 'tool', or 'off'.
+
+        - native: use `output_config.format` constrained decoding
+        - tool: legacy workaround via tool_use
+        """
+        so = self._get_structured_output_config()
+        if so is None:
+            return "off"
+
+        # Enforced behavior: only explicitly listed legacy models use the tool workaround.
+        # All other (including future) models use native structured outputs with no fallback.
+        base_name = self._get_base_model_name()
+        return "tool" if base_name in _LEGACY_STRUCTURED_OUTPUT_TOOL_MODELS else "native"
+
+    def _get_anthropic_effort_value(self) -> str | None:
+        """Return Anthropic `output_config.effort` value, if applicable.
+
+        Per Anthropic docs (adaptive thinking), effort is configured via output_config.
+        We apply this only on models that explicitly support adaptive thinking.
+        """
+        if self.config.reasoning_effort is None:
+            return None
+        base_name = self._get_base_model_name()
+        if base_name in _NON_ADAPTIVE_THINKING_MODELS:
+            return None
+
+        effort = self.config.reasoning_effort
+        # Normalize Dhenara minimal -> provider low
+        if effort == "minimal":
+            effort = "low"
+
+        # For Anthropic adaptive thinking, supported values include low/medium/high/max.
+        # We allow passing through "max" if present.
+        return effort
+
     def get_api_call_params(
         self,
         prompt: str | dict | Prompt | None,
@@ -52,9 +121,10 @@ class AnthropicChat(AnthropicClientBase):
         if not self._client:
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
 
-        formatter = self.formatter
-        if formatter is None:
+        _formatter = self.formatter
+        if _formatter is None:
             raise RuntimeError("Formatter not initialized")
+        formatter = cast(AnthropicFormatter, _formatter)
 
         if self._input_validation_pending:
             raise ValueError("inputs must be validated with validate_inputs() before api calls")
@@ -113,10 +183,16 @@ class AnthropicChat(AnthropicClientBase):
         chat_args["max_tokens"] = max_output_tokens
 
         if max_reasoning_tokens is not None:
-            chat_args["thinking"] = {
-                "type": "enabled",
-                "budget_tokens": max_reasoning_tokens,
-            }
+            base_name = self._get_base_model_name()
+            if base_name not in _NON_ADAPTIVE_THINKING_MODELS:
+                # Claude Opus 4.6: prefer adaptive thinking (budget_tokens is deprecated).
+                chat_args["thinking"] = {"type": "adaptive"}
+            else:
+                # Older models: manual/extended thinking with budget_tokens.
+                chat_args["thinking"] = {
+                    "type": "enabled",
+                    "budget_tokens": max_reasoning_tokens,
+                }
 
         if self.config.options:
             chat_args.update(self.config.options)
@@ -137,10 +213,33 @@ class AnthropicChat(AnthropicClientBase):
             )
 
         # --- Structured Output ---
-        # Anthropic uses the tool system for structured output
         structured_output_config = self._get_structured_output_config()
-        if structured_output_config:
-            # For Anthropic, we need to set up tool calling
+        structured_output_mode = self._get_anthropic_structured_output_mode()
+        # Expose mode for downstream parsing & streaming post-processing.
+        self._structured_output_mode = structured_output_mode
+        self._structured_output_tool_name = None
+
+        # Build/merge output_config (used by native structured outputs and adaptive-thinking effort).
+        output_config: dict[str, Any] = {}
+        existing_output_config = chat_args.get("output_config")
+        if isinstance(existing_output_config, dict):
+            output_config.update(existing_output_config)
+
+        effort = self._get_anthropic_effort_value()
+        if effort is not None:
+            output_config["effort"] = effort
+
+        if structured_output_config and structured_output_mode == "native":
+            # Native structured output: `output_config.format` constrained decoding
+            output_config.update(
+                formatter.format_structured_output_output_config(
+                    structured_output=structured_output_config,
+                    model_endpoint=self.model_endpoint,
+                )
+            )
+
+        elif structured_output_config and structured_output_mode == "tool":
+            # Legacy fallback: implement structured output via tool_use
             existing_tools = chat_args.get("tools")
             if not isinstance(existing_tools, list):
                 existing_tools = []
@@ -152,19 +251,21 @@ class AnthropicChat(AnthropicClientBase):
                 model_endpoint=self.model_endpoint,
             )
             chat_args["tools"].append(structured_tool)
+            self._structured_output_tool_name = structured_tool.get("name")
 
             # Enforce this tool (when thinking is not enabled; otherwise fall back to auto per API constraint)
             if max_reasoning_tokens is not None:
-                # TODO_FUTURE: Revisit this later if API improves in future
-                # Currently when enforced tool use in thinking mode,  API flags error as
-                # 'Thinking may not be enabled when tool_choice forces tool use.'
-                # The irony is that they don't have a structured-output mode either
+                # API constraint: thinking may not be enabled when tool_choice forces tool use.
                 chat_args["tool_choice"] = {"type": "auto"}
             else:
                 chat_args["tool_choice"] = {
                     "type": "tool",
                     "name": structured_tool["name"],
                 }
+
+        if output_config:
+            chat_args["output_config"] = output_config
+
         else:
             # Take care of tool_choice + thinking mode conflict when no structured output but tools are present
             _tools = chat_args.get("tools", [])
@@ -284,6 +385,15 @@ class AnthropicChat(AnthropicClientBase):
         # self.streaming_manager.message_metadata  is used to preserve params of initial message across chunks
         if isinstance(chunk, RawMessageStartEvent):
             message = chunk.message
+
+            # Configure structured-output post-processing behavior for streaming manager.
+            try:
+                sm.structured_output_delivery = (
+                    "tool_use" if getattr(self, "_structured_output_mode", None) == "tool" else "text"
+                )
+                sm.structured_output_tool_name = getattr(self, "_structured_output_tool_name", None)
+            except Exception:
+                pass
 
             # Initialize message metadata
             sm.message_metadata = {
@@ -601,11 +711,33 @@ class AnthropicChat(AnthropicClientBase):
         role: str,
         content_item: ContentBlock,
     ) -> ChatResponseContentItem:
+        structured_output_config = self._get_structured_output_config()
+        so_mode = getattr(self, "_structured_output_mode", None)
+        # Ensure we only attempt structured parsing on the expected block types for the chosen mode.
+        if structured_output_config is not None:
+            if so_mode == "native":
+                structured_output_config_for_item = structured_output_config if content_item.type == "text" else None
+            elif so_mode == "tool":
+                if content_item.type == "tool_use":
+                    expected_tool = getattr(self, "_structured_output_tool_name", None)
+                    tool_name = getattr(content_item, "name", None)
+                    structured_output_config_for_item = (
+                        structured_output_config
+                        if (expected_tool is None or (isinstance(tool_name, str) and tool_name == expected_tool))
+                        else None
+                    )
+                else:
+                    structured_output_config_for_item = None
+            else:
+                structured_output_config_for_item = None
+        else:
+            structured_output_config_for_item = None
+
         converted_items = AnthropicMessageConverter.content_block_to_items(
             content_block=content_item,
             index=index,
             role=role,
-            structured_output_config=self._get_structured_output_config(),
+            structured_output_config=structured_output_config_for_item,
         )
 
         if converted_items:

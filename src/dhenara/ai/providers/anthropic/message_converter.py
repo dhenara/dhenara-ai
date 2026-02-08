@@ -78,39 +78,55 @@ class AnthropicMessageConverter(BaseMessageConverter):
         if content_block.type == "text":
             text_value = getattr(content_block, "text", "")
 
-            # UPDATE: Anthropic does NOT return structured output via plain text. Only tool_use blocks carry
-            # structured payloads when we define a tool for structured output.
-            # Therefore, always treat text as plain text regardless of structured_output_config.
-            #
-            # OLD CODE --- IGNORE ---
-            # if structured_output_config is not None:
-            #     # Parse structured output from plain text and retain original part for round-trip
-            #     parsed_data, error, post_processed = ChatResponseStructuredOutput._parse_and_validate(
-            #         text_value,
-            #         structured_output_config,
-            #     )
-            #     structured_output = ChatResponseStructuredOutput(
-            #         config=structured_output_config,
-            #         structured_data=parsed_data,
-            #         raw_data=text_value,
-            #         parse_error=error,
-            #         post_processed=post_processed,
-            #     )
-            #     return [
-            #         ChatResponseStructuredOutputContentItem(
-            #             index=index,
-            #             role=role,
-            #             structured_output=structured_output,
-            #             message_contents=[
-            #                 ChatMessageContentPart(
-            #                     type="text",
-            #                     text=text_value,
-            #                     annotations=None,
-            #                     metadata=None,
-            #                 )
-            #             ],
-            #         )
-            #     ]
+            # Native Anthropic structured outputs (output_config.format) return schema-conformant JSON
+            # in response.content[0].text. In that mode, the caller will pass structured_output_config
+            # ONLY for text blocks.
+            if structured_output_config is not None:
+                stripped = text_value.strip()
+                # Opus 4.6 (adaptive thinking) can emit an initial empty/whitespace text block
+                # before the actual JSON block. Only attempt structured parsing when it looks like JSON.
+                if not stripped or not (stripped.startswith("{") or stripped.startswith("[")):
+                    return [
+                        ChatResponseTextContentItem(
+                            index=index,
+                            role=role,
+                            message_contents=[
+                                ChatMessageContentPart(
+                                    type="text",
+                                    text=text_value,
+                                    annotations=None,
+                                    metadata=None,
+                                )
+                            ],
+                        )
+                    ]
+
+                parsed_data, error, post_processed = ChatResponseStructuredOutput.parse_and_validate(
+                    raw_data=text_value,
+                    config=structured_output_config,
+                )
+                structured_output = ChatResponseStructuredOutput(
+                    config=structured_output_config,
+                    structured_data=parsed_data,
+                    raw_data=(None if parsed_data is not None else text_value),
+                    parse_error=error,
+                    post_processed=post_processed,
+                )
+                return [
+                    ChatResponseStructuredOutputContentItem(
+                        index=index,
+                        role=role,
+                        structured_output=structured_output,
+                        message_contents=[
+                            ChatMessageContentPart(
+                                type="text",
+                                text=text_value,
+                                annotations=None,
+                                metadata=None,
+                            )
+                        ],
+                    )
+                ]
 
             return [
                 ChatResponseTextContentItem(
@@ -319,69 +335,41 @@ class AnthropicMessageConverter(BaseMessageConverter):
                 )
 
             elif isinstance(content, ChatResponseStructuredOutputContentItem):
-                if same_provider:
-                    # INFO:
-                    # Anthropic structured output is generated via tool use, so its message_contents will be be empty.
-                    # Thus structured must be paut back as text by removing 'id' for round-trip.
-                    # NOTE:
-                    # Do NOT try to convert it as ToolBlock, else API will fail expecting a `result` for the tool_call
-                    # Live with this dirty workaround until Anthropic natively supports structured output blocks in API
+                # Prefer replaying message_contents for round-trip fidelity (native mode).
+                if content.message_contents:
+                    content_blocks.extend(
+                        [
+                            TextBlockParam(type="text", text=part.text)
+                            for part in content.message_contents
+                            if part.type == "text" and part.text
+                        ]
+                    )
+                    continue
 
-                    raw_data = content.structured_output.raw_data
-                    if isinstance(raw_data, dict) and raw_data:
-                        try:
-                            # # Make a copy to avoid mutating the original
-                            # raw_data_copy = dict(raw_data)
-                            # raw_data_copy.pop("id", None)  # Remove 'id` for more native text block
-                            # content_blocks.append(
-                            #     TextBlockParam(
-                            #         type="text",
-                            #         text=json.dumps(raw_data_copy),
-                            #     )
-                            # )
-
-                            # Just return the fn args to look like a pure text block with only structured args
-                            fn_args = raw_data.get("input")
-                            content_blocks.append(
-                                TextBlockParam(
-                                    type="text",
-                                    text=DAI_JSON.dumps(fn_args),
-                                )
-                            )
-                            continue  # Proceed to next content item
-                        except Exception as e:
-                            logger.warning(f"ant_convert: Failed to serialize structured output raw_data to text: {e}")
-
-                    # Fallback: serialize structured_data as JSON text
-                    output = content.structured_output
-                    if output and output.structured_data:
+                # Legacy tool-mode: structured output originated from a tool_use block; represent as JSON text.
+                raw_data = content.structured_output.raw_data
+                if isinstance(raw_data, dict) and raw_data:
+                    try:
+                        fn_args = raw_data.get("input")
                         content_blocks.append(
                             TextBlockParam(
                                 type="text",
-                                text=DAI_JSON.dumps(output.structured_data),
+                                text=DAI_JSON.dumps(fn_args),
                             )
                         )
+                        continue
+                    except Exception as e:
+                        logger.warning(f"ant_convert: Failed to serialize structured output raw_data to text: {e}")
 
-                else:
-                    # Prefer replaying message_contents for round-trip fidelity
-                    if content.message_contents:
-                        content_blocks.extend(
-                            [
-                                TextBlockParam(type="text", text=part.text)
-                                for part in content.message_contents
-                                if part.type == "text" and part.text
-                            ]
+                # Fallback: serialize structured_data as JSON text
+                output = content.structured_output
+                if output and output.structured_data:
+                    content_blocks.append(
+                        TextBlockParam(
+                            type="text",
+                            text=DAI_JSON.dumps(output.structured_data),
                         )
-                    else:
-                        # Fallback: serialize structured_data as JSON text
-                        output = content.structured_output
-                        if output and output.structured_data:
-                            content_blocks.append(
-                                TextBlockParam(
-                                    type="text",
-                                    text=DAI_JSON.dumps(output.structured_data),
-                                )
-                            )
+                    )
 
             else:
                 logger.error(

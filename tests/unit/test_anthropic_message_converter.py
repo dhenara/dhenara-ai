@@ -5,8 +5,10 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
+from pydantic import BaseModel
 
 from dhenara.ai.providers.anthropic.message_converter import AnthropicMessageConverter
+from dhenara.ai.types.genai.dhenara.request import StructuredOutputConfig
 
 pytestmark = [pytest.mark.unit]
 
@@ -45,3 +47,28 @@ def test_dai_047_anthropic_message_conversion_text_and_tools():
     assert getattr(items_tool[0], "tool_call", None) is not None
     assert items_tool[0].tool_call.name == "file_read"
     assert items_tool[0].tool_call.arguments["path"] == "README.md"
+
+
+class _TravelPlan(BaseModel):
+    destination: str
+    days: int
+    interests: list[str]
+
+
+@pytest.mark.case_id("DAI-115")
+def test_dai_115_anthropic_native_structured_output_skips_whitespace_text_block():
+    cfg = StructuredOutputConfig.from_model(model_class=_TravelPlan)
+
+    # Opus 4.6 adaptive-thinking can yield an initial whitespace-only text block.
+    whitespace_text_block = SimpleNamespace(type="text", text="\n\n")
+
+    items = AnthropicMessageConverter._content_block_to_items(
+        content_block=whitespace_text_block,
+        index=0,
+        role="assistant",
+        structured_output_config=cfg,
+    )
+
+    assert items
+    assert items[0].type == "text"
+    assert items[0].get_text() == "\n\n"

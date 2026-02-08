@@ -106,7 +106,12 @@ class OpenAIChatCompletions(OpenAIClientBase):
 
         model_settings = self.model_endpoint.ai_model.get_settings()
         if self.config.reasoning and model_settings.supports_reasoning and self.config.reasoning_effort is not None:
-            chat_args["reasoning_effort"] = self.config.reasoning_effort
+            effort = self.config.reasoning_effort
+            if effort == "minimal":
+                effort = "low"
+            elif effort == "max":
+                effort = "high"
+            chat_args["reasoning_effort"] = effort
 
         if self.config.streaming:
             if self.model_endpoint.api.provider != AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:

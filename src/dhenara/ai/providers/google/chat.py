@@ -251,7 +251,7 @@ class GoogleAIChat(GoogleAIClientBase):
                 # To google thinking_level
                 if effort in ["minimal", "low"]:
                     thinking_level = "low"
-                elif effort in ["medium", "high"]:
+                elif effort in ["medium", "high", "max"]:
                     thinking_level = "high"
                 else:
                     logger.error(f"Illegal reasoning effort {effort}. Setting thinking_level to 'low'")

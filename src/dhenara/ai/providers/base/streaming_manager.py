@@ -64,6 +64,13 @@ class StreamingManager:
         self.model_endpoint = model_endpoint
         self.structured_output_config = structured_output_config
 
+        # Structured output delivery mode varies by provider and call configuration.
+        # - "text": provider returns JSON as assistant text content (OpenAI/Google, and now Anthropic `output_config`)
+        # - "tool_use": provider returns JSON inside a tool_use block (legacy Anthropic workaround)
+        # Providers may set these fields during streaming initialization.
+        self.structured_output_delivery: str | None = None
+        self.structured_output_tool_name: str | None = None
+
         # Fields required  to create  final ChatResponse
         # self.final_response: ChatResponse | None = None
         self.usage: ChatResponseUsage | None = None
@@ -138,7 +145,7 @@ class StreamingManager:
         # Fall back to legacy reconstruction
         chat_response = None
 
-        # If structured output was requested, derive it from accumulated text items
+        # If structured output was requested, derive it from accumulated text/tool items
         try:
             if self.structured_output_config is not None:
                 for choice in self.choices or []:
@@ -151,10 +158,18 @@ class StreamingManager:
                         if isinstance(content, ChatResponseReasoningContentItem):
                             continue
 
-                        # For Anthropic: structured output is delivered as tool_use blocks
-                        # Convert ChatResponseToolCallContentItem to ChatResponseStructuredOutputContentItem
+                        # For Anthropic legacy fallback: structured output is delivered as tool_use blocks.
+                        # Convert ChatResponseToolCallContentItem to ChatResponseStructuredOutputContentItem,
+                        # but ONLY when we explicitly know we're in tool-based structured-output mode.
                         if isinstance(content, ChatResponseToolCallContentItem):
-                            if content.tool_call:
+                            if (
+                                content.tool_call
+                                and self.structured_output_delivery == "tool_use"
+                                and (
+                                    self.structured_output_tool_name is None
+                                    or content.tool_call.name == self.structured_output_tool_name
+                                )
+                            ):
                                 # CRITICAL: Build the complete raw_response structure for round-tripping
                                 # This is especially important for Anthropic where structured output
                                 # needs to be converted back to tool_use block format with id/name/type/input
@@ -185,9 +200,14 @@ class StreamingManager:
                                 items_to_remove.append(i)
                             continue
 
-                        # For OpenAI/Google: structured output is delivered as text
+                        # For OpenAI/Google (and Anthropic native `output_config`):
+                        # structured output is delivered as text
                         # Convert ChatResponseTextContentItem to ChatResponseStructuredOutputContentItem
                         if isinstance(content, ChatResponseTextContentItem):
+                            # If we are in tool_use delivery mode, do NOT attempt text parsing.
+                            if self.structured_output_delivery == "tool_use":
+                                continue
+
                             raw_text = content.get_text()
 
                             # CRITICAL FIX: Only attempt to parse text that looks like JSON.
@@ -487,10 +507,96 @@ class StreamingManager:
 
                             choice.contents.append(matching_content)
 
-                        # Verify type matches
+                        # Verify type matches. Some providers can reuse a content index with a different
+                        # block type during streaming (notably with thinking/adaptive-thinking flows).
+                        # Instead of dropping deltas (which breaks text accumulation), rebuild the item
+                        # at this index using the delta's type and continue.
                         if matching_content.type != typed_delta.type or matching_content.index != typed_delta.index:
-                            logger.error(f"stream_manager: Content type mismatch at index {content_delta.index}")
-                            continue
+                            logger.debug(
+                                f"stream_manager: Content type mismatch at index {content_delta.index}; rebuilding"
+                            )
+
+                            try:
+                                choice.contents = [
+                                    c
+                                    for c in (choice.contents or [])
+                                    if getattr(c, "index", None) != content_delta.index
+                                ]
+                            except Exception:
+                                # If we can't surgically remove, fall back to appending a new item.
+                                pass
+                            matching_content = None
+
+                            # Re-create matching content using the delta type (same logic as creation above)
+                            if typed_delta.type == ChatResponseContentItemType.TEXT:
+                                delta_text = cast(ChatResponseTextContentItemDelta, typed_delta)
+                                matching_content = ChatResponseTextContentItem(
+                                    index=content_delta.index,
+                                    type=ChatResponseContentItemType.TEXT,
+                                    role=delta_text.role,
+                                    message_contents=[],
+                                    metadata=delta_text.metadata,
+                                    storage_metadata=delta_text.storage_metadata,
+                                    custom_metadata=delta_text.custom_metadata,
+                                )
+                            elif typed_delta.type == ChatResponseContentItemType.REASONING:
+                                delta_reasoning = cast(ChatResponseReasoningContentItemDelta, typed_delta)
+                                matching_content = ChatResponseReasoningContentItem(
+                                    index=content_delta.index,
+                                    type=ChatResponseContentItemType.REASONING,
+                                    role=delta_reasoning.role,
+                                    thinking_id=getattr(delta_reasoning, "thinking_id", None),
+                                    thinking_signature=getattr(delta_reasoning, "thinking_signature", None),
+                                    message_contents=[],
+                                    thinking_summary=[],
+                                    metadata=delta_reasoning.metadata,
+                                    storage_metadata=delta_reasoning.storage_metadata,
+                                    custom_metadata=delta_reasoning.custom_metadata,
+                                )
+                            elif typed_delta.type == ChatResponseContentItemType.TOOL_CALL:
+                                delta_tool = cast(ChatResponseToolCallContentItemDelta, typed_delta)
+                                _name = None
+                                if delta_tool.tool_call:
+                                    _name = delta_tool.tool_call.name
+                                if not _name:
+                                    _name = (
+                                        (delta_tool.metadata or {}).get("name")
+                                        or (delta_tool.metadata or {}).get("tool_name_delta")
+                                        or "unknown"
+                                    )
+                                matching_content = ChatResponseToolCallContentItem(
+                                    index=content_delta.index,
+                                    type=ChatResponseContentItemType.TOOL_CALL,
+                                    role=delta_tool.role,
+                                    tool_call=ChatResponseToolCall(
+                                        call_id=(delta_tool.tool_call.call_id if delta_tool.tool_call else None),
+                                        id=(delta_tool.tool_call.id if delta_tool.tool_call else None),
+                                        name=_name,
+                                        arguments={},
+                                    ),
+                                    metadata=delta_tool.metadata,
+                                    storage_metadata=delta_tool.storage_metadata,
+                                    custom_metadata=delta_tool.custom_metadata,
+                                )
+                            elif typed_delta.type == ChatResponseContentItemType.GENERIC:
+                                delta_generic = cast(ChatResponseGenericContentItemDelta, typed_delta)
+                                matching_content = ChatResponseGenericContentItem(
+                                    index=content_delta.index,
+                                    type=ChatResponseContentItemType.GENERIC,
+                                    role=delta_generic.role,
+                                    metadata=delta_generic.metadata,
+                                    storage_metadata=delta_generic.storage_metadata,
+                                    custom_metadata=delta_generic.custom_metadata,
+                                )
+
+                            if matching_content is None:
+                                continue
+
+                            contents = getattr(choice, "contents", None)
+                            if contents is None:
+                                contents = []
+                                choice.contents = contents
+                            contents.append(matching_content)
 
                         # Update content based on delta type
                         if typed_delta.type == ChatResponseContentItemType.TEXT:
@@ -542,7 +648,7 @@ class StreamingManager:
                                 ) + delta_reasoning.thinking_summary_delta
 
                             else:
-                                logger.warning(
+                                logger.debug(
                                     "stream_manager: reasoning delta without text or summary; ignoring incremental"
                                 )
 

@@ -145,6 +145,9 @@ class OpenAIResponses(OpenAIClientBase):
                 # Normalize Dhenara "minimal" -> OpenAI "low"
                 if effort.lower() == "minimal":
                     effort = "low"
+                # OpenAI doesn't support "max"; map to the strongest supported level.
+                if effort.lower() == "max":
+                    effort = "high"
                 reasoning_config["effort"] = effort
             else:
                 # Default effort if reasoning is enabled but not specified
