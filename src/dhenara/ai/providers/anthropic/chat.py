@@ -18,7 +18,10 @@ from anthropic.types import (
 )
 
 from dhenara.ai.providers.anthropic import AnthropicClientBase
-from dhenara.ai.providers.anthropic.formatter import AnthropicFormatter
+from dhenara.ai.providers.anthropic.formatter import (
+    AnthropicFormatter,
+    AnthropicNativeStructuredOutputSchemaTooLargeError,
+)
 from dhenara.ai.providers.anthropic.message_converter import AnthropicMessageConverter
 from dhenara.ai.types.genai import (
     AIModelCallResponseMetaData,
@@ -231,14 +234,22 @@ class AnthropicChat(AnthropicClientBase):
 
         if structured_output_config and structured_output_mode == "native":
             # Native structured output: `output_config.format` constrained decoding
-            output_config.update(
-                formatter.format_structured_output_output_config(
-                    structured_output=structured_output_config,
-                    model_endpoint=self.model_endpoint,
+            try:
+                output_config.update(
+                    formatter.format_structured_output_output_config(
+                        structured_output=structured_output_config,
+                        model_endpoint=self.model_endpoint,
+                    )
                 )
-            )
+            except AnthropicNativeStructuredOutputSchemaTooLargeError as e:
+                # Anthropic may reject complex schemas with:
+                # "The compiled grammar is too large".
+                # Fall back to the legacy tool_use workaround to keep structured output reliable.
+                logger.warning(f"Anthropic native structured output disabled (fallback to tool mode): {e}")
+                structured_output_mode = "tool"
+                self._structured_output_mode = structured_output_mode
 
-        elif structured_output_config and structured_output_mode == "tool":
+        if structured_output_config and structured_output_mode == "tool":
             # Legacy fallback: implement structured output via tool_use
             existing_tools = chat_args.get("tools")
             if not isinstance(existing_tools, list):
@@ -253,15 +264,10 @@ class AnthropicChat(AnthropicClientBase):
             chat_args["tools"].append(structured_tool)
             self._structured_output_tool_name = structured_tool.get("name")
 
-            # Enforce this tool (when thinking is not enabled; otherwise fall back to auto per API constraint)
-            if max_reasoning_tokens is not None:
-                # API constraint: thinking may not be enabled when tool_choice forces tool use.
-                chat_args["tool_choice"] = {"type": "auto"}
-            else:
-                chat_args["tool_choice"] = {
-                    "type": "tool",
-                    "name": structured_tool["name"],
-                }
+            chat_args["tool_choice"] = {
+                "type": "tool",
+                "name": structured_tool["name"],
+            }
 
         if output_config:
             chat_args["output_config"] = output_config
@@ -269,11 +275,10 @@ class AnthropicChat(AnthropicClientBase):
         else:
             # Take care of tool_choice + thinking mode conflict when no structured output but tools are present
             _tools = chat_args.get("tools", [])
-            if max_reasoning_tokens is not None and _tools:
+            if max_reasoning_tokens is not None and _tools and "thinking" in chat_args:
                 # TODO_FUTURE: Revisit this later if API improves in future
                 # Currently when enforced tool use in thinking mode,  API flags error as
                 # 'Thinking may not be enabled when tool_choice forces tool use.'
-                # The irony is that they don't have a structured-output mode either
                 chat_args["tool_choice"] = {"type": "auto"}
 
         return {"chat_args": chat_args}

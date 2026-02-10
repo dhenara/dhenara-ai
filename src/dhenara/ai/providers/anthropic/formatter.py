@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Any
 
@@ -21,6 +22,10 @@ from dhenara.ai.types.genai.dhenara.request.data import FormattedPrompt
 from dhenara.ai.types.shared.file import FileFormatEnum, GenericFile, ProcessedFile
 
 logger = logging.getLogger(__name__)
+
+
+class AnthropicNativeStructuredOutputSchemaTooLargeError(ValueError):
+    """Raised when an Anthropic json_schema is likely to exceed grammar limits."""
 
 
 class AnthropicFormatter(BaseFormatter):
@@ -156,6 +161,8 @@ class AnthropicFormatter(BaseFormatter):
         result: dict[str, Any] = {
             "type": params.type,
             "properties": {name: cls.convert_function_parameter(param) for name, param in params.properties.items()},
+            # Anthropic requires object schemas to disallow additional properties.
+            "additionalProperties": False,
         }
 
         # Auto-build the required list based on parameters marked as required
@@ -258,8 +265,12 @@ class AnthropicFormatter(BaseFormatter):
         if not schema:
             return {"type": "object"}
 
-        # Manual transform: remove common unsupported constraints and force additionalProperties: false.
-        # This is intentionally conservative; Anthropic SDK transform_schema() is preferred.
+        # Manual transform: remove common unsupported constraints and force strict object-typing.
+        #
+        # Key detail: Anthropic's constrained decoding compiles a grammar from the provided schema.
+        # If many object properties are optional, the grammar can blow up combinatorially (all
+        # presence/absence combinations). To keep grammar size bounded (and align with OpenAI
+        # strict-mode expectations), we enforce `required` to include all keys in `properties`.
         unsupported_keys = {
             "minimum",
             "maximum",
@@ -285,7 +296,19 @@ class AnthropicFormatter(BaseFormatter):
                 out[k] = _walk(v)
 
             if out.get("type") == "object":
-                out.setdefault("additionalProperties", False)
+                # Anthropic rejects additionalProperties:true for object schemas.
+                # Force it to false even if the input schema explicitly sets it to true.
+                out["additionalProperties"] = False
+
+                # Ensure properties exists (Anthropic strict decoding expects an object shape).
+                if not isinstance(out.get("properties"), dict):
+                    out["properties"] = {}
+
+                # Enforce required to list every key in properties.
+                prop_keys = list(out["properties"].keys())
+                existing_required = out.get("required")
+                if not isinstance(existing_required, list) or set(existing_required) != set(prop_keys):
+                    out["required"] = prop_keys
 
             # Normalize enum to list
             if "enum" in out and isinstance(out["enum"], (set, tuple)):
@@ -303,6 +326,25 @@ class AnthropicFormatter(BaseFormatter):
     ) -> dict[str, Any]:
         """Build Anthropic `output_config` payload for native JSON-schema outputs."""
         schema = cls._transform_schema_for_native_structured_output(structured_output)
+
+        # Anthropic constrained decoding compiles a grammar from the schema.
+        # In practice this has a hard limit and Anthropic may reject requests with:
+        # "The compiled grammar is too large".
+        #
+        # Heuristic guard: if the (minified) schema JSON is above a modest size,
+        # prefer falling back to tool-based structured output (handled by the caller).
+        # This keeps `dvi debug` reliable for complex schemas like debug_intel.
+        max_schema_bytes = 4000
+        try:
+            schema_bytes = len(json.dumps(schema, separators=(",", ":")))
+        except Exception:
+            schema_bytes = None
+
+        if schema_bytes is not None and schema_bytes > max_schema_bytes:
+            raise AnthropicNativeStructuredOutputSchemaTooLargeError(
+                f"Anthropic native json_schema too large ({schema_bytes} bytes > {max_schema_bytes} bytes)"
+            )
+
         return {
             "format": {
                 "type": "json_schema",
