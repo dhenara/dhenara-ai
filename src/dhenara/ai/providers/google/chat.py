@@ -145,7 +145,7 @@ class GoogleAIChat(GoogleAIClientBase):
                     function_declarations=cast(Any, function_declarations),
                 )
             ]
-            generate_config.tools = _tools
+            generate_config.tools = cast(Any, _tools)
 
         if self.config.tool_choice:
             _tool_config = formatter.format_tool_choice(
