@@ -1,4 +1,4 @@
 from .types import *
 from .ai_client import *
 
-__version__ = "1.1.4"
+__version__ = "1.1.5"

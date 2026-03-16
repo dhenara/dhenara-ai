@@ -6,6 +6,48 @@ from dhenara.ai.types.genai.ai_model import (
     FoundationModel,
 )
 
+GPT54 = FoundationModel(
+    model_name="gpt-5.4",
+    display_name="GPT-5.4",
+    provider=AIModelProviderEnum.OPEN_AI,
+    functional_type=AIModelFunctionalTypeEnum.TEXT_GENERATION,
+    settings=ChatModelSettings(
+        max_context_window_tokens=1050000,
+        max_output_tokens=128000,
+        supports_reasoning=True,
+    ),
+    valid_options={},
+    metadata={
+        "details": "OpenAI's flagship model for complex reasoning, coding, and agentic workflows.",
+    },
+    order=0,
+    cost_data=ChatModelCostData(
+        input_token_cost_per_million=2.5,
+        output_token_cost_per_million=15.0,
+    ),
+)
+
+GPT54Pro = FoundationModel(
+    model_name="gpt-5.4-pro",
+    display_name="GPT-5.4 Pro",
+    provider=AIModelProviderEnum.OPEN_AI,
+    functional_type=AIModelFunctionalTypeEnum.TEXT_GENERATION,
+    settings=ChatModelSettings(
+        max_context_window_tokens=1050000,
+        max_output_tokens=128000,
+        supports_reasoning=True,
+    ),
+    valid_options={},
+    metadata={
+        "details": "Higher-compute GPT-5.4 variant for tougher problems and more precise responses.",
+    },
+    order=0,
+    cost_data=ChatModelCostData(
+        input_token_cost_per_million=30.0,
+        output_token_cost_per_million=180.0,
+    ),
+)
+
 GPT52 = FoundationModel(
     model_name="gpt-5.2",
     display_name="GPT-5.2",
@@ -385,6 +427,8 @@ GPT41Nano = FoundationModel(
 
 
 CHAT_MODELS = [
+    GPT54,
+    GPT54Pro,
     GPT52,
     GPT52Pro,
     GPT51,

@@ -12,11 +12,11 @@ ClaudeOpus46 = FoundationModel(
     provider=AIModelProviderEnum.ANTHROPIC,
     functional_type=AIModelFunctionalTypeEnum.TEXT_GENERATION,
     settings=ChatModelSettings(
-        max_context_window_tokens=200000,
-        max_output_tokens=64000,
+        max_context_window_tokens=1000000,
+        max_output_tokens=128000,
         supports_reasoning=True,
         max_reasoning_tokens=32000,
-        max_output_tokens_reasoning_mode=64000,
+        max_output_tokens_reasoning_mode=128000,
     ),
     valid_options={},
     metadata={},
@@ -24,6 +24,27 @@ ClaudeOpus46 = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=5.0,
         output_token_cost_per_million=25.0,
+    ),
+)
+
+ClaudeSonnet46 = FoundationModel(
+    model_name="claude-sonnet-4-6",
+    display_name="Claude Sonnet 4.6",
+    provider=AIModelProviderEnum.ANTHROPIC,
+    functional_type=AIModelFunctionalTypeEnum.TEXT_GENERATION,
+    settings=ChatModelSettings(
+        max_context_window_tokens=1000000,
+        max_output_tokens=64000,
+        supports_reasoning=True,
+        max_reasoning_tokens=32000,
+        max_output_tokens_reasoning_mode=64000,
+    ),
+    valid_options={},
+    metadata={},
+    order=70,
+    cost_data=ChatModelCostData(
+        input_token_cost_per_million=3.0,
+        output_token_cost_per_million=15.0,
     ),
 )
 
@@ -228,6 +249,8 @@ Claude3Opus = FoundationModel(
 
 Claude40Sonnet = ClaudeSonnet40
 CHAT_MODELS = [
+    ClaudeOpus46,
+    ClaudeSonnet46,
     ClaudeOpus45,
     ClaudeSonnet45,
     ClaudeHaiku45,
