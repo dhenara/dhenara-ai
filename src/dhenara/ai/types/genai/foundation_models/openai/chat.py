@@ -48,6 +48,48 @@ GPT54Pro = FoundationModel(
     ),
 )
 
+GPT54Mini = FoundationModel(
+    model_name="gpt-5.4-mini",
+    display_name="GPT-5.4 Mini",
+    provider=AIModelProviderEnum.OPEN_AI,
+    functional_type=AIModelFunctionalTypeEnum.TEXT_GENERATION,
+    settings=ChatModelSettings(
+        max_context_window_tokens=400000,
+        max_output_tokens=128000,
+        supports_reasoning=True,
+    ),
+    valid_options={},
+    metadata={
+        "details": "Lower-latency GPT-5.4 variant for cost-sensitive agentic and coding workloads.",
+    },
+    order=1,
+    cost_data=ChatModelCostData(
+        input_token_cost_per_million=0.75,
+        output_token_cost_per_million=4.5,
+    ),
+)
+
+GPT54Nano = FoundationModel(
+    model_name="gpt-5.4-nano",
+    display_name="GPT-5.4 Nano",
+    provider=AIModelProviderEnum.OPEN_AI,
+    functional_type=AIModelFunctionalTypeEnum.TEXT_GENERATION,
+    settings=ChatModelSettings(
+        max_context_window_tokens=400000,
+        max_output_tokens=128000,
+        supports_reasoning=True,
+    ),
+    valid_options={},
+    metadata={
+        "details": "Fastest GPT-5.4 variant for lightweight, high-throughput text generation tasks.",
+    },
+    order=2,
+    cost_data=ChatModelCostData(
+        input_token_cost_per_million=0.2,
+        output_token_cost_per_million=1.25,
+    ),
+)
+
 GPT52 = FoundationModel(
     model_name="gpt-5.2",
     display_name="GPT-5.2",
@@ -429,6 +471,8 @@ GPT41Nano = FoundationModel(
 CHAT_MODELS = [
     GPT54,
     GPT54Pro,
+    GPT54Mini,
+    GPT54Nano,
     GPT52,
     GPT52Pro,
     GPT51,

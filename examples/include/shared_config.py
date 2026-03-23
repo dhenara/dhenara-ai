@@ -28,13 +28,13 @@ def load_resource_config(credentials_file: str | None = None):
 
 def openai_endpoints(rc):
     from dhenara.ai.types import AIModelAPIProviderEnum, AIModelEndpoint
-    from dhenara.ai.types.genai.foundation_models.openai.chat import GPT5Nano, O3Mini
+    from dhenara.ai.types.genai.foundation_models.openai.chat import GPT54Nano, O3Mini
 
     openai_api = rc.get_api(AIModelAPIProviderEnum.OPEN_AI)
     # Single source of truth: pick the models you want to use across examples here
     return [
+        AIModelEndpoint(api=openai_api, ai_model=GPT54Nano),
         AIModelEndpoint(api=openai_api, ai_model=O3Mini),
-        AIModelEndpoint(api=openai_api, ai_model=GPT5Nano),
     ]
 
 

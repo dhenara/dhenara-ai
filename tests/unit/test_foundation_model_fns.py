@@ -25,3 +25,25 @@ def test_dai_054_get_foundation_model_by_name_and_missing():
     assert found.model_name == name
 
     assert FoundationModelFns.get_foundation_model("definitely-not-a-model", all_models=ALL_FOUNDATION_MODELS) is None
+
+
+@pytest.mark.case_id("DAI-055")
+@pytest.mark.parametrize(
+    ("model_name", "provider"),
+    [
+        ("gpt-5.4-mini", "open_ai"),
+        ("gpt-5.4-nano", "open_ai"),
+        ("claude-haiku-4-5", "anthropic"),
+    ],
+)
+def test_dai_055_requested_models_are_registered(model_name: str, provider: str):
+    """GIVEN requested foundation model names
+    WHEN the registry is queried by exact model name
+    THEN the matching model is present with the expected provider.
+    """
+
+    found = FoundationModelFns.get_foundation_model(model_name, all_models=ALL_FOUNDATION_MODELS)
+
+    assert found is not None
+    assert found.model_name == model_name
+    assert found.provider == provider
