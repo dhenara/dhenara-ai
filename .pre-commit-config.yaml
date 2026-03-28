@@ -9,7 +9,7 @@ repos:
     hooks:
       - id: sanity
         name: unified sanity (format, lint, whitespace/EOF, YAML)
-        entry: make sanity-with-fix
+        entry: make sanity
         language: system
         pass_filenames: false
         stages: [pre-commit]
