@@ -39,8 +39,6 @@ _SUITE_HINTS: dict[str, str] = {
     "packages/dhenara_ai": "dhenara_ai",
     "packages/dhenara_ai_loop": "dhenara_ai_loop",
     "verif_angels/verifinder": "verifinder",
-    "verif_angels/verifinder_cli": "verifinder_cli",
-    "be/fast_api": "fastapi",
 }
 
 
