@@ -1,3 +1,4 @@
+import copy
 import logging
 from typing import Any
 
@@ -174,9 +175,73 @@ class GoogleFormatter(BaseFormatter):
         return schema
 
     @classmethod
+    def _normalize_union_branches_for_google(cls, schema: dict[str, Any]) -> None:
+        """Expand object union branches into full typed schemas for Gemini.
+
+        Vertex accepts `anyOf` but expects each branch schema to be self-contained.
+        Some internal tools emits compact `oneOf` branches like
+        `{"required": ["end_line"]}` against a shared base object schema. Promote
+        those branches into full object schemas before request submission.
+        """
+
+        branch_key: str | None = None
+        if "oneOf" in schema:
+            branch_key = "oneOf"
+        elif "anyOf" in schema:
+            branch_key = "anyOf"
+
+        if branch_key is None or schema.get("type") != "object":
+            return
+
+        raw_branches = schema.get(branch_key)
+        if not isinstance(raw_branches, list) or not raw_branches:
+            return
+
+        base_schema = {
+            key: copy.deepcopy(value) for key, value in schema.items() if key not in {"oneOf", "anyOf", "allOf"}
+        }
+        base_required = list(base_schema.get("required") or []) if isinstance(base_schema.get("required"), list) else []
+
+        normalized_branches: list[dict[str, Any]] = []
+        for branch in raw_branches:
+            if not isinstance(branch, dict):
+                continue
+
+            merged = copy.deepcopy(base_schema)
+            branch_required = list(branch.get("required") or []) if isinstance(branch.get("required"), list) else []
+            required: list[str] = []
+            for name in [*base_required, *branch_required]:
+                if name not in required:
+                    required.append(name)
+            if required:
+                merged["required"] = required
+
+            for key, value in branch.items():
+                if key == "required":
+                    continue
+                if key == "properties" and isinstance(value, dict) and isinstance(merged.get("properties"), dict):
+                    merged["properties"].update(copy.deepcopy(value))
+                    continue
+                merged[key] = copy.deepcopy(value)
+
+            normalized_branches.append(merged)
+
+        if normalized_branches:
+            schema.clear()
+            schema["anyOf"] = normalized_branches
+
+    @classmethod
     def _clean_schema_for_google(cls, schema: object) -> object:
-        """Remove Google-incompatible fields from schema"""
+        """Remove Google-incompatible fields from schema."""
         if isinstance(schema, dict):
+            cls._normalize_union_branches_for_google(schema)
+
+            # Gemini accepts anyOf but rejects oneOf in SDK-side schema validation.
+            if "oneOf" in schema:
+                if "anyOf" not in schema:
+                    schema["anyOf"] = schema["oneOf"]
+                del schema["oneOf"]
+
             # Remove additionalProperties: false
             if "additionalProperties" in schema and schema["additionalProperties"] is False:
                 del schema["additionalProperties"]
@@ -219,7 +284,7 @@ class GoogleFormatter(BaseFormatter):
             result["description"] = param.description
         # Array item schema (already inlined by runner if it originated from a $ref)
         if getattr(param, "items", None):
-            result["items"] = param.items
+            result["items"] = cls._clean_schema_for_google(copy.deepcopy(param.items))
         # Enumerations (optional)
         if getattr(param, "allowed_values", None):
             result["enum"] = param.allowed_values
