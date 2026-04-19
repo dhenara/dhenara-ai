@@ -14,6 +14,15 @@ from dhenara.ai.utils.dai_disk import DAI_DISK
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_SECRET_CONFIG_DIR = "/run/secrets/dai"
+SECRET_CONFIG_DIR_ENV = "DAI_SECRET_CONFIG_DIR"
+
+
+def _default_credentials_file() -> str:
+    configured_dir = os.getenv(SECRET_CONFIG_DIR_ENV, "").strip()
+    base_dir = os.path.expanduser(configured_dir) if configured_dir else DEFAULT_SECRET_CONFIG_DIR
+    return str(Path(base_dir) / "dai_credentials.yaml")
+
 
 class ResourceConfig(BaseModel):
     """
@@ -121,13 +130,13 @@ class ResourceConfig(BaseModel):
         Initialize the ResourceConfig with credentials from a file and optional overrides.
 
         Args:
-            credentials_file: Path to the credentials file or  DAI_CREDENTIALS_FILE
+            credentials_file: Path to the credentials file or the default under DAI_SECRET_CONFIG_DIR
             models: Optional list of models to override default ALL_FOUNDATION_MODELS
             mapping_override: Optional dictionary to override default model-to-API mappings
         """
 
         if not credentials_file:
-            credentials_file = os.getenv("DAI_CREDENTIALS_FILE", "~/.dhenara/dai/.dai_credentials.yaml")
+            credentials_file = _default_credentials_file()
 
         # Load credentials
         credentials = self._load_credentials_from_file(credentials_file)

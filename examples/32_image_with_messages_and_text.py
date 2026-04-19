@@ -29,7 +29,7 @@ logger.setLevel(logging.INFO)
 # Initialize all model endpoints and collect it into a ResourceConfig.
 resource_config = ResourceConfig()
 resource_config.load_from_file(
-    # credentials_file="path/to/your/credentails_file"  # or None to use `DAI_CREDENTIALS_FILE`
+    # credentials_file="path/to/your/credentials_file"  # or None to use DAI_SECRET_CONFIG_DIR/dai_credentials.yaml
 )
 
 openai_api = resource_config.get_api(AIModelAPIProviderEnum.OPEN_AI)
