@@ -1,94 +1,85 @@
-# Dhenara
+# Dhenara AI
 
-Dhenara is a genuinely open source Python package for interacting with various AI models in a unified way. It is a lightweight, straightforward framework for integrating multiple AI models into Python applications. It's similar in spirit to LangChain but with a focus on simplicity and minimal dependencies along with type safety using Pydantic Models.
+Dhenara AI is an open source Python package for calling multiple LLM providers through one typed interface. It keeps the integration surface small: provider credentials, model selection, prompt/message formatting, streaming, tool use, and structured output all flow through the same core client types.
 
 For full documentation, visit [docs.dhenara.com](https://docs.dhenara.com/).
 
-## Why Dhenara?
+## Installation
 
-- **Genuinely Open Source**: Built from the ground up as a community resource, not an afterthought or internal tool
-- **Unified API**: Interact with different AI providers through a consistent interface
-- **Type Safety**: Built with Pydantic for robust type checking and validation
-- **Easy Regeneration across Providers**: With a unified Pydantic output and built-in prompt formatting, send output from a model to any other model easily
-- **Streaming**: First-class support for streaming responses along with accumulated responses similar to non-streaming responses
-- **Async Support**: Both synchronous and asynchronous interfaces for maximum flexibility
-- **Resource Management**: Automatic handling of connections, retries, and timeouts
-- **Foundation Models**: Pre-configured models with sensible defaults
-- **Test Mode**: Bring up your app with dummy responses for streaming and non-streaming generation
-- **Cost/Usage Data**: Derived cost and usage data along with responses, with optional charge for each model endpoint for commercial deployment
-- **Community-Oriented Design**: An architecture separating API credentials, models, and configurations for flexible deployment and scaling
+```bash
+pip install dhenara-ai
+```
 
-## Example Usage
+## Credential Setup
 
-Here's a simple example of using Dhenara to interact with an AI model. You can find more examples in [docs.dhenara.com](https://docs.dhenara.com/).
+Dhenara AI discovers credentials in one of two ways:
+
+1. Pass an explicit file path to `ResourceConfig.load_from_file()`.
+2. Set `DAI_SECRET_CONFIG_DIR` and place `dai_credentials.yaml` inside that directory.
+
+If `DAI_SECRET_CONFIG_DIR` is unset, the default location is `/run/secrets/dai/dai_credentials.yaml`.
+
+Use the checked-in template at `src/dhenara/ai/types/resource/credentials.yaml` as the starting point.
+
+```bash
+mkdir -p /path/to/secrets
+export DAI_SECRET_CONFIG_DIR=/path/to/secrets
+cp src/dhenara/ai/types/resource/credentials.yaml "$DAI_SECRET_CONFIG_DIR/dai_credentials.yaml"
+```
+
+Then edit `dai_credentials.yaml` and keep only the providers you actually use.
+
+## Quickstart
 
 ```python
 from dhenara.ai import AIModelClient
-from dhenara.ai.types import AIModelCallConfig, AIModelEndpoint
-from dhenara.ai.types.external_api import AIModelAPIProviderEnum
-from dhenara.ai.types.genai import AIModelAPI
-from dhenara.ai.types.genai.foundation_models.anthropic.chat import Claude37Sonnet
+from dhenara.ai.types import AIModelAPIProviderEnum, AIModelCallConfig, ResourceConfig
 
-# Create an API
-api = AIModelAPI(
-    provider=AIModelAPIProviderEnum.ANTHROPIC,
-    api_key="your_api_key",
+resource_config = ResourceConfig()
+resource_config.load_from_file(credentials_file=None, init_endpoints=True)
+
+endpoint = resource_config.get_model_endpoint(
+    model_name="claude-haiku-4-5",
+    api_provider=AIModelAPIProviderEnum.ANTHROPIC,
 )
+if endpoint is None:
+    raise RuntimeError("No Anthropic endpoint configured for claude-haiku-4-5")
 
-# Create an endpoint using a pre-configured model
-model_endpoint = AIModelEndpoint(
-    api=api,
-    ai_model=Claude37Sonnet,
-)
-
-# Configure the api call
-config = AIModelCallConfig(
-    max_output_tokens=16000,
-    reasoning=True,  # Thinking/reasoning mode
-    max_reasoning_tokens=8000,
-    streaming=False,
-)
-
-# Create the client
 client = AIModelClient(
-    model_endpoint=model_endpoint,
-    config=config,
+    model_endpoint=endpoint,
+    config=AIModelCallConfig(
+        max_output_tokens=1024,
+        reasoning=False,
+        streaming=False,
+    ),
     is_async=False,
 )
 
-# Create a prompt
-prompt = {
-    "role": "user",
-    "content": "Explain quantum computing in simple terms",
-}
+response = client.generate(
+    prompt="Explain quantum computing in simple terms.",
+    instructions=["Keep the answer under 120 words."],
+)
 
-# Generate a response
-response = client.generate(prompt=prompt)
-
-# If not streaming
 if response.chat_response:
-    print(response.chat_response.choices[0].contents[0].get_text())
-
-# If streaming
-elif response.stream_generator:
-    for chunk, _ in response.stream_generator:
-        if chunk:
-            print(
-                chunk.data.choice_deltas[0].content_deltas[0].get_text_delta(),
-                end="",
-                flush=True,
-            )
+    print(response.chat_response.text())
 ```
 
-## Documentation
+## Running The Included Examples
 
-For full documentation, visit [docs.dhenara.com](https://docs.dhenara.com/).
+The example programs use the same credential-loading contract. With a secret directory configured, you can run them directly:
+
+```bash
+export DAI_SECRET_CONFIG_DIR=/path/to/secrets
+python examples/14_multi_turn_with_messages_api.py
+```
+
+If you prefer an explicit credentials file, pass that path where the example calls `load_from_file()`.
 
 ## Provider SDK Surfaces
 
-- OpenAI and Azure OpenAI / Microsoft Foundry OpenAI v1 use the `openai` SDK.
+- OpenAI direct and Azure OpenAI / Microsoft Foundry OpenAI v1 use the `openai` SDK.
 - Google Gemini Developer API and Gemini on Vertex AI use the `google-genai` SDK.
-- Anthropic direct, Amazon Bedrock, and Vertex AI use the `anthropic` SDK.
+- Anthropic direct, Amazon Bedrock, and Anthropic on Vertex use the `anthropic` SDK.
+- Amazon Bedrock configuration stays under the `amazon_bedrock` provider block. The package passes those credentials into `AnthropicBedrock`; there is no separate boto client setup in your application code.
 - `microsoft_azure_ai` is not a supported text-generation surface in `dhenara-ai`; use `microsoft_openai` with an Azure OpenAI or Microsoft Foundry OpenAI v1 endpoint instead.
-- If you are migrating an older Foundry inference URL that ends in `/models`, drop that suffix or let the runtime normalize it to `/openai/v1/`.
-- For Microsoft-hosted OpenAI-compatible deployments such as DeepSeek, configure the deployment under `microsoft_openai` and use the deployment name as the model name.
+- For Microsoft-hosted OpenAI-compatible deployments, the `model` value in requests must be the Azure deployment name, not just the underlying vendor model family.

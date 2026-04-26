@@ -2,12 +2,19 @@
 
 ## Provider/Model Coverage
 
-Realtime pytest cases now iterate over every provider/model pair defined in
-`PROVIDER_MODEL_PREFERENCE` (see `_config.py`). For each configured provider the
-active model names (uncommented entries) are located, and every scenario in
-`test_examples.py` runs against the resulting endpoint. To onboard a new model,
-add it to the preference map and ensure `ResourceConfig` exposes a matching
-endpoint.
+Realtime pytest coverage is split across two suites:
+
+- `test_all_capabilities.py` iterates over the provider/model pairs in `DEFAULT_PROVIDER_MODELS_MAP`.
+- `test_all_providers.py` runs a structured-output sweep across every distinct configured provider.
+
+The provider/model maps live in `_config.py`. To onboard a new model, add it to the appropriate map and ensure `ResourceConfig` can expose a matching endpoint.
+
+Realtime credentials follow the same package contract as normal runtime code:
+
+- pass an explicit credentials file path into `ResourceConfig.load_from_file(...)`, or
+- set `DAI_SECRET_CONFIG_DIR` and place `dai_credentials.yaml` in that directory.
+
+If `DAI_SECRET_CONFIG_DIR` is unset, the default lookup path is `/run/secrets/dai/dai_credentials.yaml`.
 
 ## Artifact Storage
 

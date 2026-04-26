@@ -21,6 +21,13 @@ for p in (str(_SRC_DIR), str(_ROOT_DIR)):
 
 
 def load_resource_config(credentials_file: str | None = None):
+    """Load example credentials from an explicit file or the default secret-dir contract.
+
+    If ``credentials_file`` is ``None``, ``ResourceConfig`` resolves
+    ``$DAI_SECRET_CONFIG_DIR/dai_credentials.yaml`` and falls back to
+    ``/run/secrets/dai/dai_credentials.yaml`` when the environment variable is unset.
+    """
+
     rc = ResourceConfig()
     rc.load_from_file(credentials_file)
     return rc
@@ -31,6 +38,8 @@ def openai_endpoints(rc):
     from dhenara.ai.types.genai.foundation_models.openai.chat import GPT54Nano, O3Mini
 
     openai_api = rc.get_api(AIModelAPIProviderEnum.OPEN_AI)
+    if openai_api is None:
+        return []
     # Single source of truth: pick the models you want to use across examples here
     return [
         AIModelEndpoint(api=openai_api, ai_model=GPT54Nano),
@@ -43,6 +52,8 @@ def anthropic_endpoints(rc):
     from dhenara.ai.types.genai.foundation_models.anthropic.chat import ClaudeHaiku45, ClaudeSonnet45
 
     anthropic_api = rc.get_api(AIModelAPIProviderEnum.ANTHROPIC)
+    if anthropic_api is None:
+        return []
     # Single source of truth: pick the models you want to use across examples here
     return [
         AIModelEndpoint(api=anthropic_api, ai_model=ClaudeHaiku45),
@@ -55,6 +66,8 @@ def google_endpoints(rc):
     from dhenara.ai.types.genai.foundation_models.google.chat import Gemini25Flash, Gemini25FlashLite
 
     google_api = rc.get_api(AIModelAPIProviderEnum.GOOGLE_AI)
+    if google_api is None:
+        return []
     # Single source of truth: pick the models you want to use across examples here
     return [
         AIModelEndpoint(api=google_api, ai_model=Gemini25Flash),
@@ -67,6 +80,8 @@ def microsoft_openai_endpoints(rc):
     from dhenara.ai.types.genai.foundation_models.openai.chat import GPT54Mini
 
     microsoft_openai_api = rc.get_api(AIModelAPIProviderEnum.MICROSOFT_OPENAI)
+    if microsoft_openai_api is None:
+        return []
     return [
         AIModelEndpoint(api=microsoft_openai_api, ai_model=GPT54Mini),
     ]
@@ -77,16 +92,17 @@ def anthropic_vertextai_endpoints(rc):
     from dhenara.ai.types.genai.foundation_models.anthropic.chat import ClaudeSonnet46
 
     google_vertextai_api = rc.get_api(AIModelAPIProviderEnum.GOOGLE_VERTEX_AI)
+    if google_vertextai_api is None:
+        return []
     return [
         AIModelEndpoint(api=google_vertextai_api, ai_model=ClaudeSonnet46),
     ]
 
 
 def all_endpoints(rc):
-    # Enable all providers by default; uncomment a single line below to focus one provider while debugging
-    # return openai_endpoints(rc)
-    # return anthropic_endpoints(rc)
-    # return google_endpoints(rc)
+    # Default examples use the direct provider set, which works with only the
+    # documented secret-directory credentials and avoids extra deployment or
+    # regional constraints from hosted variants.
     return openai_endpoints(rc) + anthropic_endpoints(rc) + google_endpoints(rc)
 
 

@@ -257,7 +257,10 @@ class ResourceConfig(BaseModel):
         # Start with a header comment
         header = (
             "# Dhenara AI Provider Credentials\n"
-            "# Replace placeholder values with your actual API keys and remove unused items\n\n"
+            "# Place this file at $DAI_SECRET_CONFIG_DIR/dai_credentials.yaml "
+            "or pass its path to ResourceConfig.load_from_file().\n"
+            "# If DAI_SECRET_CONFIG_DIR is unset, the default directory is /run/secrets/dai.\n"
+            "# Replace placeholder values with your actual credentials and remove unused providers.\n\n"
         )
 
         template = {}

@@ -21,6 +21,8 @@ def test_dai_050_create_credentials_template(tmp_path):
 
     text = out.read_text(encoding="utf-8")
     assert "Dhenara AI Provider Credentials" in text
+    assert "DAI_SECRET_CONFIG_DIR" in text
+    assert "dai_credentials.yaml" in text
     # At least one well-known provider section should exist
     assert "openai:" in text
     assert "microsoft_openai:" in text

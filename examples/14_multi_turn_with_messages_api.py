@@ -5,6 +5,7 @@ the traditional prompt/context approach. The messages API provides better
 type safety and follows LLM provider conventions more closely.
 
 Usage:
+    export DAI_SECRET_CONFIG_DIR=/path/to/secrets
   python examples/14_multi_turn_with_messages_api.py
 """
 
@@ -19,7 +20,8 @@ from dhenara.ai.types import AIModelCallConfig, AIModelEndpoint
 from dhenara.ai.types.conversation._node import ConversationNode
 from dhenara.ai.types.genai.dhenara.request import MessageItem, Prompt
 
-# Initialize shared resource config and restrict to OpenAI endpoints
+# Load credentials from an explicit file or from $DAI_SECRET_CONFIG_DIR/dai_credentials.yaml.
+# The active example endpoint set is defined in examples/include/shared_config.py.
 resource_config = load_resource_config()
 resource_config.model_endpoints = all_endpoints(resource_config)
 
