@@ -41,7 +41,7 @@ dev = [
     "pytest-asyncio",
     "pytest-cov",
     "black",
-    "ruff",
+    "ruff==0.15.12",
     "add-trailing-comma",
 ]
 

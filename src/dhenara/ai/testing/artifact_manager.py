@@ -4,13 +4,13 @@ import os
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 
 from dhenara.ai.utils.dai_disk import DAI_DISK
 
 
-class ArtifactKind(str, Enum):
+class ArtifactKind(StrEnum):
     LOG = "log"
     PAYLOAD = "payload"
     SNAPSHOT = "snapshot"

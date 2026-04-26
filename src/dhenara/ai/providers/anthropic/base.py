@@ -3,12 +3,10 @@ from typing import Any
 
 from anthropic import (
     Anthropic,
-    AnthropicBedrock,
-    AnthropicVertex,
     AsyncAnthropic,
-    AsyncAnthropicBedrock,
-    AsyncAnthropicVertex,
 )
+from anthropic.lib.bedrock import AnthropicBedrock, AsyncAnthropicBedrock
+from anthropic.lib.vertex import AnthropicVertex, AsyncAnthropicVertex
 
 from dhenara.ai.providers.base import AIModelProviderClientBase
 from dhenara.ai.providers.shared import APIProviderSharedFns

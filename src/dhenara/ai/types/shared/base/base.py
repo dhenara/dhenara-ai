@@ -1,4 +1,4 @@
-from enum import Enum
+from enum import StrEnum
 from typing import Any, TypeVar
 
 from pydantic import BaseModel as PydanticBaseModel
@@ -8,7 +8,7 @@ T = TypeVar("T", bound="BaseModel")
 # logger.debug(f"Pydantic version: {pydantic.__version__}")
 
 
-class BaseEnum(str, Enum):
+class BaseEnum(StrEnum):
     """Base Enumeration class."""
 
     def __str__(self):
