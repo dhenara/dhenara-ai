@@ -18,6 +18,17 @@ class GoogleAIClientBase(AIModelProviderClientBase):
 
     formatter = GoogleFormatter
 
+    def _get_vertex_location_for_model(self, configured_location: str) -> str:
+        model_location = self.model_endpoint.ai_model.metadata.get("google_vertex_location")
+        if model_location == "global":
+            if configured_location.strip().lower() != "global":
+                logger.info(
+                    "Overriding Vertex location to global for model %s because the model contract marks it as global-only",
+                    self.model_name_in_api_calls,
+                )
+            return "global"
+        return configured_location
+
     def initialize(self) -> None:
         pass
 
@@ -34,7 +45,7 @@ class GoogleAIClientBase(AIModelProviderClientBase):
         api_version = None  # Default in the SDK is `v1beta`
         if self.config.api_version_override:
             if self.config.api_version_override not in ["v1", "v1beta"]:
-                raise ValueError(f"Unknonw API version {self.config.api_version_override}. Supported only v1 or v1bata")
+                raise ValueError(f"Unknown API version {self.config.api_version_override}. Supported only v1 or v1beta")
             api_version = self.config.api_version_override
 
         if timeout or api_version:
@@ -51,11 +62,12 @@ class GoogleAIClientBase(AIModelProviderClientBase):
             return "google_ai", params
         elif api.provider == AIModelAPIProviderEnum.GOOGLE_VERTEX_AI:
             client_params = APIProviderSharedFns.get_vertex_ai_credentials(api)
+            location = self._get_vertex_location_for_model(client_params["location"])
             params = {
                 "vertexai": True,
                 "credentials": client_params["credentials"],
                 "project": client_params["project_id"],
-                "location": client_params["location"],
+                "location": location,
                 **_http_pars,
             }
             return "vertex_ai", params

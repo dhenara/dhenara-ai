@@ -23,6 +23,7 @@ Gemini3Pro = FoundationModel(
         "details": "Deprecated preview shut down on 2026-03-09. Use Gemini 3.1 Pro Preview instead.",
         "display_order": 10,
         "deprecated": True,
+        "google_vertex_location": "global",
     },
     order=52,
     cost_data=ChatModelCostData(
@@ -48,6 +49,7 @@ Gemini31ProPreview = FoundationModel(
     metadata={
         "details": "GoogleAI Gemini 3.1 Pro Preview model.",
         "display_order": 10,
+        "google_vertex_location": "global",
     },
     order=50,
     cost_data=ChatModelCostData(
@@ -73,6 +75,7 @@ Gemini3FlashPreview = FoundationModel(
     metadata={
         "details": "GoogleAI Gemini 3 Flash Preview model.",
         "display_order": 10,
+        "google_vertex_location": "global",
     },
     order=51,
     cost_data=ChatModelCostData(
@@ -98,6 +101,7 @@ Gemini31FlashLitePreview = FoundationModel(
     metadata={
         "details": "GoogleAI Gemini 3.1 Flash-Lite Preview model.",
         "display_order": 10,
+        "google_vertex_location": "global",
     },
     order=52,
     cost_data=ChatModelCostData(
