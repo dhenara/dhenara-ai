@@ -6,6 +6,27 @@ from dhenara.ai.types.genai.ai_model import (
     FoundationModel,
 )
 
+GPT55 = FoundationModel(
+    model_name="gpt-5.5",
+    display_name="GPT-5.5",
+    provider=AIModelProviderEnum.OPEN_AI,
+    functional_type=AIModelFunctionalTypeEnum.TEXT_GENERATION,
+    settings=ChatModelSettings(
+        max_context_window_tokens=1050000,
+        max_output_tokens=128000,
+        supports_reasoning=True,
+    ),
+    valid_options={},
+    metadata={
+        "details": "OpenAI's latest flagship model for complex reasoning and coding workloads.",
+    },
+    order=0,
+    cost_data=ChatModelCostData(
+        input_token_cost_per_million=5.0,
+        output_token_cost_per_million=30.0,
+    ),
+)
+
 GPT54 = FoundationModel(
     model_name="gpt-5.4",
     display_name="GPT-5.4",
@@ -469,6 +490,7 @@ GPT41Nano = FoundationModel(
 
 
 CHAT_MODELS = [
+    GPT55,
     GPT54,
     GPT54Pro,
     GPT54Mini,

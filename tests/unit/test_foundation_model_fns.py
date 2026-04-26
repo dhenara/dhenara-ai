@@ -31,9 +31,12 @@ def test_dai_054_get_foundation_model_by_name_and_missing():
 @pytest.mark.parametrize(
     ("model_name", "provider"),
     [
+        ("gpt-5.5", "open_ai"),
         ("gpt-5.4-mini", "open_ai"),
         ("gpt-5.4-nano", "open_ai"),
+        ("claude-opus-4-7", "anthropic"),
         ("claude-haiku-4-5", "anthropic"),
+        ("gemini-3.1-pro-preview", "google_ai"),
     ],
 )
 def test_dai_055_requested_models_are_registered(model_name: str, provider: str):

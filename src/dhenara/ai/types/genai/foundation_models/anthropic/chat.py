@@ -6,6 +6,29 @@ from dhenara.ai.types.genai.ai_model import (
     FoundationModel,
 )
 
+ClaudeOpus47 = FoundationModel(
+    model_name="claude-opus-4-7",
+    display_name="Claude Opus 4.7",
+    provider=AIModelProviderEnum.ANTHROPIC,
+    functional_type=AIModelFunctionalTypeEnum.TEXT_GENERATION,
+    settings=ChatModelSettings(
+        max_context_window_tokens=1000000,
+        max_output_tokens=128000,
+        supports_reasoning=True,
+        max_reasoning_tokens=32000,
+        max_output_tokens_reasoning_mode=128000,
+    ),
+    valid_options={},
+    metadata={
+        "details": "Anthropic's latest generally available model for complex reasoning and agentic coding.",
+    },
+    order=76,
+    cost_data=ChatModelCostData(
+        input_token_cost_per_million=5.0,
+        output_token_cost_per_million=25.0,
+    ),
+)
+
 ClaudeOpus46 = FoundationModel(
     model_name="claude-opus-4-6",
     display_name="Claude Opus 4.6",
@@ -249,6 +272,7 @@ Claude3Opus = FoundationModel(
 
 Claude40Sonnet = ClaudeSonnet40
 CHAT_MODELS = [
+    ClaudeOpus47,
     ClaudeOpus46,
     ClaudeSonnet46,
     ClaudeOpus45,

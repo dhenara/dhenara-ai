@@ -6,7 +6,19 @@ from pydantic import BaseModel
 from dhenara.ai.providers.anthropic.chat import AnthropicChat
 from dhenara.ai.types import AIModelCallConfig, AIModelEndpoint
 from dhenara.ai.types.genai.ai_model import AIModelAPI, AIModelAPIProviderEnum
-from dhenara.ai.types.genai.foundation_models.anthropic.chat import Claude37Sonnet, ClaudeOpus46, ClaudeSonnet45
+from dhenara.ai.types.genai.dhenara.request import (
+    FunctionDefinition,
+    FunctionParameter,
+    FunctionParameters,
+    ToolChoice,
+    ToolDefinition,
+)
+from dhenara.ai.types.genai.foundation_models.anthropic.chat import (
+    Claude37Sonnet,
+    ClaudeOpus46,
+    ClaudeOpus47,
+    ClaudeSonnet45,
+)
 
 pytestmark = [pytest.mark.unit]
 
@@ -23,6 +35,18 @@ def _mk_ep(model) -> AIModelEndpoint:
         api_key="sk-testkey-123456",
     )
     return AIModelEndpoint(api=api, ai_model=model)
+
+
+def _mk_tool(name: str = "fetch_signal") -> ToolDefinition:
+    params = FunctionParameters(
+        properties={
+            "path": FunctionParameter(type="string", required=True, description="Path to inspect"),
+        },
+        required=["path"],
+    )
+    return ToolDefinition(
+        function=FunctionDefinition(name=name, description="Fetch verification data", parameters=params)
+    )
 
 
 @pytest.mark.case_id("DAI-112")
@@ -75,6 +99,100 @@ def test_dai_114_anthropic_opus46_uses_adaptive_thinking_and_output_config_effor
 
     # Native structured output should not inject a structured-output tool.
     assert "tools" not in chat_args or chat_args["tools"] in (None, [])
+
+
+@pytest.mark.case_id("DAI-116")
+def test_dai_116_anthropic_opus47_uses_adaptive_thinking_and_output_config_effort():
+    ep = _mk_ep(ClaudeOpus47)
+    cfg = AIModelCallConfig(
+        structured_output=TravelPlan,
+        reasoning=True,
+        reasoning_effort="medium",
+    )
+
+    client = AnthropicChat(model_endpoint=ep, config=cfg, is_async=False)
+    client._client = object()
+    client._input_validation_pending = False
+
+    params = client.get_api_call_params(prompt={"role": "user", "content": "hi"})
+    chat_args = params["chat_args"]
+
+    assert chat_args.get("thinking") == {"type": "adaptive"}
+    assert "output_config" in chat_args
+    assert chat_args["output_config"]["effort"] == "medium"
+    assert chat_args["output_config"]["format"]["type"] == "json_schema"
+    assert "schema" in chat_args["output_config"]["format"]
+    assert "tools" not in chat_args or chat_args["tools"] in (None, [])
+
+
+@pytest.mark.case_id("DAI-117")
+def test_dai_117_anthropic_opus47_relaxes_forced_tool_choice_when_thinking_adds_output_config():
+    ep = _mk_ep(ClaudeOpus47)
+    cfg = AIModelCallConfig(
+        tools=[_mk_tool()],
+        tool_choice=ToolChoice(type="one_or_more"),
+        reasoning=True,
+        reasoning_effort="medium",
+    )
+
+    client = AnthropicChat(model_endpoint=ep, config=cfg, is_async=False)
+    client._client = object()
+    client._input_validation_pending = False
+
+    params = client.get_api_call_params(prompt={"role": "user", "content": "hi"})
+    chat_args = params["chat_args"]
+
+    assert chat_args.get("thinking") == {"type": "adaptive"}
+    assert chat_args["output_config"]["effort"] == "medium"
+    assert chat_args["tool_choice"] == {"type": "auto"}
+    assert chat_args["tools"][0]["name"] == "fetch_signal"
+
+
+@pytest.mark.case_id("DAI-118")
+def test_dai_118_anthropic_opus47_keeps_native_structured_output_with_tools():
+    ep = _mk_ep(ClaudeOpus47)
+    cfg = AIModelCallConfig(
+        structured_output=TravelPlan,
+        tools=[_mk_tool()],
+        tool_choice=ToolChoice(type="one_or_more"),
+        reasoning=True,
+        reasoning_effort="medium",
+    )
+
+    client = AnthropicChat(model_endpoint=ep, config=cfg, is_async=False)
+    client._client = object()
+    client._input_validation_pending = False
+
+    params = client.get_api_call_params(prompt={"role": "user", "content": "hi"})
+    chat_args = params["chat_args"]
+
+    assert chat_args.get("thinking") == {"type": "adaptive"}
+    assert chat_args["output_config"]["effort"] == "medium"
+    assert chat_args["output_config"]["format"]["type"] == "json_schema"
+    assert "schema" in chat_args["output_config"]["format"]
+    assert chat_args["tool_choice"] == {"type": "auto"}
+    assert chat_args["tools"][0]["name"] == "fetch_signal"
+
+
+@pytest.mark.case_id("DAI-119")
+def test_dai_119_anthropic_opus47_keeps_forced_tool_choice_without_thinking():
+    ep = _mk_ep(ClaudeOpus47)
+    cfg = AIModelCallConfig(
+        tools=[_mk_tool()],
+        tool_choice=ToolChoice(type="one_or_more"),
+        reasoning=False,
+    )
+
+    client = AnthropicChat(model_endpoint=ep, config=cfg, is_async=False)
+    client._client = object()
+    client._input_validation_pending = False
+
+    params = client.get_api_call_params(prompt={"role": "user", "content": "hi"})
+    chat_args = params["chat_args"]
+
+    assert "thinking" not in chat_args
+    assert chat_args["tool_choice"]["type"] in ("any", "tool")
+    assert chat_args["tool_choice"] != {"type": "auto"}
 
 
 @pytest.mark.case_id("DAI-113")

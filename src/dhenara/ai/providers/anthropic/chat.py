@@ -78,6 +78,17 @@ class AnthropicChat(AnthropicClientBase):
         name = getattr(model, "model_name", None)
         return (name or "").lower()
 
+    @staticmethod
+    def _tool_choice_forces_tool_use(tool_choice: Any) -> bool:
+        """Return whether the current tool choice requires the model to emit a tool call.
+
+        Anthropic still rejects `thinking` when tool choice is forced, even on
+        the newer native-structured-output Claude models.
+        """
+        if not isinstance(tool_choice, dict):
+            return False
+        return tool_choice.get("type") in {"any", "tool"}
+
     def _get_anthropic_structured_output_mode(self) -> str:
         """Return structured-output mode: 'native', 'tool', or 'off'.
 
@@ -272,14 +283,20 @@ class AnthropicChat(AnthropicClientBase):
         if output_config:
             chat_args["output_config"] = output_config
 
-        else:
-            # Take care of tool_choice + thinking mode conflict when no structured output but tools are present
-            _tools = chat_args.get("tools", [])
-            if max_reasoning_tokens is not None and _tools and "thinking" in chat_args:
-                # TODO_FUTURE: Revisit this later if API improves in future
-                # Currently when enforced tool use in thinking mode,  API flags error as
-                # 'Thinking may not be enabled when tool_choice forces tool use.'
-                chat_args["tool_choice"] = {"type": "auto"}
+        # Anthropic rejects thinking when tool_choice forces at least one tool call.
+        # Keep native structured output enabled for 4.6+ models; only relax the
+        # tool-choice requirement so the request remains valid.
+        # Reasoning effort populates output_config, so this mitigation must run even when
+        # output_config exists only for effort and not for native structured outputs.
+        _tools = chat_args.get("tools")
+        if (
+            max_reasoning_tokens is not None
+            and _tools
+            and "thinking" in chat_args
+            and self._tool_choice_forces_tool_use(chat_args.get("tool_choice"))
+        ):
+            # TODO_FUTURE: Revisit this later if Anthropic supports forced tool use with thinking.
+            chat_args["tool_choice"] = {"type": "auto"}
 
         return {"chat_args": chat_args}
 
