@@ -23,3 +23,5 @@ def test_dai_050_create_credentials_template(tmp_path):
     assert "Dhenara AI Provider Credentials" in text
     # At least one well-known provider section should exist
     assert "openai:" in text
+    assert "microsoft_openai:" in text
+    assert "microsoft_azure_ai:" not in text

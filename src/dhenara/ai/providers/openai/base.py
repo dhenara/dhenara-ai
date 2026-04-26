@@ -1,7 +1,7 @@
 import logging
 from typing import Any
 
-from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, OpenAI
+from openai import AsyncOpenAI, OpenAI
 
 from dhenara.ai.providers.base import AIModelProviderClientBase
 from dhenara.ai.types.genai.ai_model import AIModelAPIProviderEnum
@@ -9,6 +9,21 @@ from dhenara.ai.types.genai.ai_model import AIModelAPIProviderEnum
 from .formatter import OpenAIFormatter
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_microsoft_openai_base_url(endpoint: str) -> str:
+    normalized = endpoint.strip().rstrip("/")
+    if not normalized:
+        raise ValueError("Microsoft OpenAI endpoint must be a non-empty string")
+    if normalized.endswith("/models"):
+        normalized = normalized[: -len("/models")]
+    if "/openai/deployments/" in normalized:
+        raise ValueError(
+            "Microsoft OpenAI endpoint must be the resource root or v1 base URL, not a deployment-specific path."
+        )
+    if normalized.endswith("/openai/v1"):
+        return f"{normalized}/"
+    return f"{normalized}/openai/v1/"
 
 
 # -----------------------------------------------------------------------------
@@ -37,20 +52,16 @@ class OpenAIClientBase(AIModelProviderClientBase):
             client_params = api.get_provider_credentials()
             params = {
                 "api_key": client_params["api_key"],
-                "azure_endpoint": client_params["azure_endpoint"],
-                "api_version": client_params["api_version"],
+                "base_url": _normalize_microsoft_openai_base_url(client_params["base_url"]),
                 **http_params,
             }
-            return "azure_openai", params
+            return "openai", params
 
         elif api.provider == AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
-            client_params = api.get_provider_credentials()
-            params = {
-                "endpoint": client_params["azure_endpoint"],
-                "credential": client_params["api_key"],
-                **http_params,
-            }
-            return "azure_ai", params
+            raise ValueError(
+                "microsoft_azure_ai is not supported. "
+                "Use microsoft_openai with an Azure OpenAI or Microsoft Foundry OpenAI v1 endpoint instead."
+            )
 
         error_msg = f"Unsupported API provider {api.provider} for OpenAI functions"
         logger.error(error_msg)
@@ -63,22 +74,8 @@ class OpenAIClientBase(AIModelProviderClientBase):
 
         if client_type == "openai":
             return OpenAI(**params)
-        elif client_type == "azure_openai":
-            return AzureOpenAI(**params)
-        else:  # azure_ai
-            import importlib
 
-            try:
-                ai_inference = importlib.import_module("azure.ai.inference")
-                azure_core = importlib.import_module("azure.core.credentials")
-                return ai_inference.ChatCompletionsClient(
-                    endpoint=params["endpoint"],
-                    credential=azure_core.AzureKeyCredential(key=params["credential"]),
-                )
-            except Exception as e:
-                raise ImportError(
-                    "Azure AI Inference client not available. Install azure-ai-inference and azure-core."
-                ) from e
+        raise ValueError(f"Unsupported OpenAI client type: {client_type}")
 
     async def _setup_client_async(self):
         """Get the appropriate async OpenAI client"""
@@ -87,19 +84,5 @@ class OpenAIClientBase(AIModelProviderClientBase):
 
         if client_type == "openai":
             return AsyncOpenAI(**params)
-        elif client_type == "azure_openai":
-            return AsyncAzureOpenAI(**params)
-        else:  # azure_ai
-            import importlib
 
-            try:
-                ai_inference_aio = importlib.import_module("azure.ai.inference.aio")
-                azure_core = importlib.import_module("azure.core.credentials")
-                return ai_inference_aio.ChatCompletionsClient(
-                    endpoint=params["endpoint"],
-                    credential=azure_core.AzureKeyCredential(key=params["credential"]),
-                )
-            except Exception as e:
-                raise ImportError(
-                    "Azure AI Inference async client not available. Install azure-ai-inference and azure-core."
-                ) from e
+        raise ValueError(f"Unsupported OpenAI client type: {client_type}")

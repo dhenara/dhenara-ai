@@ -23,7 +23,7 @@ class GoogleAIClientBase(AIModelProviderClientBase):
         if model_location == "global":
             if configured_location.strip().lower() != "global":
                 logger.info(
-                    "Overriding Vertex location to global for model %s because the model contract marks it as global-only",
+                    "Overriding Vertex location to global for model %s as the model contract marks it as global-only",
                     self.model_name_in_api_calls,
                 )
             return "global"

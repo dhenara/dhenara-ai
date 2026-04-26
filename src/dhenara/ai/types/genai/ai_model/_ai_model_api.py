@@ -44,6 +44,12 @@ class AIModelAPI(BaseModel):
     @model_validator(mode="after")
     def validate_provider_requirements(self) -> "AIModelAPI":
         """Validate provider-specific requirements"""
+        if self.provider == AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
+            raise ValueError(
+                "microsoft_azure_ai is no longer supported. "
+                "Use microsoft_openai with an Azure OpenAI or Microsoft Foundry OpenAI v1 endpoint instead."
+            )
+
         provider_config = PROVIDER_CONFIGS.get(self.provider)
         if not provider_config:
             raise ValueError(f"Unsupported provider: {self.provider}")

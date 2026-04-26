@@ -33,9 +33,6 @@ dependencies = [
     "openai>=2.32.0",
     "google-genai>=1.73.1",
     "anthropic>=0.97.0",
-    "azure-ai-inference>=1.0.0b9",
-    "boto3>=1.42.30",
-    "botocore>=1.42.30",
 ]
 
 [project.optional-dependencies]

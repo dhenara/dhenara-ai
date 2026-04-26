@@ -186,40 +186,6 @@ PROVIDER_CONFIGS: dict[AIModelAPIProviderEnum, ProviderCredentialsConfig] = {
                 error_msg="endpoint must be a non-empty string",
             ),
         ],
-        config_optional_fields=[
-            CredentialFieldConfig(
-                field_name="api_version",
-                error_msg="api_version must be a non-empty string",
-            ),
-        ],
-        output_mappings=[
-            CredentialOutputMapping(
-                source="api_key",
-                output_key="api_key",
-            ),
-            CredentialOutputMapping(
-                source="config",
-                source_key="endpoint",
-                output_key="azure_endpoint",
-            ),
-            CredentialOutputMapping(
-                source="config",
-                source_key="api_version",
-                output_key="api_version",
-                default_value="2024-10-21",
-            ),
-        ],
-    ),
-    AIModelAPIProviderEnum.MICROSOFT_AZURE_AI: ProviderCredentialsConfig(
-        api_key_required=True,
-        credentials_required_fields=[],
-        credentials_optional_fields=[],
-        config_required_fields=[
-            CredentialFieldConfig(
-                field_name="endpoint",
-                error_msg="endpoint must be a non-empty string",
-            ),
-        ],
         config_optional_fields=[],
         output_mappings=[
             CredentialOutputMapping(
@@ -229,7 +195,7 @@ PROVIDER_CONFIGS: dict[AIModelAPIProviderEnum, ProviderCredentialsConfig] = {
             CredentialOutputMapping(
                 source="config",
                 source_key="endpoint",
-                output_key="azure_endpoint",
+                output_key="base_url",
             ),
         ],
     ),

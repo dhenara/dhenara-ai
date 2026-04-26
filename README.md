@@ -83,3 +83,12 @@ elif response.stream_generator:
 ## Documentation
 
 For full documentation, visit [docs.dhenara.com](https://docs.dhenara.com/).
+
+## Provider SDK Surfaces
+
+- OpenAI and Azure OpenAI / Microsoft Foundry OpenAI v1 use the `openai` SDK.
+- Google Gemini Developer API and Gemini on Vertex AI use the `google-genai` SDK.
+- Anthropic direct, Amazon Bedrock, and Vertex AI use the `anthropic` SDK.
+- `microsoft_azure_ai` is not a supported text-generation surface in `dhenara-ai`; use `microsoft_openai` with an Azure OpenAI or Microsoft Foundry OpenAI v1 endpoint instead.
+- If you are migrating an older Foundry inference URL that ends in `/models`, drop that suffix or let the runtime normalize it to `/openai/v1/`.
+- For Microsoft-hosted OpenAI-compatible deployments such as DeepSeek, configure the deployment under `microsoft_openai` and use the deployment name as the model name.

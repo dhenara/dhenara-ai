@@ -62,6 +62,26 @@ def google_endpoints(rc):
     ]
 
 
+def microsoft_openai_endpoints(rc):
+    from dhenara.ai.types import AIModelAPIProviderEnum, AIModelEndpoint
+    from dhenara.ai.types.genai.foundation_models.openai.chat import GPT54Mini
+
+    microsoft_openai_api = rc.get_api(AIModelAPIProviderEnum.MICROSOFT_OPENAI)
+    return [
+        AIModelEndpoint(api=microsoft_openai_api, ai_model=GPT54Mini),
+    ]
+
+
+def anthropic_vertextai_endpoints(rc):
+    from dhenara.ai.types import AIModelAPIProviderEnum, AIModelEndpoint
+    from dhenara.ai.types.genai.foundation_models.anthropic.chat import ClaudeSonnet46
+
+    google_vertextai_api = rc.get_api(AIModelAPIProviderEnum.GOOGLE_VERTEX_AI)
+    return [
+        AIModelEndpoint(api=google_vertextai_api, ai_model=ClaudeSonnet46),
+    ]
+
+
 def all_endpoints(rc):
     # Enable all providers by default; uncomment a single line below to focus one provider while debugging
     # return openai_endpoints(rc)

@@ -7,8 +7,8 @@ from dhenara.ai.providers.shared.shared import APIProviderSharedFns
 from dhenara.ai.types.genai import AIModelAPI, AIModelCallConfig, AIModelEndpoint
 from dhenara.ai.types.genai.ai_model import AIModelAPIProviderEnum
 from dhenara.ai.types.genai.foundation_models.google.chat import (
-    Gemini25Pro,
     Gemini3FlashPreview,
+    Gemini25Pro,
     Gemini31FlashLitePreview,
     Gemini31ProPreview,
 )

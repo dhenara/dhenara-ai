@@ -94,6 +94,6 @@ MODEL_TO_API_MAPPING = {
         AIModelAPIProviderEnum.GOOGLE_AI,
     ],
     AIModelProviderEnum.DEEPSEEK: [
-        AIModelAPIProviderEnum.MICROSOFT_AZURE_AI,
+        AIModelAPIProviderEnum.MICROSOFT_OPENAI,
     ],
 }

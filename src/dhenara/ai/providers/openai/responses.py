@@ -31,7 +31,7 @@ class OpenAIResponses(OpenAIClientBase):
     """OpenAI Responses API client (text + tools + structured output).
 
     Phase 1 scope:
-    - OpenAI provider only (not Azure variants)
+    - OpenAI-compatible Responses providers: OpenAI and Microsoft OpenAI v1
     - Text and tools, structured output, reasoning, streaming events (text deltas)
     - Vision inputs supported via input_image (data URL) when files are provided
     - Image generation remains in image.py (legacy endpoint)
@@ -85,8 +85,8 @@ class OpenAIResponses(OpenAIClientBase):
             raise ValueError("inputs must be validated with `self.validate_inputs()` before api calls")
 
         api = self.model_endpoint.api
-        if api.provider != AIModelAPIProviderEnum.OPEN_AI:
-            raise ValueError("OpenAIResponses only supports AIModelAPIProviderEnum.OPEN_AI in Phase 1")
+        if api.provider not in {AIModelAPIProviderEnum.OPEN_AI, AIModelAPIProviderEnum.MICROSOFT_OPENAI}:
+            raise ValueError("OpenAIResponses only supports AIModelAPIProviderEnum.OPEN_AI and MICROSOFT_OPENAI")
 
         context_list: list[dict[str, Any]] = []
         if context:
@@ -251,10 +251,9 @@ class OpenAIResponses(OpenAIClientBase):
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
         if self.model_endpoint.api.provider == AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
             raise ValueError("OpenAIResponses doens't supports AIModelAPIProviderEnum.MICROSOFT_AZURE_AI in Phase 1")
-        else:
-            # Use create() for both streaming and non-streaming.
-            # We always pass text.format when structured output is requested.
-            response = client.responses.create(**args)
+        # Use create() for both streaming and non-streaming.
+        # We always pass text.format when structured output is requested.
+        response = client.responses.create(**args)
         return response
 
     async def do_api_call_async(
@@ -267,10 +266,9 @@ class OpenAIResponses(OpenAIClientBase):
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
         if self.model_endpoint.api.provider == AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
             raise ValueError("OpenAIResponses doens't supports AIModelAPIProviderEnum.MICROSOFT_AZURE_AI in Phase 1")
-        else:
-            # Use create() for both streaming and non-streaming.
-            # We always pass text.format when structured output is requested.
-            response = await client.responses.create(**args)
+        # Use create() for both streaming and non-streaming.
+        # We always pass text.format when structured output is requested.
+        response = await client.responses.create(**args)
         return response
 
     def do_streaming_api_call_sync(
@@ -283,9 +281,8 @@ class OpenAIResponses(OpenAIClientBase):
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
         if self.model_endpoint.api.provider == AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
             raise ValueError("OpenAIResponses doens't supports AIModelAPIProviderEnum.MICROSOFT_AZURE_AI in Phase 1")
-        else:
-            # Never use parse() for streaming calls; rely on text-based fallback
-            stream = client.responses.create(**args)
+        # Never use parse() for streaming calls; rely on text-based fallback
+        stream = client.responses.create(**args)
 
         return stream
 
@@ -299,9 +296,8 @@ class OpenAIResponses(OpenAIClientBase):
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
         if self.model_endpoint.api.provider == AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
             raise ValueError("OpenAIResponses doens't supports AIModelAPIProviderEnum.MICROSOFT_AZURE_AI in Phase 1")
-        else:
-            # Never use parse() for streaming calls; rely on text-based fallback
-            stream = await client.responses.create(**args)
+        # Never use parse() for streaming calls; rely on text-based fallback
+        stream = await client.responses.create(**args)
 
         return stream
 
