@@ -70,6 +70,25 @@ def test_dai_112_anthropic_native_structured_output_uses_output_config_for_45_mo
     assert "tools" not in chat_args or chat_args["tools"] in (None, [])
 
 
+@pytest.mark.case_id("DAI-304")
+def test_dai_304_anthropic_formatter_preserves_boolean_type_and_date_format_for_tools():
+    params = FunctionParameters(
+        properties={
+            "has_attachment": FunctionParameter(type="boolean", description="Attachment filter"),
+            "after_date": FunctionParameter(type="string", format="date", description="Lower date bound"),
+        }
+    )
+
+    converted = AnthropicChat.formatter.convert_function_definition(
+        FunctionDefinition(name="gmail_workspace_search", description="Search Gmail", parameters=params)
+    )
+    properties = converted["input_schema"]["properties"]
+
+    assert properties["has_attachment"]["type"] == "boolean"
+    assert properties["after_date"]["type"] == "string"
+    assert properties["after_date"]["format"] == "date"
+
+
 @pytest.mark.case_id("DAI-114")
 def test_dai_114_anthropic_opus46_uses_adaptive_thinking_and_output_config_effort():
     ep = _mk_ep(ClaudeOpus46)

@@ -74,3 +74,28 @@ def test_dai_300_google_formatter_rewrites_oneof_array_items_for_tools():
     dumped_items = dumped["functionDeclarations"][0]["parameters"]["properties"]["ranges"]["items"]["anyOf"]
     assert dumped_items[0]["type"] == "OBJECT"
     assert dumped_items[1]["type"] == "OBJECT"
+
+
+@pytest.mark.case_id("DAI-303")
+def test_dai_303_google_formatter_preserves_boolean_type_and_ignores_date_format_metadata():
+    """GIVEN canonical tool parameters with boolean and date-format metadata
+    WHEN GoogleFormatter converts them
+    THEN scalar types stay correct and unsupported date-format metadata is omitted.
+    """
+
+    params = FunctionParameters(
+        type="object",
+        properties={
+            "has_attachment": FunctionParameter(type="boolean", description="Attachment filter"),
+            "after_date": FunctionParameter(type="string", format="date", description="Lower date bound"),
+        },
+    )
+
+    converted = GoogleFormatter.convert_function_definition(
+        FunctionDefinition(name="gmail_workspace_search", description="Search Gmail", parameters=params)
+    )
+    properties = converted["parameters"]["properties"]
+
+    assert properties["has_attachment"]["type"] == "boolean"
+    assert properties["after_date"]["type"] == "string"
+    assert "format" not in properties["after_date"]

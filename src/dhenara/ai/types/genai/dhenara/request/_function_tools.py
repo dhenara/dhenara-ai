@@ -9,6 +9,7 @@ class FunctionParameter(BaseModel):
     """Parameter definition for function/tool parameters"""
 
     type: str = Field(..., description="Type of the parameter (string, number, boolean, etc.)")
+    format: str | None = Field(default=None, description="Optional JSON schema format such as date or date-time")
     description: str | None = Field(default=None, description="Description of the parameter")
     required: bool = Field(default=False, description="Whether the parameter is required")
     allowed_values: list[Any] | None = Field(default=None, description="Allowed values")
@@ -16,6 +17,42 @@ class FunctionParameter(BaseModel):
     items: dict | None = Field(
         default=None,
         description="JSON schema for array items when type == 'array' (e.g., {'type':'string'})",
+    )
+
+
+def _collapse_optional_union_schema(prop_schema: dict[str, Any]) -> dict[str, Any]:
+    for union_key in ("anyOf", "oneOf"):
+        raw_variants = prop_schema.get(union_key)
+        if not isinstance(raw_variants, list):
+            continue
+        variants = [variant for variant in raw_variants if isinstance(variant, dict)]
+        non_null_variants = [variant for variant in variants if variant.get("type") != "null"]
+        if len(non_null_variants) != 1:
+            continue
+        merged = dict(non_null_variants[0])
+        for key in ("description", "default", "title", "examples"):
+            if key in prop_schema and key not in merged:
+                merged[key] = prop_schema[key]
+        return merged
+    return prop_schema
+
+
+def function_parameter_from_json_schema(
+    prop_schema: dict[str, Any],
+    *,
+    required: bool,
+    default: Any | None,
+    description: str | None = None,
+) -> FunctionParameter:
+    normalized_schema = _collapse_optional_union_schema(prop_schema)
+    return FunctionParameter(
+        type=str(normalized_schema.get("type") or prop_schema.get("type") or "string"),
+        format=normalized_schema.get("format") or prop_schema.get("format"),
+        description=description if description is not None else normalized_schema.get("description"),
+        required=required,
+        default=default,
+        allowed_values=normalized_schema.get("enum") or prop_schema.get("enum"),
+        items=normalized_schema.get("items") or prop_schema.get("items"),
     )
 
 
@@ -97,16 +134,11 @@ class ToolDefinition(BaseModel):
         # Convert to FunctionParameters
         properties = {}
         for prop_name, prop_schema in schema.get("properties", {}).items():
-            json_type = prop_schema.get("type", "string")
-            description = prop_schema.get("description")
-
-            properties[prop_name] = FunctionParameter(
-                type=json_type,
-                description=description,
+            properties[prop_name] = function_parameter_from_json_schema(
+                prop_schema,
                 required=prop_name in required_params,
                 default=None if prop_name in required_params else signature.parameters[prop_name].default,
-                allowed_values=prop_schema.get("enum"),
-                items=prop_schema.get("items"),
+                description=prop_schema.get("description"),
             )
 
         # Create function definition

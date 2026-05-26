@@ -12,6 +12,7 @@ from dhenara.ai.providers.openai.formatter import OpenAIFormatter
 from dhenara.ai.providers.openai.message_converter import OpenAIMessageConverter
 from dhenara.ai.types.genai.ai_model import AIModelProviderEnum
 from dhenara.ai.types.genai.dhenara.request import (
+    FunctionDefinition,
     FunctionParameter,
     FunctionParameters,
     StructuredOutputConfig,
@@ -89,6 +90,31 @@ def test_dai_057_openai_formatter_function_parameters_build_required_and_drop_no
     assert converted["additionalProperties"] is False
     assert converted["required"] == ["path"]
     assert "description" not in converted["properties"]["path"]
+
+
+@pytest.mark.case_id("DAI-302")
+def test_dai_302_openai_formatter_preserves_boolean_and_date_tool_contract_fields():
+    """GIVEN canonical tool parameters with boolean and date metadata
+    WHEN OpenAIFormatter converts them for tool use
+    THEN the provider schema preserves those field types instead of degrading them to strings.
+    """
+
+    params = FunctionParameters(
+        type="object",
+        properties={
+            "has_attachment": FunctionParameter(type="boolean", description="Optional attachment filter"),
+            "after_date": FunctionParameter(type="string", format="date", description="Lower date bound"),
+        },
+        required=None,
+    )
+
+    converted = OpenAIFormatter.convert_function_definition(
+        FunctionDefinition(name="gmail_workspace_search", description="Search Gmail", parameters=params)
+    )
+
+    assert converted["parameters"]["properties"]["has_attachment"]["type"] == "boolean"
+    assert converted["parameters"]["properties"]["after_date"]["type"] == "string"
+    assert converted["parameters"]["properties"]["after_date"]["format"] == "date"
 
 
 @pytest.mark.case_id("DAI-058")
