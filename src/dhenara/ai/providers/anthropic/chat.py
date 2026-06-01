@@ -220,12 +220,15 @@ class AnthropicChat(AnthropicClientBase):
         )
         if function_tools:
             tools_formatted.extend(function_tools)
-        hosted_tools = formatter.format_hosted_tools(
-            tools=self.config.hosted_tools,
-            model_endpoint=self.model_endpoint,
-        )
-        if hosted_tools:
-            tools_formatted.extend(hosted_tools)
+        try:
+            hosted_tools = formatter.format_hosted_tools(
+                tools=self.config.hosted_tools,
+                model_endpoint=self.model_endpoint,
+            )
+            if hosted_tools:
+                tools_formatted.extend(hosted_tools)
+        except Exception:
+            logger.exception("Error formatting Anthropic hosted tools; continuing without them")
         if tools_formatted:
             chat_args["tools"] = tools_formatted
 
@@ -689,30 +692,36 @@ class AnthropicChat(AnthropicClientBase):
         response: Message,
     ) -> ChatResponseUsage:
         hosted_tool_usage = None
-        server_tool_use = getattr(response.usage, "server_tool_use", None)
-        if server_tool_use is not None:
-            server_tool_use_payload = None
-            if hasattr(server_tool_use, "model_dump"):
-                server_tool_use_payload = server_tool_use.model_dump()
-            elif isinstance(server_tool_use, dict):
-                server_tool_use_payload = server_tool_use
+        usage = getattr(response, "usage", None)
+        prompt_tokens = int(getattr(usage, "input_tokens", 0) or 0)
+        completion_tokens = int(getattr(usage, "output_tokens", 0) or 0)
+        try:
+            server_tool_use = getattr(usage, "server_tool_use", None)
+            if server_tool_use is not None:
+                server_tool_use_payload = None
+                if hasattr(server_tool_use, "model_dump"):
+                    server_tool_use_payload = server_tool_use.model_dump()
+                elif isinstance(server_tool_use, dict):
+                    server_tool_use_payload = server_tool_use
 
-            if server_tool_use_payload is not None:
-                request_counts: dict[str, int] = {}
-                billing_counts: dict[str, int] = {}
-                web_search_requests = server_tool_use_payload.get("web_search_requests")
-                if isinstance(web_search_requests, int) and web_search_requests > 0:
-                    request_counts = {"web_search": web_search_requests, "total": web_search_requests}
-                    billing_counts = {"web_search": web_search_requests}
-                hosted_tool_usage = HostedToolUsage(
-                    request_counts=request_counts,
-                    billing_counts=billing_counts,
-                    details={"provider_usage": {"server_tool_use": server_tool_use_payload}},
-                )
+                if server_tool_use_payload is not None:
+                    request_counts: dict[str, int] = {}
+                    billing_counts: dict[str, int] = {}
+                    web_search_requests = server_tool_use_payload.get("web_search_requests")
+                    if isinstance(web_search_requests, int) and web_search_requests > 0:
+                        request_counts = {"web_search": web_search_requests, "total": web_search_requests}
+                        billing_counts = {"web_search": web_search_requests}
+                    hosted_tool_usage = HostedToolUsage(
+                        request_counts=request_counts,
+                        billing_counts=billing_counts,
+                        details={"provider_usage": {"server_tool_use": server_tool_use_payload}},
+                    )
+        except Exception:
+            logger.exception("Failed to derive Anthropic hosted-tool usage; continuing without it")
         return ChatResponseUsage(
-            total_tokens=response.usage.input_tokens + response.usage.output_tokens,
-            prompt_tokens=response.usage.input_tokens,
-            completion_tokens=response.usage.output_tokens,
+            total_tokens=prompt_tokens + completion_tokens,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
             hosted_tool_usage=hosted_tool_usage,
         )
 

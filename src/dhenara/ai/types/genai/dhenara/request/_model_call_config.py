@@ -1,4 +1,3 @@
-import logging
 from typing import Literal
 
 from pydantic import BaseModel as PydanticBaseModel
@@ -13,8 +12,6 @@ from dhenara.ai.types.genai.dhenara.request import (
     ToolDefinition,
 )
 from dhenara.ai.types.shared.base import BaseModel
-
-logger = logging.getLogger(__name__)
 
 
 # TODO_FUTURE:
@@ -61,16 +58,6 @@ class AIModelCallConfig(BaseModel):
 
     artifact_config: ArtifactConfig | None = None
 
-    @model_validator(mode="before")
-    @classmethod
-    def _normalize_legacy_hosted_tools(cls, data):
-        if isinstance(data, dict):
-            normalized = dict(data)
-            if "hosted_tools" not in normalized and "provider_side_execution_tools" in normalized:
-                normalized["hosted_tools"] = normalized["provider_side_execution_tools"]
-            return normalized
-        return data
-
     @model_validator(mode="after")
     def validate_structured_output(self) -> "AIModelCallConfig":
         if isinstance(self.structured_output, type):
@@ -82,14 +69,6 @@ class AIModelCallConfig(BaseModel):
                 # If PydanticBaseModel isn't a proper class in this environment, skip conversion
                 pass
         return self
-
-    @property
-    def provider_side_execution_tools(self) -> list[HostedToolDefinition] | None:
-        return self.hosted_tools
-
-    @provider_side_execution_tools.setter
-    def provider_side_execution_tools(self, value: list[HostedToolDefinition] | None) -> None:
-        self.hosted_tools = value
 
     def get_user(self):
         user = self.metadata.get("user", None)

@@ -111,7 +111,7 @@ def test_calculate_usage_charge_from_cost_data():
     charge_zero = endpoint.calculate_usage_charge(usage_zero)
     assert charge_zero.cost == 0.0
 
-    # Test 5: Hosted/provider-side tool costs are additive to token pricing
+    # Test 5: Hosted-tool costs are additive to token pricing
     endpoint_with_hosted_tool_costs = AIModelEndpoint(
         api=api,
         ai_model=model,

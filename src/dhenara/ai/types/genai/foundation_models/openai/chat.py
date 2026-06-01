@@ -7,6 +7,19 @@ from dhenara.ai.types.genai.ai_model import (
     HostedToolCostRule,
 )
 
+
+def _openai_web_search_cost_rules() -> list[HostedToolCostRule]:
+    return [
+        HostedToolCostRule(
+            key="hosted_tool:web_search",
+            usage_bucket="billing_counts",
+            usage_key="web_search",
+            flat_cost_per_unit=0.01,
+            unit="call",
+            description="OpenAI web-search list price per call.",
+        )
+    ]
+
 GPT55 = FoundationModel(
     model_name="gpt-5.5",
     display_name="GPT-5.5",
@@ -25,16 +38,7 @@ GPT55 = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=5.0,
         output_token_cost_per_million=30.0,
-        hosted_tool_cost_rules=[
-            HostedToolCostRule(
-                key="hosted_tool:web_search",
-                usage_bucket="billing_counts",
-                usage_key="web_search",
-                flat_cost_per_unit=0.01,
-                unit="call",
-                description="OpenAI web-search list price per call.",
-            )
-        ],
+        hosted_tool_cost_rules=_openai_web_search_cost_rules(),
     ),
 )
 
@@ -56,16 +60,7 @@ GPT54 = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=2.5,
         output_token_cost_per_million=15.0,
-        hosted_tool_cost_rules=[
-            HostedToolCostRule(
-                key="hosted_tool:web_search",
-                usage_bucket="billing_counts",
-                usage_key="web_search",
-                flat_cost_per_unit=0.01,
-                unit="call",
-                description="OpenAI web-search list price per call.",
-            )
-        ],
+        hosted_tool_cost_rules=_openai_web_search_cost_rules(),
     ),
 )
 
@@ -87,6 +82,7 @@ GPT54Pro = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=30.0,
         output_token_cost_per_million=180.0,
+        hosted_tool_cost_rules=_openai_web_search_cost_rules(),
     ),
 )
 
@@ -108,16 +104,7 @@ GPT54Mini = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=0.75,
         output_token_cost_per_million=4.5,
-        hosted_tool_cost_rules=[
-            HostedToolCostRule(
-                key="hosted_tool:web_search",
-                usage_bucket="billing_counts",
-                usage_key="web_search",
-                flat_cost_per_unit=0.01,
-                unit="call",
-                description="OpenAI web-search list price per call.",
-            )
-        ],
+        hosted_tool_cost_rules=_openai_web_search_cost_rules(),
     ),
 )
 
@@ -139,16 +126,7 @@ GPT54Nano = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=0.2,
         output_token_cost_per_million=1.25,
-        hosted_tool_cost_rules=[
-            HostedToolCostRule(
-                key="hosted_tool:web_search",
-                usage_bucket="billing_counts",
-                usage_key="web_search",
-                flat_cost_per_unit=0.01,
-                unit="call",
-                description="OpenAI web-search list price per call.",
-            )
-        ],
+        hosted_tool_cost_rules=_openai_web_search_cost_rules(),
     ),
 )
 
@@ -168,6 +146,7 @@ GPT52 = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=1.75,
         output_token_cost_per_million=14.0,
+        hosted_tool_cost_rules=_openai_web_search_cost_rules(),
     ),
 )
 
@@ -187,6 +166,7 @@ GPT52Pro = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=21,
         output_token_cost_per_million=168.0,
+        hosted_tool_cost_rules=_openai_web_search_cost_rules(),
     ),
 )
 
@@ -208,6 +188,7 @@ GPT51 = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=1.25,
         output_token_cost_per_million=10.0,
+        hosted_tool_cost_rules=_openai_web_search_cost_rules(),
     ),
 )
 
@@ -229,6 +210,7 @@ GPT51Codex = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=1.25,
         output_token_cost_per_million=10.0,
+        hosted_tool_cost_rules=_openai_web_search_cost_rules(),
     ),
 )
 
@@ -251,6 +233,7 @@ GPT51CodexMini = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=0.25,
         output_token_cost_per_million=2.0,
+        hosted_tool_cost_rules=_openai_web_search_cost_rules(),
     ),
 )
 
@@ -272,6 +255,7 @@ GPT5 = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=1.25,
         output_token_cost_per_million=10.0,
+        hosted_tool_cost_rules=_openai_web_search_cost_rules(),
     ),
 )
 
@@ -294,6 +278,7 @@ GPT5Mini = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=0.25,
         output_token_cost_per_million=2.0,
+        hosted_tool_cost_rules=_openai_web_search_cost_rules(),
     ),
 )
 
@@ -316,6 +301,7 @@ GPT5Nano = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=0.05,
         output_token_cost_per_million=0.40,
+        hosted_tool_cost_rules=_openai_web_search_cost_rules(),
     ),
 )
 

@@ -97,40 +97,6 @@ class ChatResponseUsage(BaseModel):
         description="Standardized hosted-tool usage and billing data for cross-provider accounting.",
     )
 
-    @model_validator(mode="before")
-    @classmethod
-    def _normalize_legacy_fields(cls, data):
-        if not isinstance(data, dict):
-            return data
-
-        normalized = dict(data)
-        legacy_provider_usage = normalized.pop("provider_tool_usage", None)
-        hosted_tool_usage = normalized.get("hosted_tool_usage")
-        if legacy_provider_usage is not None:
-            hosted_usage_data: dict[str, Any]
-            if isinstance(hosted_tool_usage, HostedToolUsage):
-                hosted_usage_data = hosted_tool_usage.model_dump()
-            elif isinstance(hosted_tool_usage, dict):
-                hosted_usage_data = dict(hosted_tool_usage)
-            else:
-                hosted_usage_data = {}
-
-            details_raw = hosted_usage_data.get("details")
-            details = dict(details_raw) if isinstance(details_raw, dict) else {}
-            details.setdefault("provider_usage", legacy_provider_usage)
-            hosted_usage_data["details"] = details
-            normalized["hosted_tool_usage"] = hosted_usage_data
-
-        return normalized
-
-    @property
-    def provider_tool_usage(self) -> dict[str, Any] | None:
-        hosted_tool_usage = self.hosted_tool_usage
-        if hosted_tool_usage is None or not isinstance(hosted_tool_usage.details, dict):
-            return None
-        provider_usage = hosted_tool_usage.details.get("provider_usage")
-        return provider_usage if isinstance(provider_usage, dict) else None
-
     model_config = ConfigDict(
         json_schema_extra={
             "example": {

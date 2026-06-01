@@ -132,10 +132,14 @@ class GoogleAIChat(GoogleAIClientBase):
                 messages_list.append(prompt)
 
         # ---  Tools ---
-        hosted_tools_payload = formatter.format_hosted_tools(
-            tools=self.config.hosted_tools,
-            model_endpoint=self.model_endpoint,
-        )
+        hosted_tools_payload = None
+        try:
+            hosted_tools_payload = formatter.format_hosted_tools(
+                tools=self.config.hosted_tools,
+                model_endpoint=self.model_endpoint,
+            )
+        except Exception:
+            logger.exception("Error formatting Google hosted tools; continuing without them")
 
         google_tools: list[Tool] = []
         if self.config.tools:
@@ -152,10 +156,13 @@ class GoogleAIChat(GoogleAIClientBase):
                 )
             )
         for hosted_tool in hosted_tools_payload or []:
-            if "google_search" in hosted_tool:
-                google_tools.append(Tool(google_search=GoogleSearch()))
-                continue
-            raise ValueError(f"Unsupported Google hosted-tool payload: {hosted_tool}")
+            try:
+                if "google_search" in hosted_tool:
+                    google_tools.append(Tool(google_search=GoogleSearch()))
+                    continue
+                raise ValueError(f"Unsupported Google hosted-tool payload: {hosted_tool}")
+            except Exception:
+                logger.exception("Failed to add Google hosted-tool payload; continuing without it")
         if google_tools:
             generate_config.tools = cast(Any, google_tools)
 
@@ -380,45 +387,48 @@ class GoogleAIChat(GoogleAIClientBase):
 
         completion_tokens = candidates_tokens + thoughts_tokens + tool_use_tokens
 
-        web_search_queries_count = 0
-        for candidate in getattr(response, "candidates", None) or []:
-            grounding_metadata = getattr(candidate, "grounding_metadata", None)
-            if grounding_metadata is None:
-                grounding_metadata = getattr(candidate, "groundingMetadata", None)
-            queries = getattr(grounding_metadata, "web_search_queries", None)
-            if queries is None:
-                queries = getattr(grounding_metadata, "webSearchQueries", None)
-            if isinstance(queries, list):
-                web_search_queries_count += len([query for query in queries if query])
-
         hosted_tool_usage = None
-        if web_search_queries_count > 0 or tool_use_tokens > 0:
-            provider_usage: dict[str, Any] = {"web_search_queries": web_search_queries_count}
-            if tool_use_tokens > 0:
-                provider_usage["tool_use_prompt_tokens"] = tool_use_tokens
+        try:
+            web_search_queries_count = 0
+            for candidate in getattr(response, "candidates", None) or []:
+                grounding_metadata = getattr(candidate, "grounding_metadata", None)
+                if grounding_metadata is None:
+                    grounding_metadata = getattr(candidate, "groundingMetadata", None)
+                queries = getattr(grounding_metadata, "web_search_queries", None)
+                if queries is None:
+                    queries = getattr(grounding_metadata, "webSearchQueries", None)
+                if isinstance(queries, list):
+                    web_search_queries_count += len([query for query in queries if query])
 
-            request_counts: dict[str, int] = {}
-            billing_counts: dict[str, int] = {}
-            model_name = str(getattr(self.model_endpoint.ai_model, "model_name", "") or "")
-            if web_search_queries_count > 0:
-                if model_name.startswith("gemini-2.5"):
-                    request_counts = {
-                        "web_search": 1,
-                        "total": 1,
-                    }
-                    billing_counts = {"grounded_prompt": 1}
-                else:
-                    request_counts = {
-                        "web_search": web_search_queries_count,
-                        "total": web_search_queries_count,
-                    }
-                    billing_counts = {"web_search_queries": web_search_queries_count}
-            hosted_tool_usage = HostedToolUsage(
-                request_counts=request_counts,
-                token_counts={"prompt": tool_use_tokens} if tool_use_tokens > 0 else {},
-                billing_counts=billing_counts,
-                details={"provider_usage": provider_usage},
-            )
+            if web_search_queries_count > 0 or tool_use_tokens > 0:
+                provider_usage: dict[str, Any] = {"web_search_queries": web_search_queries_count}
+                if tool_use_tokens > 0:
+                    provider_usage["tool_use_prompt_tokens"] = tool_use_tokens
+
+                request_counts: dict[str, int] = {}
+                billing_counts: dict[str, int] = {}
+                model_name = str(getattr(self.model_endpoint.ai_model, "model_name", "") or "")
+                if web_search_queries_count > 0:
+                    if model_name.startswith("gemini-2.5"):
+                        request_counts = {
+                            "web_search": 1,
+                            "total": 1,
+                        }
+                        billing_counts = {"grounded_prompt": 1}
+                    else:
+                        request_counts = {
+                            "web_search": web_search_queries_count,
+                            "total": web_search_queries_count,
+                        }
+                        billing_counts = {"web_search_queries": web_search_queries_count}
+                hosted_tool_usage = HostedToolUsage(
+                    request_counts=request_counts,
+                    token_counts={"prompt": tool_use_tokens} if tool_use_tokens > 0 else {},
+                    billing_counts=billing_counts,
+                    details={"provider_usage": provider_usage},
+                )
+        except Exception:
+            logger.exception("Failed to derive Google hosted-tool usage; continuing without it")
 
         return ChatResponseUsage(
             total_tokens=getattr(usage_md, "total_token_count", 0) or 0,

@@ -7,6 +7,32 @@ from dhenara.ai.types.genai.ai_model import (
     HostedToolCostRule,
 )
 
+
+def _gemini3_web_search_cost_rules() -> list[HostedToolCostRule]:
+    return [
+        HostedToolCostRule(
+            key="hosted_tool:web_search_queries",
+            usage_bucket="billing_counts",
+            usage_key="web_search_queries",
+            flat_cost_per_unit=0.014,
+            unit="query",
+            description="Gemini 3 web-search grounding list price per search query.",
+        )
+    ]
+
+
+def _gemini25_grounded_prompt_cost_rules() -> list[HostedToolCostRule]:
+    return [
+        HostedToolCostRule(
+            key="hosted_tool:grounded_prompt",
+            usage_bucket="billing_counts",
+            usage_key="grounded_prompt",
+            flat_cost_per_unit=0.035,
+            unit="prompt",
+            description="Gemini 2.5 grounding list price per grounded prompt.",
+        )
+    ]
+
 Gemini3Pro = FoundationModel(
     model_name="gemini-3-pro-preview",
     display_name="Gemini 3 Pro Preview",
@@ -30,6 +56,7 @@ Gemini3Pro = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=2,
         output_token_cost_per_million=12.0,
+        hosted_tool_cost_rules=_gemini3_web_search_cost_rules(),
     ),
 )
 
@@ -56,16 +83,7 @@ Gemini31ProPreview = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=2.0,
         output_token_cost_per_million=12.0,
-        hosted_tool_cost_rules=[
-            HostedToolCostRule(
-                key="hosted_tool:web_search_queries",
-                usage_bucket="billing_counts",
-                usage_key="web_search_queries",
-                flat_cost_per_unit=0.014,
-                unit="query",
-                description="Gemini 3 web-search grounding list price per search query.",
-            )
-        ],
+        hosted_tool_cost_rules=_gemini3_web_search_cost_rules(),
     ),
 )
 
@@ -92,6 +110,7 @@ Gemini3FlashPreview = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=0.5,
         output_token_cost_per_million=3.0,
+        hosted_tool_cost_rules=_gemini3_web_search_cost_rules(),
     ),
 )
 
@@ -118,6 +137,7 @@ Gemini31FlashLitePreview = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=0.25,
         output_token_cost_per_million=1.5,
+        hosted_tool_cost_rules=_gemini3_web_search_cost_rules(),
     ),
 )
 
@@ -143,6 +163,7 @@ Gemini25Pro = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=1.25,
         output_token_cost_per_million=10.0,
+        hosted_tool_cost_rules=_gemini25_grounded_prompt_cost_rules(),
     ),
 )
 
@@ -167,16 +188,7 @@ Gemini25Flash = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=0.30,
         output_token_cost_per_million=2.50,
-        hosted_tool_cost_rules=[
-            HostedToolCostRule(
-                key="hosted_tool:grounded_prompt",
-                usage_bucket="billing_counts",
-                usage_key="grounded_prompt",
-                flat_cost_per_unit=0.035,
-                unit="prompt",
-                description="Gemini 2.5 grounding list price per grounded prompt.",
-            )
-        ],
+        hosted_tool_cost_rules=_gemini25_grounded_prompt_cost_rules(),
     ),
 )
 
@@ -202,6 +214,7 @@ Gemini25FlashLite = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=0.1,
         output_token_cost_per_million=0.4,
+        hosted_tool_cost_rules=_gemini25_grounded_prompt_cost_rules(),
     ),
 )
 

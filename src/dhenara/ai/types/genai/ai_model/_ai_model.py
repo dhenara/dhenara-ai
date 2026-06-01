@@ -143,7 +143,7 @@ class ChatModelCostData(BaseCostData):
     )
     hosted_tool_cost_rules: list[HostedToolCostRule] | None = Field(
         default=None,
-        description="Optional additive pricing rules for hosted/provider-side tool usage.",
+        description="Optional additive pricing rules for hosted-tool usage.",
     )
 
     def calculate_usage_charge(
@@ -175,30 +175,36 @@ class ChatModelCostData(BaseCostData):
             hosted_tool_usage = usage.hosted_tool_usage if isinstance(usage.hosted_tool_usage, HostedToolUsage) else None
             if hosted_tool_usage:
                 for rule in self.hosted_tool_cost_rules or []:
-                    if rule.usage_bucket == "request_counts":
-                        usage_bucket = hosted_tool_usage.request_counts
-                    elif rule.usage_bucket == "token_counts":
-                        usage_bucket = hosted_tool_usage.token_counts
-                    else:
-                        usage_bucket = hosted_tool_usage.billing_counts
-                    quantity = usage_bucket.get(rule.usage_key)
-                    if quantity is None or quantity <= 0:
-                        continue
-                    component_cost = rule.calculate_cost(quantity)
-                    hosted_tool_cost += component_cost
-                    components.append(
-                        UsageChargeComponent(
-                            key=rule.key,
-                            cost=component_cost,
-                            units=quantity,
-                            unit=rule.unit or ("request" if rule.usage_bucket == "request_counts" else "token"),
-                            metadata={
-                                "usage_bucket": rule.usage_bucket,
-                                "usage_key": rule.usage_key,
-                                "description": rule.description,
-                            },
+                    try:
+                        if rule.usage_bucket == "request_counts":
+                            usage_bucket = hosted_tool_usage.request_counts
+                        elif rule.usage_bucket == "token_counts":
+                            usage_bucket = hosted_tool_usage.token_counts
+                        else:
+                            usage_bucket = hosted_tool_usage.billing_counts
+                        quantity = usage_bucket.get(rule.usage_key)
+                        if quantity is None or quantity <= 0:
+                            continue
+                        component_cost = rule.calculate_cost(quantity)
+                        hosted_tool_cost += component_cost
+                        components.append(
+                            UsageChargeComponent(
+                                key=rule.key,
+                                cost=component_cost,
+                                units=quantity,
+                                unit=rule.unit or ("request" if rule.usage_bucket == "request_counts" else "token"),
+                                metadata={
+                                    "usage_bucket": rule.usage_bucket,
+                                    "usage_key": rule.usage_key,
+                                    "description": rule.description,
+                                },
+                            )
                         )
-                    )
+                    except Exception:
+                        logger.exception(
+                            "Failed to calculate hosted-tool cost component '%s'; continuing without it",
+                            rule.key,
+                        )
 
             cost = round(
                 input_cost + output_cost + hosted_tool_cost,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
 from dhenara.ai.types.genai.ai_model import AIModelProviderEnum
 
@@ -20,7 +20,7 @@ class HostedToolUserLocation(BaseModel):
 
 
 class WebSearchHostedTool(BaseModel):
-    kind: Literal["hosted_tool", "provider_side_execution"] = "hosted_tool"
+    kind: Literal["hosted_tool"] = "hosted_tool"
     tool: Literal["web_search"] = HostedToolKind.WEB_SEARCH
     allowed_domains: list[str] | None = Field(default=None)
     blocked_domains: list[str] | None = Field(default=None)
@@ -30,11 +30,6 @@ class WebSearchHostedTool(BaseModel):
     external_web_access: bool | None = Field(default=None)
     return_token_budget: Literal["default", "unlimited"] | None = Field(default=None)
     metadata: dict[str, Any] = Field(default_factory=dict)
-
-    @model_validator(mode="after")
-    def _normalize_kind(self) -> "WebSearchHostedTool":
-        self.kind = "hosted_tool"
-        return self
 
 
 HostedToolDefinition = WebSearchHostedTool
@@ -82,12 +77,3 @@ def get_hosted_tool_provider_spec(
             f"Hosted tool '{tool.tool}' is not supported for provider '{provider}'."
         )
     return provider_spec
-
-
-ProviderSideExecutionToolKind = HostedToolKind
-ProviderSideExecutionUserLocation = HostedToolUserLocation
-WebSearchProviderSideExecutionTool = WebSearchHostedTool
-ProviderSideExecutionToolDefinition = HostedToolDefinition
-ProviderSideExecutionProviderToolSpec = HostedToolProviderSpec
-get_provider_side_execution_tool_support = get_hosted_tool_support
-get_provider_side_execution_tool_provider_spec = get_hosted_tool_provider_spec

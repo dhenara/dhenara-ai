@@ -7,6 +7,19 @@ from dhenara.ai.types.genai.ai_model import (
     HostedToolCostRule,
 )
 
+
+def _anthropic_web_search_cost_rules() -> list[HostedToolCostRule]:
+    return [
+        HostedToolCostRule(
+            key="hosted_tool:web_search",
+            usage_bucket="billing_counts",
+            usage_key="web_search",
+            flat_cost_per_unit=0.01,
+            unit="search",
+            description="Anthropic web-search list price per search.",
+        )
+    ]
+
 ClaudeOpus47 = FoundationModel(
     model_name="claude-opus-4-7",
     display_name="Claude Opus 4.7",
@@ -27,6 +40,7 @@ ClaudeOpus47 = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=5.0,
         output_token_cost_per_million=25.0,
+        hosted_tool_cost_rules=_anthropic_web_search_cost_rules(),
     ),
 )
 
@@ -48,6 +62,7 @@ ClaudeOpus46 = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=5.0,
         output_token_cost_per_million=25.0,
+        hosted_tool_cost_rules=_anthropic_web_search_cost_rules(),
     ),
 )
 
@@ -69,16 +84,7 @@ ClaudeSonnet46 = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=3.0,
         output_token_cost_per_million=15.0,
-        hosted_tool_cost_rules=[
-            HostedToolCostRule(
-                key="hosted_tool:web_search",
-                usage_bucket="billing_counts",
-                usage_key="web_search",
-                flat_cost_per_unit=0.01,
-                unit="search",
-                description="Anthropic web-search list price per search.",
-            )
-        ],
+        hosted_tool_cost_rules=_anthropic_web_search_cost_rules(),
     ),
 )
 
@@ -100,6 +106,7 @@ ClaudeOpus45 = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=5.0,
         output_token_cost_per_million=25.0,
+        hosted_tool_cost_rules=_anthropic_web_search_cost_rules(),
     ),
 )
 
@@ -122,6 +129,7 @@ ClaudeSonnet45 = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=3.0,
         output_token_cost_per_million=15.0,
+        hosted_tool_cost_rules=_anthropic_web_search_cost_rules(),
     ),
 )
 
@@ -144,16 +152,7 @@ ClaudeHaiku45 = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=1.0,
         output_token_cost_per_million=5.0,
-        hosted_tool_cost_rules=[
-            HostedToolCostRule(
-                key="hosted_tool:web_search",
-                usage_bucket="billing_counts",
-                usage_key="web_search",
-                flat_cost_per_unit=0.01,
-                unit="search",
-                description="Anthropic web-search list price per search.",
-            )
-        ],
+        hosted_tool_cost_rules=_anthropic_web_search_cost_rules(),
     ),
 )
 

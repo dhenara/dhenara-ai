@@ -176,6 +176,10 @@ class OpenAIResponses(OpenAIClientBase):
             )
             if function_tools:
                 tools_formatted.extend(function_tools)
+        except Exception:
+            logger.exception("Error formatting function tools for Responses API")
+
+        try:
             hosted_tools = formatter.format_hosted_tools(
                 tools=self.config.hosted_tools,
                 model_endpoint=self.model_endpoint,
@@ -183,7 +187,7 @@ class OpenAIResponses(OpenAIClientBase):
             if hosted_tools:
                 tools_formatted.extend(hosted_tools)
         except Exception:
-            logger.exception("Error formatting tools for Responses API")
+            logger.exception("Error formatting hosted tools for Responses API; continuing without them")
 
         if tools_formatted:
             args["tools"] = tools_formatted
@@ -328,22 +332,24 @@ class OpenAIResponses(OpenAIClientBase):
             completion_i = int(completion) if completion is not None else 0
             total_i = int(total) if total is not None else (prompt_i + completion_i)
             reasoning_i = int(reasoning_tokens) if reasoning_tokens is not None else None
-
-            web_search_call_count = 0
-            for output_item in getattr(response, "output", None) or []:
-                item_type = getattr(output_item, "type", None)
-                if item_type is None and isinstance(output_item, dict):
-                    item_type = output_item.get("type")
-                if item_type == "web_search_call":
-                    web_search_call_count += 1
-
             hosted_tool_usage = None
-            if web_search_call_count > 0:
-                hosted_tool_usage = HostedToolUsage(
-                    request_counts={"web_search": web_search_call_count, "total": web_search_call_count},
-                    billing_counts={"web_search": web_search_call_count},
-                    details={"provider_usage": {"web_search_call_count": web_search_call_count}},
-                )
+            try:
+                web_search_call_count = 0
+                for output_item in getattr(response, "output", None) or []:
+                    item_type = getattr(output_item, "type", None)
+                    if item_type is None and isinstance(output_item, dict):
+                        item_type = output_item.get("type")
+                    if item_type == "web_search_call":
+                        web_search_call_count += 1
+
+                if web_search_call_count > 0:
+                    hosted_tool_usage = HostedToolUsage(
+                        request_counts={"web_search": web_search_call_count, "total": web_search_call_count},
+                        billing_counts={"web_search": web_search_call_count},
+                        details={"provider_usage": {"web_search_call_count": web_search_call_count}},
+                    )
+            except Exception:
+                logger.exception("Failed to derive hosted-tool usage from Responses API output; continuing without it")
 
             return ChatResponseUsage(
                 total_tokens=total_i,
