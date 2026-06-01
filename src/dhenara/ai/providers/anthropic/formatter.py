@@ -9,6 +9,7 @@ from dhenara.ai.types.genai.dhenara.request import (
     FunctionDefinition,
     FunctionParameter,
     FunctionParameters,
+    HostedToolDefinition,
     MessageItem,
     Prompt,
     PromptMessageRoleEnum,
@@ -17,6 +18,8 @@ from dhenara.ai.types.genai.dhenara.request import (
     ToolCallResultsMessage,
     ToolChoice,
     ToolDefinition,
+    WebSearchHostedTool,
+    get_hosted_tool_provider_spec,
 )
 from dhenara.ai.types.genai.dhenara.request.data import FormattedPrompt
 from dhenara.ai.types.shared.file import FileFormatEnum, GenericFile, ProcessedFile
@@ -197,6 +200,41 @@ class AnthropicFormatter(BaseFormatter):
     ) -> Any:
         """Convert ToolDefinition to Anthropic format"""
         return cls.convert_function_definition(tool.function)
+
+    @classmethod
+    def convert_hosted_tool(
+        cls,
+        tool: HostedToolDefinition,
+        model_endpoint: AIModelEndpoint | None = None,
+    ) -> Any:
+        if model_endpoint is None:
+            raise ValueError("convert_hosted_tool: model_endpoint is required")
+
+        provider_spec = get_hosted_tool_provider_spec(tool, model_endpoint.ai_model.provider)
+
+        if isinstance(tool, WebSearchHostedTool):
+            if tool.search_context_size is not None:
+                raise ValueError("Anthropic web search does not support search_context_size.")
+            if tool.external_web_access is not None:
+                raise ValueError("Anthropic web search does not support external_web_access.")
+            if tool.return_token_budget is not None:
+                raise ValueError("Anthropic web search does not support return_token_budget.")
+
+            res: dict[str, Any] = {
+                "type": provider_spec.provider_tool_type,
+                "name": provider_spec.provider_tool_name or provider_spec.provider_tool_type,
+            }
+            if tool.max_uses is not None:
+                res["max_uses"] = tool.max_uses
+            if tool.allowed_domains:
+                res["allowed_domains"] = tool.allowed_domains
+            if tool.blocked_domains:
+                res["blocked_domains"] = tool.blocked_domains
+            if tool.user_location is not None:
+                res["user_location"] = tool.user_location.model_dump(exclude_none=True)
+            return res
+
+        raise ValueError(f"Unsupported hosted tool for Anthropic: {tool.tool}")
 
     @classmethod
     def convert_tool_choice(

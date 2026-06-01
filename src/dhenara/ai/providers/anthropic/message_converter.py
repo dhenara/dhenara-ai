@@ -15,6 +15,7 @@ from dhenara.ai.providers.base import BaseMessageConverter
 from dhenara.ai.types.genai import (
     ChatMessageContentPart,
     ChatResponseContentItem,
+    ChatResponseGenericContentItem,
     ChatResponseReasoningContentItem,
     ChatResponseStructuredOutput,
     ChatResponseStructuredOutputContentItem,
@@ -77,6 +78,7 @@ class AnthropicMessageConverter(BaseMessageConverter):
     ) -> list[ChatResponseContentItem]:
         if content_block.type == "text":
             text_value = getattr(content_block, "text", "")
+            citations = getattr(content_block, "citations", None)
 
             # Native Anthropic structured outputs (output_config.format) return schema-conformant JSON
             # in response.content[0].text. In that mode, the caller will pass structured_output_config
@@ -121,7 +123,7 @@ class AnthropicMessageConverter(BaseMessageConverter):
                             ChatMessageContentPart(
                                 type="text",
                                 text=text_value,
-                                annotations=None,
+                                annotations=citations,
                                 metadata=None,
                             )
                         ],
@@ -136,7 +138,7 @@ class AnthropicMessageConverter(BaseMessageConverter):
                         ChatMessageContentPart(
                             type="text",
                             text=text_value,
-                            annotations=None,
+                            annotations=citations,
                             metadata=None,
                         )
                     ],
@@ -224,7 +226,43 @@ class AnthropicMessageConverter(BaseMessageConverter):
             )
             return items
 
-        return []
+        if content_block.type == "server_tool_use":
+            raw = content_block.model_dump() if hasattr(content_block, "model_dump") else {
+                "type": "server_tool_use",
+                "id": getattr(content_block, "id", None),
+                "name": getattr(content_block, "name", None),
+                "input": getattr(content_block, "input", None),
+            }
+            return [
+                ChatResponseGenericContentItem(
+                    index=index,
+                    role=role,
+                    metadata={"server_tool_use": raw},
+                )
+            ]
+
+        if content_block.type == "web_search_tool_result":
+            raw = content_block.model_dump() if hasattr(content_block, "model_dump") else {
+                "type": "web_search_tool_result",
+                "tool_use_id": getattr(content_block, "tool_use_id", None),
+                "content": getattr(content_block, "content", None),
+            }
+            return [
+                ChatResponseGenericContentItem(
+                    index=index,
+                    role=role,
+                    metadata={"web_search_tool_result": raw},
+                )
+            ]
+
+        raw = content_block.model_dump() if hasattr(content_block, "model_dump") else {"type": content_block.type}
+        return [
+            ChatResponseGenericContentItem(
+                index=index,
+                role=role,
+                metadata={"raw_content_block": raw},
+            )
+        ]
 
     @staticmethod
     def dai_choice_to_provider_message(

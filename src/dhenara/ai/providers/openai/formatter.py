@@ -8,6 +8,7 @@ from dhenara.ai.types.genai.dhenara.request import (
     FunctionDefinition,
     FunctionParameter,
     FunctionParameters,
+    HostedToolDefinition,
     MessageItem,
     Prompt,
     PromptMessageRoleEnum,
@@ -16,6 +17,8 @@ from dhenara.ai.types.genai.dhenara.request import (
     ToolCallResultsMessage,
     ToolChoice,
     ToolDefinition,
+    WebSearchHostedTool,
+    get_hosted_tool_provider_spec,
 )
 from dhenara.ai.types.genai.dhenara.request.data import FormattedPrompt
 from dhenara.ai.types.shared.file import FileFormatEnum, GenericFile, ProcessedFile
@@ -272,6 +275,41 @@ class OpenAIFormatter(BaseFormatter):
         if getattr(func_def, "description", None):
             res["description"] = func_def.description
         return res
+
+    @classmethod
+    def convert_hosted_tool(
+        cls,
+        tool: HostedToolDefinition,
+        model_endpoint: AIModelEndpoint | None = None,
+    ) -> Any:
+        if model_endpoint is None:
+            raise ValueError("convert_hosted_tool: model_endpoint is required")
+
+        provider_spec = get_hosted_tool_provider_spec(tool, model_endpoint.ai_model.provider)
+
+        if isinstance(tool, WebSearchHostedTool):
+            if tool.max_uses is not None:
+                raise ValueError("OpenAI web_search does not support max_uses in this hosted-tool surface.")
+
+            res: dict[str, Any] = {"type": provider_spec.provider_tool_type}
+            if tool.search_context_size is not None:
+                res["search_context_size"] = tool.search_context_size
+            if tool.external_web_access is not None:
+                res["external_web_access"] = tool.external_web_access
+            if tool.return_token_budget is not None:
+                res["return_token_budget"] = tool.return_token_budget
+            if tool.user_location is not None:
+                res["user_location"] = tool.user_location.model_dump(exclude_none=True)
+            filters: dict[str, Any] = {}
+            if tool.allowed_domains:
+                filters["allowed_domains"] = tool.allowed_domains
+            if tool.blocked_domains:
+                filters["blocked_domains"] = tool.blocked_domains
+            if filters:
+                res["filters"] = filters
+            return res
+
+        raise ValueError(f"Unsupported hosted tool for OpenAI: {tool.tool}")
 
     @classmethod
     def format_tools(

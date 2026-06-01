@@ -5,6 +5,7 @@ from typing import Any, cast
 from google.genai.types import (
     GenerateContentConfig,
     GenerateContentResponse,
+    GoogleSearch,
     SafetySetting,
     ThinkingConfig,
     Tool,
@@ -28,6 +29,7 @@ from dhenara.ai.types.genai import (
     ChatResponseUsage,
     StreamingChatResponse,
 )
+from dhenara.ai.types.genai.ai_model import HostedToolUsage
 from dhenara.ai.types.genai.dhenara.request import MessageItem, Prompt, SystemInstruction
 from dhenara.ai.types.shared.api import SSEErrorResponse
 from dhenara.ai.utils.dai_disk import DAI_JSON
@@ -130,9 +132,13 @@ class GoogleAIChat(GoogleAIClientBase):
                 messages_list.append(prompt)
 
         # ---  Tools ---
+        hosted_tools_payload = formatter.format_hosted_tools(
+            tools=self.config.hosted_tools,
+            model_endpoint=self.model_endpoint,
+        )
+
+        google_tools: list[Tool] = []
         if self.config.tools:
-            # NOTE: Google supports extra tools other than fns, so gather all fns together into function_declarations
-            # --  _tools = [tool.to_google_format() for tool in self.config.tools]
             function_declarations = [
                 formatter.convert_function_definition(
                     func_def=tool.function,
@@ -140,12 +146,18 @@ class GoogleAIChat(GoogleAIClientBase):
                 )
                 for tool in self.config.tools
             ]
-            _tools = [
+            google_tools.append(
                 Tool(
                     function_declarations=cast(Any, function_declarations),
                 )
-            ]
-            generate_config.tools = cast(Any, _tools)
+            )
+        for hosted_tool in hosted_tools_payload or []:
+            if "google_search" in hosted_tool:
+                google_tools.append(Tool(google_search=GoogleSearch()))
+                continue
+            raise ValueError(f"Unsupported Google hosted-tool payload: {hosted_tool}")
+        if google_tools:
+            generate_config.tools = cast(Any, google_tools)
 
         if self.config.tool_choice:
             _tool_config = formatter.format_tool_choice(
@@ -368,11 +380,52 @@ class GoogleAIChat(GoogleAIClientBase):
 
         completion_tokens = candidates_tokens + thoughts_tokens + tool_use_tokens
 
+        web_search_queries_count = 0
+        for candidate in getattr(response, "candidates", None) or []:
+            grounding_metadata = getattr(candidate, "grounding_metadata", None)
+            if grounding_metadata is None:
+                grounding_metadata = getattr(candidate, "groundingMetadata", None)
+            queries = getattr(grounding_metadata, "web_search_queries", None)
+            if queries is None:
+                queries = getattr(grounding_metadata, "webSearchQueries", None)
+            if isinstance(queries, list):
+                web_search_queries_count += len([query for query in queries if query])
+
+        hosted_tool_usage = None
+        if web_search_queries_count > 0 or tool_use_tokens > 0:
+            provider_usage: dict[str, Any] = {"web_search_queries": web_search_queries_count}
+            if tool_use_tokens > 0:
+                provider_usage["tool_use_prompt_tokens"] = tool_use_tokens
+
+            request_counts: dict[str, int] = {}
+            billing_counts: dict[str, int] = {}
+            model_name = str(getattr(self.model_endpoint.ai_model, "model_name", "") or "")
+            if web_search_queries_count > 0:
+                if model_name.startswith("gemini-2.5"):
+                    request_counts = {
+                        "web_search": 1,
+                        "total": 1,
+                    }
+                    billing_counts = {"grounded_prompt": 1}
+                else:
+                    request_counts = {
+                        "web_search": web_search_queries_count,
+                        "total": web_search_queries_count,
+                    }
+                    billing_counts = {"web_search_queries": web_search_queries_count}
+            hosted_tool_usage = HostedToolUsage(
+                request_counts=request_counts,
+                token_counts={"prompt": tool_use_tokens} if tool_use_tokens > 0 else {},
+                billing_counts=billing_counts,
+                details={"provider_usage": provider_usage},
+            )
+
         return ChatResponseUsage(
             total_tokens=getattr(usage_md, "total_token_count", 0) or 0,
             prompt_tokens=getattr(usage_md, "prompt_token_count", 0) or 0,
             completion_tokens=completion_tokens,
             reasoning_tokens=thoughts_tokens if thoughts_tokens > 0 else None,
+            hosted_tool_usage=hosted_tool_usage,
         )
 
     def parse_response(
@@ -407,9 +460,26 @@ class GoogleAIChat(GoogleAIClientBase):
                     stop_sequence=None,
                     contents=GoogleMessageConverter.provider_message_to_dai_content_items(
                         message=candidate.content,
+                        grounding_metadata=(
+                            getattr(candidate, "grounding_metadata", None)
+                            or getattr(candidate, "groundingMetadata", None)
+                        ),
                         structured_output_config=self._get_structured_output_config(),
                     ),
-                    metadata={},  # Choice metadata
+                    metadata={
+                        "grounding_metadata": (
+                            getattr(candidate, "grounding_metadata", None).model_dump()
+                            if hasattr(getattr(candidate, "grounding_metadata", None), "model_dump")
+                            else (
+                                getattr(candidate, "groundingMetadata", None).model_dump()
+                                if hasattr(getattr(candidate, "groundingMetadata", None), "model_dump")
+                                else (
+                                    getattr(candidate, "grounding_metadata", None)
+                                    or getattr(candidate, "groundingMetadata", None)
+                                )
+                            )
+                        )
+                    },
                 )
                 for choice_index, candidate in enumerate(response.candidates or [])
             ],

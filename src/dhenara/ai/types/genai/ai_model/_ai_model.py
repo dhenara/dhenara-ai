@@ -1,5 +1,5 @@
 import logging
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field, model_validator
 
@@ -7,8 +7,10 @@ from dhenara.ai.types.genai.ai_model import (
     AIModelFunctionalTypeEnum,
     AIModelProviderEnum,
     ChatResponseUsage,
+    HostedToolUsage,
     ImageResponseUsage,
     UsageCharge,
+    UsageChargeComponent,
 )
 from dhenara.ai.types.shared.base import BaseModel
 
@@ -68,7 +70,12 @@ class BaseCostData(BaseModel):
     def calculate_usage_charge(self, usage: Any) -> UsageCharge:
         raise NotImplementedError("calculate_usage_charge() not implemented")
 
-    def get_charge(self, cost: float) -> UsageCharge:
+    def get_charge(
+        self,
+        cost: float,
+        *,
+        components: list[UsageChargeComponent] | None = None,
+    ) -> UsageCharge:
         if self.cost_multiplier_percentage:
             charge = round(
                 cost * (1 + (self.cost_multiplier_percentage / 100)),
@@ -76,7 +83,53 @@ class BaseCostData(BaseModel):
             )
         else:
             charge = None
-        return UsageCharge(cost=cost, charge=charge)
+        return UsageCharge(cost=cost, charge=charge, components=components)
+
+
+class HostedToolCostRule(BaseModel):
+    key: str = Field(
+        ...,
+        description="Stable key for this hosted-tool pricing rule.",
+    )
+    usage_bucket: Literal["request_counts", "token_counts", "billing_counts"] = Field(
+        ...,
+        description="Which hosted-tool usage bucket this rule reads from.",
+    )
+    usage_key: str = Field(
+        ...,
+        description="Key inside the selected hosted-tool usage bucket.",
+    )
+    flat_cost_per_unit: float | None = Field(
+        default=None,
+        description="Absolute cost per counted unit.",
+    )
+    cost_per_million: float | None = Field(
+        default=None,
+        description="Cost per million units, mainly for token-based hosted-tool accounting.",
+    )
+    unit: str | None = Field(
+        default=None,
+        description="Optional human-readable unit label for this pricing rule.",
+    )
+    description: str | None = Field(
+        default=None,
+        description="Optional explanation of what this hosted-tool pricing rule covers.",
+    )
+
+    @model_validator(mode="after")
+    def validate_pricing_fields(self) -> "HostedToolCostRule":
+        if self.flat_cost_per_unit is None and self.cost_per_million is None:
+            raise ValueError("Either flat_cost_per_unit or cost_per_million must be set")
+        if self.flat_cost_per_unit is not None and self.cost_per_million is not None:
+            raise ValueError("Set only one of flat_cost_per_unit or cost_per_million")
+        return self
+
+    def calculate_cost(self, quantity: int) -> float:
+        if self.flat_cost_per_unit is not None:
+            return round(quantity * self.flat_cost_per_unit, 6)
+        if self.cost_per_million is not None:
+            return round(quantity * (self.cost_per_million / 1000000), 6)
+        raise ValueError("HostedToolCostRule pricing is not configured")
 
 
 class ChatModelCostData(BaseCostData):
@@ -88,6 +141,10 @@ class ChatModelCostData(BaseCostData):
         ...,
         description="",
     )
+    hosted_tool_cost_rules: list[HostedToolCostRule] | None = Field(
+        default=None,
+        description="Optional additive pricing rules for hosted/provider-side tool usage.",
+    )
 
     def calculate_usage_charge(
         self,
@@ -96,13 +153,59 @@ class ChatModelCostData(BaseCostData):
         try:
             input_per_token_cost = self.input_token_cost_per_million / 1000000
             output_per_token_cost = self.output_token_cost_per_million / 1000000
+            input_cost = round(usage.prompt_tokens * input_per_token_cost, 6)
+            output_cost = round(usage.completion_tokens * output_per_token_cost, 6)
+
+            components: list[UsageChargeComponent] = [
+                UsageChargeComponent(
+                    key="input_tokens",
+                    cost=input_cost,
+                    units=usage.prompt_tokens,
+                    unit="token",
+                ),
+                UsageChargeComponent(
+                    key="output_tokens",
+                    cost=output_cost,
+                    units=usage.completion_tokens,
+                    unit="token",
+                ),
+            ]
+
+            hosted_tool_cost = 0.0
+            hosted_tool_usage = usage.hosted_tool_usage if isinstance(usage.hosted_tool_usage, HostedToolUsage) else None
+            if hosted_tool_usage:
+                for rule in self.hosted_tool_cost_rules or []:
+                    if rule.usage_bucket == "request_counts":
+                        usage_bucket = hosted_tool_usage.request_counts
+                    elif rule.usage_bucket == "token_counts":
+                        usage_bucket = hosted_tool_usage.token_counts
+                    else:
+                        usage_bucket = hosted_tool_usage.billing_counts
+                    quantity = usage_bucket.get(rule.usage_key)
+                    if quantity is None or quantity <= 0:
+                        continue
+                    component_cost = rule.calculate_cost(quantity)
+                    hosted_tool_cost += component_cost
+                    components.append(
+                        UsageChargeComponent(
+                            key=rule.key,
+                            cost=component_cost,
+                            units=quantity,
+                            unit=rule.unit or ("request" if rule.usage_bucket == "request_counts" else "token"),
+                            metadata={
+                                "usage_bucket": rule.usage_bucket,
+                                "usage_key": rule.usage_key,
+                                "description": rule.description,
+                            },
+                        )
+                    )
 
             cost = round(
-                usage.prompt_tokens * input_per_token_cost + usage.completion_tokens * output_per_token_cost,
+                input_cost + output_cost + hosted_tool_cost,
                 6,
             )
 
-            return self.get_charge(cost)
+            return self.get_charge(cost, components=components)
         except Exception as e:
             raise ValueError(f"calculate_usage_charge: Error: {e}")
 

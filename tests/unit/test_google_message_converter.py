@@ -30,3 +30,35 @@ def test_dai_046_google_message_conversion_text_and_image():
     # Second item is generic (inline_data)
     assert items[1].metadata
     assert "inline_data" in items[1].metadata
+
+
+@pytest.mark.case_id("DAI-124")
+def test_dai_124_google_message_conversion_preserves_grounding_annotations():
+    msg = {
+        "role": "model",
+        "parts": [
+            {"text": "Spain won Euro 2024."},
+        ],
+    }
+    grounding_metadata = {
+        "groundingChunks": [
+            {"web": {"uri": "https://uefa.com", "title": "UEFA"}},
+        ],
+        "groundingSupports": [
+            {
+                "segment": {"startIndex": 0, "endIndex": 20, "text": "Spain won Euro 2024"},
+                "groundingChunkIndices": [0],
+            }
+        ],
+    }
+
+    items = GoogleMessageConverter.provider_message_to_dai_content_items(
+        message=msg,
+        grounding_metadata=grounding_metadata,
+    )
+
+    assert len(items) == 1
+    annotations = items[0].message_contents[0].annotations
+    assert isinstance(annotations, list)
+    assert annotations[0]["type"] == "url_citation"
+    assert annotations[0]["url"] == "https://uefa.com"

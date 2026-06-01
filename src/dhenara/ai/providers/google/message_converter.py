@@ -25,6 +25,56 @@ from dhenara.ai.utils.dai_disk import DAI_JSON
 logger = logging.getLogger(__name__)
 
 
+def _build_google_grounding_annotations(grounding_metadata: Any) -> list[dict[str, Any]] | None:
+    if grounding_metadata is None:
+        return None
+
+    chunks = _get(grounding_metadata, "grounding_chunks", None)
+    if chunks is None:
+        chunks = _get(grounding_metadata, "groundingChunks", None)
+    supports = _get(grounding_metadata, "grounding_supports", None)
+    if supports is None:
+        supports = _get(grounding_metadata, "groundingSupports", None)
+    if not isinstance(chunks, list) or not isinstance(supports, list):
+        return None
+
+    annotations: list[dict[str, Any]] = []
+    for support in supports:
+        segment = _get(support, "segment", None)
+        indices = _get(support, "grounding_chunk_indices", None)
+        if indices is None:
+            indices = _get(support, "groundingChunkIndices", None)
+        start_index = _get(segment, "start_index", None)
+        if start_index is None:
+            start_index = _get(segment, "startIndex", None)
+        end_index = _get(segment, "end_index", None)
+        if end_index is None:
+            end_index = _get(segment, "endIndex", None)
+        if not isinstance(indices, list):
+            continue
+        for chunk_index in indices:
+            if not isinstance(chunk_index, int) or not (0 <= chunk_index < len(chunks)):
+                continue
+            chunk = chunks[chunk_index]
+            web = _get(chunk, "web", None)
+            url = _get(web, "uri", None)
+            title = _get(web, "title", None)
+            if not isinstance(url, str) or not url:
+                continue
+            annotation = {
+                "type": "url_citation",
+                "url": url,
+                "title": title,
+            }
+            if isinstance(start_index, int):
+                annotation["start_index"] = start_index
+            if isinstance(end_index, int):
+                annotation["end_index"] = end_index
+            annotations.append(annotation)
+
+    return annotations or None
+
+
 # Helper to coerce dict-like access from SDK objects
 def _get(obj: object, attr: str, default: Any = None) -> Any:
     if isinstance(obj, dict):
@@ -41,6 +91,7 @@ class GoogleMessageConverter(BaseMessageConverter):
         part: Any,
         index: int,
         role: str,
+        text_annotations: list[dict[str, Any]] | None = None,
         structured_output_config: StructuredOutputConfig | None = None,
     ) -> ChatResponseContentItem:
         # Handle thinking/thought content first (Google's encrypted reasoning)
@@ -182,7 +233,7 @@ class GoogleMessageConverter(BaseMessageConverter):
                         ChatMessageContentPart(
                             type="text",
                             text=text,
-                            annotations=None,
+                            annotations=text_annotations if index == 0 else None,
                             metadata=None,
                         )
                     ],
@@ -196,7 +247,7 @@ class GoogleMessageConverter(BaseMessageConverter):
                     ChatMessageContentPart(
                         type="text",
                         text=text,
-                        annotations=None,
+                        annotations=text_annotations if index == 0 else None,
                         metadata=None,
                     )
                 ],
@@ -213,17 +264,20 @@ class GoogleMessageConverter(BaseMessageConverter):
     def provider_message_to_dai_content_items(
         *,
         message: Any,
+        grounding_metadata: Any | None = None,
         structured_output_config: StructuredOutputConfig | None = None,
     ) -> list[ChatResponseContentItem]:
         parts_raw = _get(message, "parts", [])
         parts = parts_raw if isinstance(parts_raw, list) else []
         role_raw = _get(message, "role", "model")
         role = role_raw if isinstance(role_raw, str) else "model"
+        text_annotations = _build_google_grounding_annotations(grounding_metadata)
         return [
             GoogleMessageConverter.provider_part_to_content_item(
                 part=part,
                 index=index,
                 role=role,
+                text_annotations=text_annotations,
                 structured_output_config=structured_output_config,
             )
             for index, part in enumerate(parts)

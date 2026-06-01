@@ -8,6 +8,7 @@ from dhenara.ai.types.genai.dhenara.request import (
     FunctionDefinition,
     FunctionParameter,
     FunctionParameters,
+    HostedToolDefinition,
     MessageItem,
     Prompt,
     PromptMessageRoleEnum,
@@ -225,12 +226,61 @@ class BaseFormatter(ABC):
             ]
 
     @classmethod
+    def format_hosted_tools(
+        cls,
+        tools: list[HostedToolDefinition] | None,
+        model_endpoint: AIModelEndpoint | None = None,
+    ) -> list[Any] | None:
+        if tools:
+            return [
+                cls.format_hosted_tool(
+                    tool=tool,
+                    model_endpoint=model_endpoint,
+                )
+                for tool in tools
+            ]
+        return None
+
+    @classmethod
+    def format_provider_side_execution_tools(
+        cls,
+        tools: list[HostedToolDefinition] | None,
+        model_endpoint: AIModelEndpoint | None = None,
+    ) -> list[Any] | None:
+        return cls.format_hosted_tools(
+            tools=tools,
+            model_endpoint=model_endpoint,
+        )
+
+    @classmethod
     def format_tool(
         cls,
         tool: ToolDefinition,
         model_endpoint: AIModelEndpoint | None = None,
     ) -> Any:
         return cls.convert_tool(
+            tool=tool,
+            model_endpoint=model_endpoint,
+        )
+
+    @classmethod
+    def format_hosted_tool(
+        cls,
+        tool: HostedToolDefinition,
+        model_endpoint: AIModelEndpoint | None = None,
+    ) -> Any:
+        return cls.convert_hosted_tool(
+            tool=tool,
+            model_endpoint=model_endpoint,
+        )
+
+    @classmethod
+    def format_provider_side_execution_tool(
+        cls,
+        tool: HostedToolDefinition,
+        model_endpoint: AIModelEndpoint | None = None,
+    ) -> Any:
+        return cls.format_hosted_tool(
             tool=tool,
             model_endpoint=model_endpoint,
         )
@@ -339,6 +389,27 @@ class BaseFormatter(ABC):
     ) -> Any:
         """Convert ToolDefinition to provider format (for API request input)"""
         pass
+
+    @classmethod
+    @abstractmethod
+    def convert_hosted_tool(
+        cls,
+        tool: HostedToolDefinition,
+        model_endpoint: AIModelEndpoint | None = None,
+    ) -> Any:
+        """Convert a hosted tool to provider format (for API request input)."""
+        pass
+
+    @classmethod
+    def convert_provider_side_execution_tool(
+        cls,
+        tool: HostedToolDefinition,
+        model_endpoint: AIModelEndpoint | None = None,
+    ) -> Any:
+        return cls.convert_hosted_tool(
+            tool=tool,
+            model_endpoint=model_endpoint,
+        )
 
     @classmethod
     @abstractmethod

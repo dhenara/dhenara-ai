@@ -19,7 +19,7 @@ from dhenara.ai.types.genai import (
     ChatResponseUsage,
     StreamingChatResponse,
 )
-from dhenara.ai.types.genai.ai_model import AIModelAPIProviderEnum
+from dhenara.ai.types.genai.ai_model import AIModelAPIProviderEnum, HostedToolUsage
 from dhenara.ai.types.genai.dhenara.request import MessageItem, Prompt, SystemInstruction
 from dhenara.ai.types.shared.api import SSEErrorCode, SSEErrorData, SSEErrorResponse
 from dhenara.ai.utils.dai_disk import DAI_JSON
@@ -168,19 +168,25 @@ class OpenAIResponses(OpenAIClientBase):
             )
 
         # Tools and tool choice
-        if self.config.tools:
-            # Use Responses-specific tool schema (top-level name)
-            tools_formatted = None
-            try:
-                tools_formatted = formatter.format_tools(
-                    tools=self.config.tools,
-                    model_endpoint=self.model_endpoint,
-                )
-            except Exception:
-                logger.exception("Error formatting tools for Responses API")
+        tools_formatted: list[dict[str, Any]] = []
+        try:
+            function_tools = formatter.format_tools(
+                tools=self.config.tools,
+                model_endpoint=self.model_endpoint,
+            )
+            if function_tools:
+                tools_formatted.extend(function_tools)
+            hosted_tools = formatter.format_hosted_tools(
+                tools=self.config.hosted_tools,
+                model_endpoint=self.model_endpoint,
+            )
+            if hosted_tools:
+                tools_formatted.extend(hosted_tools)
+        except Exception:
+            logger.exception("Error formatting tools for Responses API")
 
-            if tools_formatted:
-                args["tools"] = tools_formatted
+        if tools_formatted:
+            args["tools"] = tools_formatted
         if self.config.tool_choice:
             args["tool_choice"] = formatter.format_tool_choice(
                 tool_choice=self.config.tool_choice,
@@ -323,11 +329,28 @@ class OpenAIResponses(OpenAIClientBase):
             total_i = int(total) if total is not None else (prompt_i + completion_i)
             reasoning_i = int(reasoning_tokens) if reasoning_tokens is not None else None
 
+            web_search_call_count = 0
+            for output_item in getattr(response, "output", None) or []:
+                item_type = getattr(output_item, "type", None)
+                if item_type is None and isinstance(output_item, dict):
+                    item_type = output_item.get("type")
+                if item_type == "web_search_call":
+                    web_search_call_count += 1
+
+            hosted_tool_usage = None
+            if web_search_call_count > 0:
+                hosted_tool_usage = HostedToolUsage(
+                    request_counts={"web_search": web_search_call_count, "total": web_search_call_count},
+                    billing_counts={"web_search": web_search_call_count},
+                    details={"provider_usage": {"web_search_call_count": web_search_call_count}},
+                )
+
             return ChatResponseUsage(
                 total_tokens=total_i,
                 prompt_tokens=prompt_i,
                 completion_tokens=completion_i,
                 reasoning_tokens=reasoning_i,
+                hosted_tool_usage=hosted_tool_usage,
             )
         except Exception as e:
             logger.debug(f"_get_usage_from_provider_response (Responses): {e}")

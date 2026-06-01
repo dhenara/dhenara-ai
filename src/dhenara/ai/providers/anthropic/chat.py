@@ -37,6 +37,7 @@ from dhenara.ai.types.genai import (
     ChatResponseUsage,
     StreamingChatResponse,
 )
+from dhenara.ai.types.genai.ai_model import HostedToolUsage
 from dhenara.ai.types.genai.dhenara.request import MessageItem, Prompt, SystemInstruction
 from dhenara.ai.types.shared.api import SSEErrorResponse
 from dhenara.ai.utils.dai_disk import DAI_JSON
@@ -212,13 +213,21 @@ class AnthropicChat(AnthropicClientBase):
             chat_args.update(self.config.options)
 
         # ---  Tools ---
-        if self.config.tools:
-            tools_formatted = formatter.format_tools(
-                tools=self.config.tools,
-                model_endpoint=self.model_endpoint,
-            )
-            if tools_formatted:
-                chat_args["tools"] = tools_formatted
+        tools_formatted: list[dict[str, Any]] = []
+        function_tools = formatter.format_tools(
+            tools=self.config.tools,
+            model_endpoint=self.model_endpoint,
+        )
+        if function_tools:
+            tools_formatted.extend(function_tools)
+        hosted_tools = formatter.format_hosted_tools(
+            tools=self.config.hosted_tools,
+            model_endpoint=self.model_endpoint,
+        )
+        if hosted_tools:
+            tools_formatted.extend(hosted_tools)
+        if tools_formatted:
+            chat_args["tools"] = tools_formatted
 
         if self.config.tool_choice:
             chat_args["tool_choice"] = formatter.format_tool_choice(
@@ -679,10 +688,32 @@ class AnthropicChat(AnthropicClientBase):
         self,
         response: Message,
     ) -> ChatResponseUsage:
+        hosted_tool_usage = None
+        server_tool_use = getattr(response.usage, "server_tool_use", None)
+        if server_tool_use is not None:
+            server_tool_use_payload = None
+            if hasattr(server_tool_use, "model_dump"):
+                server_tool_use_payload = server_tool_use.model_dump()
+            elif isinstance(server_tool_use, dict):
+                server_tool_use_payload = server_tool_use
+
+            if server_tool_use_payload is not None:
+                request_counts: dict[str, int] = {}
+                billing_counts: dict[str, int] = {}
+                web_search_requests = server_tool_use_payload.get("web_search_requests")
+                if isinstance(web_search_requests, int) and web_search_requests > 0:
+                    request_counts = {"web_search": web_search_requests, "total": web_search_requests}
+                    billing_counts = {"web_search": web_search_requests}
+                hosted_tool_usage = HostedToolUsage(
+                    request_counts=request_counts,
+                    billing_counts=billing_counts,
+                    details={"provider_usage": {"server_tool_use": server_tool_use_payload}},
+                )
         return ChatResponseUsage(
             total_tokens=response.usage.input_tokens + response.usage.output_tokens,
             prompt_tokens=response.usage.input_tokens,
             completion_tokens=response.usage.output_tokens,
+            hosted_tool_usage=hosted_tool_usage,
         )
 
     def parse_response(self, response: object) -> ChatResponse:

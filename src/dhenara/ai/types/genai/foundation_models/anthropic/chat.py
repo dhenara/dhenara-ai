@@ -4,6 +4,7 @@ from dhenara.ai.types.genai.ai_model import (
     ChatModelCostData,
     ChatModelSettings,
     FoundationModel,
+    HostedToolCostRule,
 )
 
 ClaudeOpus47 = FoundationModel(
@@ -68,6 +69,16 @@ ClaudeSonnet46 = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=3.0,
         output_token_cost_per_million=15.0,
+        hosted_tool_cost_rules=[
+            HostedToolCostRule(
+                key="hosted_tool:web_search",
+                usage_bucket="billing_counts",
+                usage_key="web_search",
+                flat_cost_per_unit=0.01,
+                unit="search",
+                description="Anthropic web-search list price per search.",
+            )
+        ],
     ),
 )
 
@@ -133,6 +144,16 @@ ClaudeHaiku45 = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=1.0,
         output_token_cost_per_million=5.0,
+        hosted_tool_cost_rules=[
+            HostedToolCostRule(
+                key="hosted_tool:web_search",
+                usage_bucket="billing_counts",
+                usage_key="web_search",
+                flat_cost_per_unit=0.01,
+                unit="search",
+                description="Anthropic web-search list price per search.",
+            )
+        ],
     ),
 )
 

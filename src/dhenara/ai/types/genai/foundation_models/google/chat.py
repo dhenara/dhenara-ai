@@ -4,6 +4,7 @@ from dhenara.ai.types.genai.ai_model import (
     ChatModelCostData,
     ChatModelSettings,
     FoundationModel,
+    HostedToolCostRule,
 )
 
 Gemini3Pro = FoundationModel(
@@ -55,6 +56,16 @@ Gemini31ProPreview = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=2.0,
         output_token_cost_per_million=12.0,
+        hosted_tool_cost_rules=[
+            HostedToolCostRule(
+                key="hosted_tool:web_search_queries",
+                usage_bucket="billing_counts",
+                usage_key="web_search_queries",
+                flat_cost_per_unit=0.014,
+                unit="query",
+                description="Gemini 3 web-search grounding list price per search query.",
+            )
+        ],
     ),
 )
 
@@ -156,6 +167,16 @@ Gemini25Flash = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=0.30,
         output_token_cost_per_million=2.50,
+        hosted_tool_cost_rules=[
+            HostedToolCostRule(
+                key="hosted_tool:grounded_prompt",
+                usage_bucket="billing_counts",
+                usage_key="grounded_prompt",
+                flat_cost_per_unit=0.035,
+                unit="prompt",
+                description="Gemini 2.5 grounding list price per grounded prompt.",
+            )
+        ],
     ),
 )
 

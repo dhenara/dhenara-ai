@@ -19,6 +19,7 @@ from dhenara.ai.types.genai import (
     FunctionParameters,
     ToolChoice,
     ToolDefinition,
+    WebSearchHostedTool,
 )
 from dhenara.ai.types.genai.dhenara.request import Prompt, StructuredOutputConfig
 
@@ -161,6 +162,42 @@ def test_tools_and_tool_choice_in_args(text_endpoint, default_call_config):
     tool_choice = args.get("tool_choice")
     if not isinstance(tool_choice, dict) or tool_choice.get("name") != "fetch_signal":
         pytest.fail("Tool choice should target the specific function name")
+
+
+@pytest.mark.component
+@pytest.mark.case_id("DAI-120")
+def test_hosted_tools_in_openai_args(text_endpoint, default_call_config):
+    config = default_call_config.model_copy()
+    config.hosted_tools = [
+        WebSearchHostedTool(
+            allowed_domains=["openai.com"],
+            blocked_domains=["example.com"],
+            search_context_size="medium",
+            external_web_access=False,
+        )
+    ]
+
+    client = _make_responses_client(text_endpoint, config)
+    params = client.get_api_call_params(prompt=None, context=None, instructions=None, messages=None)
+    args = params.get("response_args") if isinstance(params, dict) else None
+
+    if not isinstance(args, dict):
+        pytest.fail("response_args should be returned as a dictionary")
+
+    tools_payload = args.get("tools")
+    if not isinstance(tools_payload, list) or not tools_payload:
+        pytest.fail("Hosted tools should appear in the OpenAI tools payload")
+
+    web_search_tool = tools_payload[0]
+    if web_search_tool.get("type") != "web_search":
+        pytest.fail("OpenAI web search should use the latest hosted web_search tool type")
+
+    filters = web_search_tool.get("filters")
+    if not isinstance(filters, dict) or filters.get("allowed_domains") != ["openai.com"]:
+        pytest.fail("OpenAI web search filters should preserve allowed domains")
+
+    if web_search_tool.get("external_web_access") is not False:
+        pytest.fail("OpenAI web search should carry external_web_access when configured")
 
 
 @pytest.mark.component

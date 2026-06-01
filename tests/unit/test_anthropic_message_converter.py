@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from dhenara.ai.providers.anthropic.message_converter import AnthropicMessageConverter
 from dhenara.ai.types.genai.dhenara.request import StructuredOutputConfig
+from dhenara.ai.types.genai.dhenara.response._content_items._chat_items import ChatResponseGenericContentItem
 
 pytestmark = [pytest.mark.unit]
 
@@ -72,3 +73,44 @@ def test_dai_115_anthropic_native_structured_output_skips_whitespace_text_block(
     assert items
     assert items[0].type == "text"
     assert items[0].get_text() == "\n\n"
+
+
+@pytest.mark.case_id("DAI-123")
+def test_dai_123_anthropic_server_tool_and_citations_are_preserved():
+    text_block = SimpleNamespace(
+        type="text",
+        text="Claude Shannon was born in 1916.",
+        citations=[{"type": "web_search_result_location", "url": "https://example.com", "title": "Example"}],
+    )
+    server_tool_use = SimpleNamespace(type="server_tool_use", id="srvtool_1", name="web_search", input={"query": "claude shannon"})
+    web_search_result = SimpleNamespace(
+        type="web_search_tool_result",
+        tool_use_id="srvtool_1",
+        content=[{"type": "web_search_result", "url": "https://example.com", "title": "Example"}],
+    )
+
+    text_items = AnthropicMessageConverter._content_block_to_items(
+        content_block=text_block,
+        index=0,
+        role="assistant",
+        structured_output_config=None,
+    )
+    assert text_items[0].message_contents[0].annotations[0]["url"] == "https://example.com"
+
+    server_items = AnthropicMessageConverter._content_block_to_items(
+        content_block=server_tool_use,
+        index=1,
+        role="assistant",
+        structured_output_config=None,
+    )
+    assert isinstance(server_items[0], ChatResponseGenericContentItem)
+    assert server_items[0].metadata["server_tool_use"]["name"] == "web_search"
+
+    result_items = AnthropicMessageConverter._content_block_to_items(
+        content_block=web_search_result,
+        index=2,
+        role="assistant",
+        structured_output_config=None,
+    )
+    assert isinstance(result_items[0], ChatResponseGenericContentItem)
+    assert result_items[0].metadata["web_search_tool_result"]["tool_use_id"] == "srvtool_1"

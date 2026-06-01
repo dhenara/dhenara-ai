@@ -4,6 +4,7 @@ from dhenara.ai.types.genai.ai_model import (
     ChatModelCostData,
     ChatModelSettings,
     FoundationModel,
+    HostedToolCostRule,
 )
 
 GPT55 = FoundationModel(
@@ -24,6 +25,16 @@ GPT55 = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=5.0,
         output_token_cost_per_million=30.0,
+        hosted_tool_cost_rules=[
+            HostedToolCostRule(
+                key="hosted_tool:web_search",
+                usage_bucket="billing_counts",
+                usage_key="web_search",
+                flat_cost_per_unit=0.01,
+                unit="call",
+                description="OpenAI web-search list price per call.",
+            )
+        ],
     ),
 )
 
@@ -45,6 +56,16 @@ GPT54 = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=2.5,
         output_token_cost_per_million=15.0,
+        hosted_tool_cost_rules=[
+            HostedToolCostRule(
+                key="hosted_tool:web_search",
+                usage_bucket="billing_counts",
+                usage_key="web_search",
+                flat_cost_per_unit=0.01,
+                unit="call",
+                description="OpenAI web-search list price per call.",
+            )
+        ],
     ),
 )
 
@@ -87,6 +108,16 @@ GPT54Mini = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=0.75,
         output_token_cost_per_million=4.5,
+        hosted_tool_cost_rules=[
+            HostedToolCostRule(
+                key="hosted_tool:web_search",
+                usage_bucket="billing_counts",
+                usage_key="web_search",
+                flat_cost_per_unit=0.01,
+                unit="call",
+                description="OpenAI web-search list price per call.",
+            )
+        ],
     ),
 )
 
@@ -108,6 +139,16 @@ GPT54Nano = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=0.2,
         output_token_cost_per_million=1.25,
+        hosted_tool_cost_rules=[
+            HostedToolCostRule(
+                key="hosted_tool:web_search",
+                usage_bucket="billing_counts",
+                usage_key="web_search",
+                flat_cost_per_unit=0.01,
+                unit="call",
+                description="OpenAI web-search list price per call.",
+            )
+        ],
     ),
 )
 
