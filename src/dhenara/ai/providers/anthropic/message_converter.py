@@ -227,12 +227,16 @@ class AnthropicMessageConverter(BaseMessageConverter):
             return items
 
         if content_block.type == "server_tool_use":
-            raw = content_block.model_dump() if hasattr(content_block, "model_dump") else {
-                "type": "server_tool_use",
-                "id": getattr(content_block, "id", None),
-                "name": getattr(content_block, "name", None),
-                "input": getattr(content_block, "input", None),
-            }
+            raw = (
+                content_block.model_dump()
+                if hasattr(content_block, "model_dump")
+                else {
+                    "type": "server_tool_use",
+                    "id": getattr(content_block, "id", None),
+                    "name": getattr(content_block, "name", None),
+                    "input": getattr(content_block, "input", None),
+                }
+            )
             return [
                 ChatResponseGenericContentItem(
                     index=index,
@@ -242,11 +246,15 @@ class AnthropicMessageConverter(BaseMessageConverter):
             ]
 
         if content_block.type == "web_search_tool_result":
-            raw = content_block.model_dump() if hasattr(content_block, "model_dump") else {
-                "type": "web_search_tool_result",
-                "tool_use_id": getattr(content_block, "tool_use_id", None),
-                "content": getattr(content_block, "content", None),
-            }
+            raw = (
+                content_block.model_dump()
+                if hasattr(content_block, "model_dump")
+                else {
+                    "type": "web_search_tool_result",
+                    "tool_use_id": getattr(content_block, "tool_use_id", None),
+                    "content": getattr(content_block, "content", None),
+                }
+            )
             return [
                 ChatResponseGenericContentItem(
                     index=index,

@@ -33,6 +33,7 @@ def _gemini25_grounded_prompt_cost_rules() -> list[HostedToolCostRule]:
         )
     ]
 
+
 Gemini3Pro = FoundationModel(
     model_name="gemini-3-pro-preview",
     display_name="Gemini 3 Pro Preview",

@@ -37,6 +37,13 @@ from dhenara.ai.utils.dai_disk import DAI_JSON
 logger = logging.getLogger(__name__)
 
 
+def _serialize_grounding_metadata(candidate: object) -> object:
+    grounding = getattr(candidate, "grounding_metadata", None) or getattr(candidate, "groundingMetadata", None)
+    if grounding is not None and hasattr(grounding, "model_dump"):
+        return grounding.model_dump()
+    return grounding
+
+
 models_not_supporting_system_instructions = ["gemini-1.0-pro"]
 
 
@@ -477,18 +484,7 @@ class GoogleAIChat(GoogleAIClientBase):
                         structured_output_config=self._get_structured_output_config(),
                     ),
                     metadata={
-                        "grounding_metadata": (
-                            getattr(candidate, "grounding_metadata", None).model_dump()
-                            if hasattr(getattr(candidate, "grounding_metadata", None), "model_dump")
-                            else (
-                                getattr(candidate, "groundingMetadata", None).model_dump()
-                                if hasattr(getattr(candidate, "groundingMetadata", None), "model_dump")
-                                else (
-                                    getattr(candidate, "grounding_metadata", None)
-                                    or getattr(candidate, "groundingMetadata", None)
-                                )
-                            )
-                        )
+                        "grounding_metadata": _serialize_grounding_metadata(candidate),
                     },
                 )
                 for choice_index, candidate in enumerate(response.candidates or [])

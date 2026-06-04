@@ -73,7 +73,5 @@ def get_hosted_tool_provider_spec(
     provider_specs = get_hosted_tool_support(tool.tool)
     provider_spec = provider_specs.get(provider)
     if provider_spec is None:
-        raise ValueError(
-            f"Hosted tool '{tool.tool}' is not supported for provider '{provider}'."
-        )
+        raise ValueError(f"Hosted tool '{tool.tool}' is not supported for provider '{provider}'.")
     return provider_spec

@@ -20,6 +20,7 @@ def _openai_web_search_cost_rules() -> list[HostedToolCostRule]:
         )
     ]
 
+
 GPT55 = FoundationModel(
     model_name="gpt-5.5",
     display_name="GPT-5.5",

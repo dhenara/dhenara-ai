@@ -82,7 +82,9 @@ def test_dai_123_anthropic_server_tool_and_citations_are_preserved():
         text="Claude Shannon was born in 1916.",
         citations=[{"type": "web_search_result_location", "url": "https://example.com", "title": "Example"}],
     )
-    server_tool_use = SimpleNamespace(type="server_tool_use", id="srvtool_1", name="web_search", input={"query": "claude shannon"})
+    server_tool_use = SimpleNamespace(
+        type="server_tool_use", id="srvtool_1", name="web_search", input={"query": "claude shannon"}
+    )
     web_search_result = SimpleNamespace(
         type="web_search_tool_result",
         tool_use_id="srvtool_1",

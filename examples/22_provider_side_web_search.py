@@ -38,7 +38,8 @@ def main() -> None:
     response = client.generate(
         messages=[
             Prompt.with_text(
-                "Use web search to answer this. Which city hosted the UEFA Euro 2024 final? Include at least one citation."
+                "Use web search to answer this. Which city hosted the UEFA Euro 2024 final? "
+                "Include at least one citation."
             )
         ]
     )

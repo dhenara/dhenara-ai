@@ -13,7 +13,6 @@ from dhenara.ai.types.genai.dhenara.request import (
 )
 from dhenara.ai.types.shared.base import BaseModel
 
-
 # TODO_FUTURE:
 # Create seperate class for the parameter required conversion,
 # class AIModelCallData(BaseModel):

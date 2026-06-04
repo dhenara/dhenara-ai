@@ -172,7 +172,9 @@ class ChatModelCostData(BaseCostData):
             ]
 
             hosted_tool_cost = 0.0
-            hosted_tool_usage = usage.hosted_tool_usage if isinstance(usage.hosted_tool_usage, HostedToolUsage) else None
+            hosted_tool_usage = (
+                usage.hosted_tool_usage if isinstance(usage.hosted_tool_usage, HostedToolUsage) else None
+            )
             if hosted_tool_usage:
                 for rule in self.hosted_tool_cost_rules or []:
                     try:

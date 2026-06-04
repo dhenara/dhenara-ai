@@ -34,34 +34,36 @@ from dhenara.ai.types.genai.foundation_models.anthropic.chat import (
     ClaudeSonnet46,
 )
 from dhenara.ai.types.genai.foundation_models.google.chat import (
+    Gemini3FlashPreview,
+    Gemini3Pro,
     Gemini25Flash,
     Gemini25FlashLite,
     Gemini25Pro,
-    Gemini3FlashPreview,
-    Gemini3Pro,
     Gemini31FlashLitePreview,
     Gemini31ProPreview,
 )
 from dhenara.ai.types.genai.foundation_models.openai.chat import (
     GPT5,
+    GPT51,
+    GPT52,
+    GPT54,
+    GPT55,
     GPT5Mini,
     GPT5Nano,
-    GPT51,
     GPT51Codex,
     GPT51CodexMini,
-    GPT52,
     GPT52Pro,
-    GPT54,
     GPT54Mini,
     GPT54Nano,
     GPT54Pro,
-    GPT55,
 )
 
 pytestmark = [pytest.mark.unit]
 
 
-def _make_endpoint(provider: AIModelProviderEnum, api_provider: AIModelAPIProviderEnum, model_name: str) -> AIModelEndpoint:
+def _make_endpoint(
+    provider: AIModelProviderEnum, api_provider: AIModelAPIProviderEnum, model_name: str
+) -> AIModelEndpoint:
     model = FoundationModel(
         model_name=model_name,
         display_name=model_name,
@@ -124,9 +126,7 @@ def test_dai_121_anthropic_hosted_web_search_in_chat_args():
 @pytest.mark.case_id("DAI-122")
 def test_dai_122_google_hosted_web_search_in_generate_config():
     ep = _make_endpoint(AIModelProviderEnum.GOOGLE_AI, AIModelAPIProviderEnum.GOOGLE_AI, "gemini-2.5-flash")
-    cfg = AIModelCallConfig(
-        hosted_tools=[WebSearchHostedTool()]
-    )
+    cfg = AIModelCallConfig(hosted_tools=[WebSearchHostedTool()])
     client = GoogleAIChat(model_endpoint=ep, config=cfg, is_async=False)
     client._client = object()
     client._input_validation_pending = False
@@ -182,9 +182,7 @@ def test_dai_124_anthropic_hosted_web_search_usage_is_normalized():
     assert usage.hosted_tool_usage is not None
     assert usage.hosted_tool_usage.request_counts == {"web_search": 2, "total": 2}
     assert usage.hosted_tool_usage.billing_counts == {"web_search": 2}
-    assert usage.hosted_tool_usage.details == {
-        "provider_usage": {"server_tool_use": {"web_search_requests": 2}}
-    }
+    assert usage.hosted_tool_usage.details == {"provider_usage": {"server_tool_use": {"web_search_requests": 2}}}
 
 
 @pytest.mark.case_id("DAI-125")

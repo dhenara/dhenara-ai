@@ -20,6 +20,7 @@ def _anthropic_web_search_cost_rules() -> list[HostedToolCostRule]:
         )
     ]
 
+
 ClaudeOpus47 = FoundationModel(
     model_name="claude-opus-4-7",
     display_name="Claude Opus 4.7",
