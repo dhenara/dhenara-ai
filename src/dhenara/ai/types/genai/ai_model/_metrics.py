@@ -1,6 +1,6 @@
 from typing import Any
 
-from pydantic import ConfigDict, Field, model_validator
+from pydantic import ConfigDict, Field
 
 from dhenara.ai.types.shared.base import BaseModel
 
@@ -61,24 +61,6 @@ class HostedToolUsage(BaseModel):
         default=None,
         description="Optional machine-readable hosted-tool details, including provider-specific usage payloads.",
     )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _normalize_legacy_fields(cls, data):
-        if isinstance(data, dict):
-            normalized = dict(data)
-            if "details" not in normalized and "metadata" in normalized:
-                normalized["details"] = normalized["metadata"]
-            return normalized
-        return data
-
-    @property
-    def metadata(self) -> dict[str, Any] | None:
-        return self.details
-
-    @metadata.setter
-    def metadata(self, value: dict[str, Any] | None) -> None:
-        self.details = value
 
 
 class ChatResponseUsage(BaseModel):

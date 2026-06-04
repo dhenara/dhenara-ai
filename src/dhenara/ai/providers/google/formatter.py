@@ -18,9 +18,9 @@ from dhenara.ai.types.genai.dhenara.request import (
     ToolCallResultsMessage,
     ToolChoice,
     ToolDefinition,
-    WebSearchHostedTool,
     get_hosted_tool_provider_spec,
 )
+from dhenara.ai.types.genai.dhenara.request._hosted_tools import HostedToolKind
 from dhenara.ai.types.genai.dhenara.request.data import FormattedPrompt
 from dhenara.ai.types.shared.file import FileFormatEnum, GenericFile, ProcessedFile
 
@@ -353,30 +353,30 @@ class GoogleFormatter(BaseFormatter):
 
         provider_spec = get_hosted_tool_provider_spec(tool, model_endpoint.ai_model.provider)
 
-        if isinstance(tool, WebSearchHostedTool):
-            unsupported_fields = []
-            if tool.allowed_domains:
-                unsupported_fields.append("allowed_domains")
-            if tool.blocked_domains:
-                unsupported_fields.append("blocked_domains")
-            if tool.user_location is not None:
-                unsupported_fields.append("user_location")
-            if tool.max_uses is not None:
-                unsupported_fields.append("max_uses")
-            if tool.search_context_size is not None:
-                unsupported_fields.append("search_context_size")
-            if tool.external_web_access is not None:
-                unsupported_fields.append("external_web_access")
-            if tool.return_token_budget is not None:
-                unsupported_fields.append("return_token_budget")
-            if unsupported_fields:
-                raise ValueError(
-                    "Google google_search does not support these hosted-tool web search options: "
-                    + ", ".join(sorted(unsupported_fields))
-                )
-            return {provider_spec.provider_tool_type: {}}
+        if tool.tool != HostedToolKind.WEB_SEARCH:
+            raise ValueError(f"Unsupported hosted tool for Google: {tool.tool}")
 
-        raise ValueError(f"Unsupported hosted tool for Google: {tool.tool}")
+        unsupported_fields = []
+        if tool.allowed_domains:
+            unsupported_fields.append("allowed_domains")
+        if tool.blocked_domains:
+            unsupported_fields.append("blocked_domains")
+        if tool.user_location is not None:
+            unsupported_fields.append("user_location")
+        if tool.max_uses is not None:
+            unsupported_fields.append("max_uses")
+        if tool.search_context_size is not None:
+            unsupported_fields.append("search_context_size")
+        if tool.external_web_access is not None:
+            unsupported_fields.append("external_web_access")
+        if tool.return_token_budget is not None:
+            unsupported_fields.append("return_token_budget")
+        if unsupported_fields:
+            raise ValueError(
+                "Google google_search does not support these hosted-tool web search options: "
+                + ", ".join(sorted(unsupported_fields))
+            )
+        return {provider_spec.provider_tool_type: {}}
 
     @classmethod
     def convert_tool_choice(
