@@ -27,8 +27,8 @@ ENABLE_COST_TRACKING = True
 """
 ENABLE_STREAMING_CONSOLIDATION = True
 
-# TODO:  Implement below settings
-API_TIMEOUT = 30
+# Default per-request timeout (seconds) when callers do not set AIModelCallConfig.timeout.
+API_TIMEOUT = 300
 MAX_RETRIES = 3
 
 # Debug Settings
