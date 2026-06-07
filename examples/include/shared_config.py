@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -10,6 +11,9 @@ from dhenara.ai.types.genai.dhenara.request import ArtifactConfig
 # Global switch to enable/disable artifacts for all examples
 # Set to False to disable artifact generation across all examples
 ENABLE_ARTIFACTS = True
+
+# Focus one provider at a time for live example runs: "openai", "anthropic", or "google".
+EXAMPLE_ACTIVE_PROVIDER = os.environ.get("EXAMPLE_ACTIVE_PROVIDER", "openai")
 
 # Ensure local src is importable when running examples directly
 _EXAMPLES_DIR = Path(__file__).resolve().parent.parent
@@ -49,7 +53,7 @@ def openai_endpoints(rc):
 
 def anthropic_endpoints(rc):
     from dhenara.ai.types import AIModelAPIProviderEnum, AIModelEndpoint
-    from dhenara.ai.types.genai.foundation_models.anthropic.chat import ClaudeHaiku45, ClaudeSonnet45
+    from dhenara.ai.types.genai.foundation_models.anthropic.chat import ClaudeHaiku45, ClaudeSonnet46
 
     anthropic_api = rc.get_api(AIModelAPIProviderEnum.ANTHROPIC)
     if anthropic_api is None:
@@ -57,21 +61,21 @@ def anthropic_endpoints(rc):
     # Single source of truth: pick the models you want to use across examples here
     return [
         AIModelEndpoint(api=anthropic_api, ai_model=ClaudeHaiku45),
-        AIModelEndpoint(api=anthropic_api, ai_model=ClaudeSonnet45),
+        AIModelEndpoint(api=anthropic_api, ai_model=ClaudeSonnet46),
     ]
 
 
 def google_endpoints(rc):
     from dhenara.ai.types import AIModelAPIProviderEnum, AIModelEndpoint
-    from dhenara.ai.types.genai.foundation_models.google.chat import Gemini25Flash, Gemini25FlashLite
+    from dhenara.ai.types.genai.foundation_models.google.chat import Gemini31FlashLite, Gemini35Flash
 
     google_api = rc.get_api(AIModelAPIProviderEnum.GOOGLE_AI)
     if google_api is None:
         return []
     # Single source of truth: pick the models you want to use across examples here
     return [
-        AIModelEndpoint(api=google_api, ai_model=Gemini25Flash),
-        AIModelEndpoint(api=google_api, ai_model=Gemini25FlashLite),
+        AIModelEndpoint(api=google_api, ai_model=Gemini35Flash),
+        AIModelEndpoint(api=google_api, ai_model=Gemini31FlashLite),
     ]
 
 
@@ -103,7 +107,16 @@ def all_endpoints(rc):
     # Default examples use the direct provider set, which works with only the
     # documented secret-directory credentials and avoids extra deployment or
     # regional constraints from hosted variants.
-    return openai_endpoints(rc) + anthropic_endpoints(rc) + google_endpoints(rc)
+    provider = EXAMPLE_ACTIVE_PROVIDER.strip().lower()
+    if provider == "openai":
+        return openai_endpoints(rc)
+    if provider == "anthropic":
+        return anthropic_endpoints(rc)
+    if provider == "google":
+        return google_endpoints(rc)
+    raise ValueError(
+        f"Unsupported EXAMPLE_ACTIVE_PROVIDER={EXAMPLE_ACTIVE_PROVIDER!r}; expected openai, anthropic, or google"
+    )
 
 
 def generate_run_dirname() -> str:

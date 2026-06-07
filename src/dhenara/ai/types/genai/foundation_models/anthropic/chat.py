@@ -21,6 +21,31 @@ def _anthropic_web_search_cost_rules() -> list[HostedToolCostRule]:
     ]
 
 
+ClaudeOpus48 = FoundationModel(
+    model_name="claude-opus-4-8",
+    display_name="Claude Opus 4.8",
+    provider=AIModelProviderEnum.ANTHROPIC,
+    functional_type=AIModelFunctionalTypeEnum.TEXT_GENERATION,
+    settings=ChatModelSettings(
+        max_context_window_tokens=1000000,
+        max_output_tokens=128000,
+        supports_reasoning=True,
+        max_reasoning_tokens=32000,
+        max_output_tokens_reasoning_mode=128000,
+    ),
+    valid_options={},
+    metadata={
+        "details": "Anthropic's latest Opus model for complex reasoning, agentic coding, and knowledge work.",
+    },
+    order=77,
+    cost_data=ChatModelCostData(
+        input_token_cost_per_million=5.0,
+        output_token_cost_per_million=25.0,
+        hosted_tool_cost_rules=_anthropic_web_search_cost_rules(),
+    ),
+)
+
+
 ClaudeOpus47 = FoundationModel(
     model_name="claude-opus-4-7",
     display_name="Claude Opus 4.7",
@@ -293,6 +318,7 @@ Claude3Opus = FoundationModel(
 
 Claude40Sonnet = ClaudeSonnet40
 CHAT_MODELS = [
+    ClaudeOpus48,
     ClaudeOpus47,
     ClaudeOpus46,
     ClaudeSonnet46,

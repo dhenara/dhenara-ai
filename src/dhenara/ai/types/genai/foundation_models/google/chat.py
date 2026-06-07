@@ -62,6 +62,33 @@ Gemini3Pro = FoundationModel(
 )
 
 
+Gemini35Flash = FoundationModel(
+    model_name="gemini-3.5-flash",
+    display_name="Gemini 3.5 Flash",
+    provider=AIModelProviderEnum.GOOGLE_AI,
+    functional_type=AIModelFunctionalTypeEnum.TEXT_GENERATION,
+    settings=ChatModelSettings(
+        max_input_tokens=1048576,
+        max_output_tokens=65536,
+        supports_reasoning=True,
+        max_reasoning_tokens=32768,
+        max_output_tokens_reasoning_mode=64000,
+    ),
+    valid_options={},
+    metadata={
+        "details": "GoogleAI Gemini 3.5 Flash stable model for agentic and coding workloads.",
+        "display_order": 10,
+        "google_vertex_location": "global",
+    },
+    order=49,
+    cost_data=ChatModelCostData(
+        input_token_cost_per_million=1.5,
+        output_token_cost_per_million=9.0,
+        hosted_tool_cost_rules=_gemini3_web_search_cost_rules(),
+    ),
+)
+
+
 Gemini31ProPreview = FoundationModel(
     model_name="gemini-3.1-pro-preview",
     display_name="Gemini 3.1 Pro Preview",
@@ -76,7 +103,37 @@ Gemini31ProPreview = FoundationModel(
     ),
     valid_options={},
     metadata={
-        "details": "GoogleAI Gemini 3.1 Pro Preview model.",
+        "details": "GoogleAI Gemini 3.1 Pro Preview model. Still in public preview as of June 2026.",
+        "display_order": 10,
+        "google_vertex_location": "global",
+    },
+    order=50,
+    cost_data=ChatModelCostData(
+        input_token_cost_per_million=2.0,
+        output_token_cost_per_million=12.0,
+        hosted_tool_cost_rules=_gemini3_web_search_cost_rules(),
+    ),
+)
+
+
+Gemini31ProPreviewCustomTools = FoundationModel(
+    model_name="gemini-3.1-pro-preview-customtools",
+    display_name="Gemini 3.1 Pro Preview (Custom Tools)",
+    provider=AIModelProviderEnum.GOOGLE_AI,
+    functional_type=AIModelFunctionalTypeEnum.TEXT_GENERATION,
+    settings=ChatModelSettings(
+        max_input_tokens=1048576,
+        max_output_tokens=65536,
+        supports_reasoning=True,
+        max_reasoning_tokens=32768,
+        max_output_tokens_reasoning_mode=64000,
+    ),
+    valid_options={},
+    metadata={
+        "details": (
+            "GoogleAI Gemini 3.1 Pro Preview endpoint optimized for agentic workflows "
+            "that combine bash and custom tools."
+        ),
         "display_order": 10,
         "google_vertex_location": "global",
     },
@@ -103,7 +160,10 @@ Gemini3FlashPreview = FoundationModel(
     ),
     valid_options={},
     metadata={
-        "details": "GoogleAI Gemini 3 Flash Preview model.",
+        "details": (
+            "GoogleAI Gemini 3 Flash Preview model. Prefer Gemini 3.5 Flash for production; "
+            "keep this preview endpoint for Computer Use workloads."
+        ),
         "display_order": 10,
         "google_vertex_location": "global",
     },
@@ -111,6 +171,33 @@ Gemini3FlashPreview = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=0.5,
         output_token_cost_per_million=3.0,
+        hosted_tool_cost_rules=_gemini3_web_search_cost_rules(),
+    ),
+)
+
+
+Gemini31FlashLite = FoundationModel(
+    model_name="gemini-3.1-flash-lite",
+    display_name="Gemini 3.1 Flash-Lite",
+    provider=AIModelProviderEnum.GOOGLE_AI,
+    functional_type=AIModelFunctionalTypeEnum.TEXT_GENERATION,
+    settings=ChatModelSettings(
+        max_input_tokens=1048576,
+        max_output_tokens=65536,
+        supports_reasoning=True,
+        max_reasoning_tokens=24576,
+        max_output_tokens_reasoning_mode=64000,
+    ),
+    valid_options={},
+    metadata={
+        "details": "GoogleAI Gemini 3.1 Flash-Lite stable model for high-volume lightweight tasks.",
+        "display_order": 10,
+        "google_vertex_location": "global",
+    },
+    order=52,
+    cost_data=ChatModelCostData(
+        input_token_cost_per_million=0.25,
+        output_token_cost_per_million=1.5,
         hosted_tool_cost_rules=_gemini3_web_search_cost_rules(),
     ),
 )
@@ -130,8 +217,9 @@ Gemini31FlashLitePreview = FoundationModel(
     ),
     valid_options={},
     metadata={
-        "details": "GoogleAI Gemini 3.1 Flash-Lite Preview model.",
+        "details": "Deprecated preview shut down on 2026-05-25. Use Gemini 3.1 Flash-Lite instead.",
         "display_order": 10,
+        "deprecated": True,
         "google_vertex_location": "global",
     },
     order=52,
@@ -230,8 +318,9 @@ Gemini20Flash = FoundationModel(
     ),
     valid_options={},
     metadata={
-        "details": "GoogleAI gemini-2.0-flash model",
+        "details": "Deprecated model shut down on 2026-06-01. Use Gemini 3.5 Flash or Gemini 3.1 Flash-Lite instead.",
         "display_order": 10,
+        "deprecated": True,
     },
     order=82,
     cost_data=ChatModelCostData(
@@ -251,8 +340,9 @@ Gemini20FlashLite = FoundationModel(
     ),
     valid_options={},
     metadata={
-        "details": "GoogleAI gemini-2.0-flash-light model",
+        "details": "Deprecated model shut down on 2026-06-01. Use Gemini 3.1 Flash-Lite instead.",
         "display_order": 10,
+        "deprecated": True,
     },
     order=83,
     cost_data=ChatModelCostData(
@@ -303,14 +393,14 @@ Gemini15Flash = FoundationModel(
 )
 
 CHAT_MODELS = [
+    Gemini35Flash,
     Gemini31ProPreview,
+    Gemini31ProPreviewCustomTools,
     Gemini3FlashPreview,
-    Gemini31FlashLitePreview,
+    Gemini31FlashLite,
     Gemini25Pro,
     Gemini25Flash,
     Gemini25FlashLite,
-    Gemini20Flash,
-    Gemini20FlashLite,
     Gemini15Flash,
     Gemini15Pro,
 ]

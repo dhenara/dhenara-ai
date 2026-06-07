@@ -30,6 +30,7 @@ from dhenara.ai.types.genai.foundation_models.anthropic.chat import (
     ClaudeOpus45,
     ClaudeOpus46,
     ClaudeOpus47,
+    ClaudeOpus48,
     ClaudeSonnet45,
     ClaudeSonnet46,
 )
@@ -39,8 +40,11 @@ from dhenara.ai.types.genai.foundation_models.google.chat import (
     Gemini25Flash,
     Gemini25FlashLite,
     Gemini25Pro,
+    Gemini31FlashLite,
     Gemini31FlashLitePreview,
     Gemini31ProPreview,
+    Gemini31ProPreviewCustomTools,
+    Gemini35Flash,
 )
 from dhenara.ai.types.genai.foundation_models.openai.chat import (
     GPT5,
@@ -242,7 +246,15 @@ def test_dai_126_current_foundation_models_include_hosted_web_search_cost_rules(
         assert rules[0].usage_key == "web_search"
         assert rules[0].flat_cost_per_unit == 0.01
 
-    anthropic_models = [ClaudeOpus47, ClaudeOpus46, ClaudeSonnet46, ClaudeOpus45, ClaudeSonnet45, ClaudeHaiku45]
+    anthropic_models = [
+        ClaudeOpus48,
+        ClaudeOpus47,
+        ClaudeOpus46,
+        ClaudeSonnet46,
+        ClaudeOpus45,
+        ClaudeSonnet45,
+        ClaudeHaiku45,
+    ]
     for model in anthropic_models:
         rules = model.cost_data.hosted_tool_cost_rules
         assert rules is not None
@@ -250,7 +262,15 @@ def test_dai_126_current_foundation_models_include_hosted_web_search_cost_rules(
         assert rules[0].usage_key == "web_search"
         assert rules[0].flat_cost_per_unit == 0.01
 
-    gemini3_models = [Gemini3Pro, Gemini31ProPreview, Gemini3FlashPreview, Gemini31FlashLitePreview]
+    gemini3_models = [
+        Gemini3Pro,
+        Gemini35Flash,
+        Gemini31ProPreview,
+        Gemini31ProPreviewCustomTools,
+        Gemini3FlashPreview,
+        Gemini31FlashLite,
+        Gemini31FlashLitePreview,
+    ]
     for model in gemini3_models:
         rules = model.cost_data.hosted_tool_cost_rules
         assert rules is not None

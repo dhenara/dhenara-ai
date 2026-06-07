@@ -9,8 +9,9 @@ from dhenara.ai.types.genai.ai_model import AIModelAPIProviderEnum
 from dhenara.ai.types.genai.foundation_models.google.chat import (
     Gemini3FlashPreview,
     Gemini25Pro,
-    Gemini31FlashLitePreview,
+    Gemini31FlashLite,
     Gemini31ProPreview,
+    Gemini35Flash,
 )
 
 pytestmark = [pytest.mark.unit]
@@ -30,9 +31,10 @@ def _build_vertex_client(ai_model: object, configured_location: str = "us-centra
 @pytest.mark.parametrize(
     "ai_model",
     [
+        Gemini35Flash,
         Gemini31ProPreview,
         Gemini3FlashPreview,
-        Gemini31FlashLitePreview,
+        Gemini31FlashLite,
     ],
 )
 def test_dai_301_google_vertex_uses_global_location_for_models_marked_global_only(
