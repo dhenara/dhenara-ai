@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import Field, model_validator
@@ -19,6 +19,33 @@ from dhenara.ai.types.shared.base import BaseModel
 #    tools: list[ToolDefinition] | None = None
 #    tool_choice: ToolChoice | None = None
 #    structured_output: StructuredOutputConfig | None = None
+
+
+class AIModelContextPolicy(BaseModel):
+    """Provider-neutral context management request policy.
+
+    The policy is intentionally small. Providers map only the parts they
+    explicitly support and ignore the rest instead of emulating context
+    management at the provider layer.
+    """
+
+    mode: Literal[
+        "provider_compaction",
+        "provider_context_editing",
+        "client_compaction",
+        "fail_closed",
+    ] = "fail_closed"
+    compact_threshold_tokens: int | None = Field(
+        default=None,
+        ge=1,
+        description="Input-token threshold that should trigger provider-side compaction when supported.",
+    )
+    edits: list[dict[str, Any]] | None = Field(
+        default=None,
+        description="Provider-native context-management edit objects for APIs that expose them.",
+    )
+    pause_after_compaction: bool | None = None
+    instructions: str | None = None
 
 
 class AIModelCallConfig(BaseModel):
@@ -56,6 +83,7 @@ class AIModelCallConfig(BaseModel):
     api_version_override: str | None = None
 
     artifact_config: ArtifactConfig | None = None
+    context_policy: AIModelContextPolicy | None = None
 
     @model_validator(mode="after")
     def validate_structured_output(self) -> "AIModelCallConfig":

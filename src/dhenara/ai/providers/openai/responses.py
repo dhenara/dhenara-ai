@@ -114,6 +114,19 @@ class OpenAIResponses(OpenAIClientBase):
             "input": input_messages,
             "stream": self.config.streaming,
         }
+        context_policy = getattr(self.config, "context_policy", None)
+        if (
+            context_policy is not None
+            and context_policy.mode == "provider_compaction"
+            and context_policy.compact_threshold_tokens is not None
+            and api.provider == AIModelAPIProviderEnum.OPEN_AI
+        ):
+            args["context_management"] = [
+                {
+                    "type": "compaction",
+                    "compact_threshold": int(context_policy.compact_threshold_tokens),
+                }
+            ]
         if instructions:
             if not isinstance(instructions, dict):
                 raise ValueError(

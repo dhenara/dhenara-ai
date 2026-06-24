@@ -37,7 +37,7 @@ from dhenara.ai.types.genai import (
     ChatResponseUsage,
     StreamingChatResponse,
 )
-from dhenara.ai.types.genai.ai_model import HostedToolUsage
+from dhenara.ai.types.genai.ai_model import AIModelAPIProviderEnum, HostedToolUsage
 from dhenara.ai.types.genai.dhenara.request import MessageItem, Prompt, SystemInstruction
 from dhenara.ai.types.shared.api import SSEErrorResponse
 from dhenara.ai.utils.dai_disk import DAI_JSON
@@ -73,6 +73,15 @@ _NON_ADAPTIVE_THINKING_MODELS = frozenset(
 
 # -----------------------------------------------------------------------------
 class AnthropicChat(AnthropicClientBase):
+    @staticmethod
+    def _messages_resource(client: Any, *, use_beta: bool) -> Any:
+        if use_beta:
+            beta = getattr(client, "beta", None)
+            messages = getattr(beta, "messages", None) if beta is not None else None
+            if messages is not None:
+                return messages
+        return client.messages
+
     def _get_base_model_name(self) -> str:
         """Return the canonical foundation-model name (no version suffix)."""
         model = getattr(self.model_endpoint, "ai_model", None)
@@ -125,6 +134,44 @@ class AnthropicChat(AnthropicClientBase):
         # For Anthropic adaptive thinking, supported values include low/medium/high/max.
         # We allow passing through "max" if present.
         return effort
+
+    def _apply_context_policy(self, chat_args: dict[str, Any]) -> None:
+        policy = getattr(self.config, "context_policy", None)
+        if policy is None:
+            return
+        if self.model_endpoint.api.provider not in {
+            AIModelAPIProviderEnum.ANTHROPIC,
+            AIModelAPIProviderEnum.GOOGLE_VERTEX_AI,
+            AIModelAPIProviderEnum.AMAZON_BEDROCK,
+        }:
+            return
+
+        betas: list[str] = []
+        raw_betas = chat_args.get("betas")
+        if isinstance(raw_betas, list):
+            betas.extend(str(item) for item in raw_betas)
+
+        if policy.mode == "provider_compaction":
+            edit: dict[str, Any] = {"type": "compact_20260112"}
+            if policy.compact_threshold_tokens is not None:
+                edit["trigger"] = {
+                    "type": "input_tokens",
+                    "value": int(policy.compact_threshold_tokens),
+                }
+            if policy.pause_after_compaction is not None:
+                edit["pause_after_compaction"] = bool(policy.pause_after_compaction)
+            if policy.instructions:
+                edit["instructions"] = str(policy.instructions)
+            chat_args["context_management"] = {"edits": [edit]}
+            if "compact-2026-01-12" not in betas:
+                betas.append("compact-2026-01-12")
+        elif policy.mode == "provider_context_editing" and policy.edits:
+            chat_args["context_management"] = {"edits": list(policy.edits)}
+            if "context-management-2025-06-27" not in betas:
+                betas.append("context-management-2025-06-27")
+
+        if betas:
+            chat_args["betas"] = betas
 
     def get_api_call_params(
         self,
@@ -211,6 +258,8 @@ class AnthropicChat(AnthropicClientBase):
 
         if self.config.options:
             chat_args.update(self.config.options)
+
+        self._apply_context_policy(chat_args)
 
         # ---  Tools ---
         tools_formatted: list[dict[str, Any]] = []
@@ -320,7 +369,7 @@ class AnthropicChat(AnthropicClientBase):
         client = self._client
         if client is None:
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
-        response = client.messages.create(**chat_args)
+        response = self._messages_resource(client, use_beta=bool(chat_args.get("betas"))).create(**chat_args)
         return response
 
     async def do_api_call_async(
@@ -331,7 +380,7 @@ class AnthropicChat(AnthropicClientBase):
         client = self._client
         if client is None:
             raise RuntimeError("Client not initialized. Use with 'async with' context manager")
-        response = await client.messages.create(**chat_args)
+        response = await self._messages_resource(client, use_beta=bool(chat_args.get("betas"))).create(**chat_args)
         return response
 
     def do_streaming_api_call_sync(
@@ -348,7 +397,7 @@ class AnthropicChat(AnthropicClientBase):
             # Use SDK stream context to access final aggregated message
             _args = dict(chat_args)
             _args.pop("stream", None)
-            with client.messages.stream(**_args) as stream:
+            with self._messages_resource(client, use_beta=bool(_args.get("betas"))).stream(**_args) as stream:
                 yield from stream
                 try:
                     # Get native final message and prefer it for finalization
@@ -374,7 +423,7 @@ class AnthropicChat(AnthropicClientBase):
             # Use SDK async stream context to access final aggregated message
             _args = dict(chat_args)
             _args.pop("stream", None)
-            async with client.messages.stream(**_args) as stream:
+            async with self._messages_resource(client, use_beta=bool(_args.get("betas"))).stream(**_args) as stream:
                 async for event in stream:
                     yield event
                 try:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 
@@ -19,6 +20,7 @@ from dhenara.ai.types.genai.ai_model import (
 )
 from dhenara.ai.types.genai.dhenara.request import (
     AIModelCallConfig,
+    AIModelContextPolicy,
     FunctionDefinition,
     FunctionParameter,
     FunctionParameters,
@@ -61,6 +63,11 @@ from dhenara.ai.types.genai.foundation_models.openai.chat import (
     GPT54Nano,
     GPT54Pro,
 )
+
+
+def _provider_response(value: object) -> Any:
+    return cast(Any, value)
+
 
 pytestmark = [pytest.mark.unit]
 
@@ -144,6 +151,105 @@ def test_dai_122_google_hosted_web_search_in_generate_config():
     assert getattr(tools[0], "google_search", None) is not None
 
 
+@pytest.mark.case_id("DAI-133")
+def test_dai_133_openai_context_policy_maps_to_responses_compaction():
+    ep = _make_endpoint(AIModelProviderEnum.OPEN_AI, AIModelAPIProviderEnum.OPEN_AI, "gpt-5")
+    cfg = AIModelCallConfig(
+        context_policy=AIModelContextPolicy(
+            mode="provider_compaction",
+            compact_threshold_tokens=200000,
+        )
+    )
+    client = OpenAIResponses(model_endpoint=ep, config=cfg, is_async=False)
+    client._client = object()
+    client._input_validation_pending = False
+
+    params = client.get_api_call_params(prompt={"role": "user", "content": [{"type": "input_text", "text": "hi"}]})
+    args = params["response_args"]
+
+    assert args["context_management"] == [{"type": "compaction", "compact_threshold": 200000}]
+
+
+@pytest.mark.case_id("DAI-134")
+def test_dai_134_anthropic_context_policy_maps_to_beta_compaction():
+    ep = _make_endpoint(AIModelProviderEnum.ANTHROPIC, AIModelAPIProviderEnum.ANTHROPIC, "claude-opus-4-8")
+    cfg = AIModelCallConfig(
+        context_policy=AIModelContextPolicy(
+            mode="provider_compaction",
+            compact_threshold_tokens=100000,
+            pause_after_compaction=True,
+        )
+    )
+    client = AnthropicChat(model_endpoint=ep, config=cfg, is_async=False)
+    client._client = object()
+    client._input_validation_pending = False
+
+    params = client.get_api_call_params(prompt={"role": "user", "content": "hi"})
+    chat_args = params["chat_args"]
+
+    assert chat_args["betas"] == ["compact-2026-01-12"]
+    assert chat_args["context_management"] == {
+        "edits": [
+            {
+                "type": "compact_20260112",
+                "trigger": {"type": "input_tokens", "value": 100000},
+                "pause_after_compaction": True,
+            }
+        ]
+    }
+
+
+@pytest.mark.case_id("DAI-136")
+def test_dai_136_anthropic_beta_context_policy_uses_beta_messages_resource():
+    ep = _make_endpoint(AIModelProviderEnum.ANTHROPIC, AIModelAPIProviderEnum.ANTHROPIC, "claude-opus-4-8")
+    cfg = AIModelCallConfig(
+        context_policy=AIModelContextPolicy(
+            mode="provider_compaction",
+            compact_threshold_tokens=100000,
+        )
+    )
+    client = AnthropicChat(model_endpoint=ep, config=cfg, is_async=False)
+
+    class Messages:
+        def __init__(self, label: str, calls: list[str]):
+            self.label = label
+            self.calls = calls
+
+        def create(self, **kwargs):
+            self.calls.append(self.label)
+            return SimpleNamespace(content=[])
+
+    calls: list[str] = []
+    client._client = SimpleNamespace(
+        messages=Messages("stable", calls), beta=SimpleNamespace(messages=Messages("beta", calls))
+    )
+    client._input_validation_pending = False
+
+    params = client.get_api_call_params(prompt={"role": "user", "content": "hi"})
+    client.do_api_call_sync(params)
+
+    assert calls == ["beta"]
+
+
+@pytest.mark.case_id("DAI-135")
+def test_dai_135_google_context_policy_is_noop():
+    ep = _make_endpoint(AIModelProviderEnum.GOOGLE_AI, AIModelAPIProviderEnum.GOOGLE_AI, "gemini-2.5-flash")
+    cfg = AIModelCallConfig(
+        context_policy=AIModelContextPolicy(
+            mode="provider_compaction",
+            compact_threshold_tokens=100000,
+        )
+    )
+    client = GoogleAIChat(model_endpoint=ep, config=cfg, is_async=False)
+    client._client = object()
+    client._input_validation_pending = False
+
+    params = client.get_api_call_params(prompt={"role": "user", "parts": [{"text": "hi"}]})
+
+    assert "context_management" not in params
+    assert not hasattr(params["generate_config"], "context_management")
+
+
 @pytest.mark.case_id("DAI-123")
 def test_dai_123_openai_hosted_web_search_usage_is_normalized():
     ep = _make_endpoint(AIModelProviderEnum.OPEN_AI, AIModelAPIProviderEnum.OPEN_AI, "gpt-5")
@@ -174,11 +280,13 @@ def test_dai_124_anthropic_hosted_web_search_usage_is_normalized():
     client = AnthropicChat(model_endpoint=ep, config=AIModelCallConfig(), is_async=False)
 
     usage = client._get_usage_from_provider_response(
-        SimpleNamespace(
-            usage=SimpleNamespace(
-                input_tokens=100,
-                output_tokens=50,
-                server_tool_use=SimpleNamespace(model_dump=lambda: {"web_search_requests": 2}),
+        _provider_response(
+            SimpleNamespace(
+                usage=SimpleNamespace(
+                    input_tokens=100,
+                    output_tokens=50,
+                    server_tool_use=SimpleNamespace(model_dump=lambda: {"web_search_requests": 2}),
+                )
             )
         )
     )
@@ -195,21 +303,23 @@ def test_dai_125_google_hosted_web_search_usage_is_normalized():
     client = GoogleAIChat(model_endpoint=ep, config=AIModelCallConfig(), is_async=False)
 
     usage = client._get_usage_from_provider_response(
-        SimpleNamespace(
-            usage_metadata=SimpleNamespace(
-                total_token_count=210,
-                prompt_token_count=100,
-                candidates_token_count=80,
-                thoughts_token_count=20,
-                tool_use_prompt_token_count=10,
-            ),
-            candidates=[
-                SimpleNamespace(
-                    grounding_metadata=SimpleNamespace(
-                        web_search_queries=["latest news"],
+        _provider_response(
+            SimpleNamespace(
+                usage_metadata=SimpleNamespace(
+                    total_token_count=210,
+                    prompt_token_count=100,
+                    candidates_token_count=80,
+                    thoughts_token_count=20,
+                    tool_use_prompt_token_count=10,
+                ),
+                candidates=[
+                    SimpleNamespace(
+                        grounding_metadata=SimpleNamespace(
+                            web_search_queries=["latest news"],
+                        )
                     )
-                )
-            ],
+                ],
+            )
         )
     )
 
@@ -240,7 +350,7 @@ def test_dai_126_current_foundation_models_include_hosted_web_search_cost_rules(
         GPT5Nano,
     ]
     for model in openai_models:
-        rules = model.cost_data.hosted_tool_cost_rules
+        rules = cast(ChatModelCostData, model.cost_data).hosted_tool_cost_rules
         assert rules is not None
         assert len(rules) == 1
         assert rules[0].usage_key == "web_search"
@@ -256,7 +366,7 @@ def test_dai_126_current_foundation_models_include_hosted_web_search_cost_rules(
         ClaudeHaiku45,
     ]
     for model in anthropic_models:
-        rules = model.cost_data.hosted_tool_cost_rules
+        rules = cast(ChatModelCostData, model.cost_data).hosted_tool_cost_rules
         assert rules is not None
         assert len(rules) == 1
         assert rules[0].usage_key == "web_search"
@@ -272,7 +382,7 @@ def test_dai_126_current_foundation_models_include_hosted_web_search_cost_rules(
         Gemini31FlashLitePreview,
     ]
     for model in gemini3_models:
-        rules = model.cost_data.hosted_tool_cost_rules
+        rules = cast(ChatModelCostData, model.cost_data).hosted_tool_cost_rules
         assert rules is not None
         assert len(rules) == 1
         assert rules[0].usage_key == "web_search_queries"
@@ -280,7 +390,7 @@ def test_dai_126_current_foundation_models_include_hosted_web_search_cost_rules(
 
     gemini25_models = [Gemini25Pro, Gemini25Flash, Gemini25FlashLite]
     for model in gemini25_models:
-        rules = model.cost_data.hosted_tool_cost_rules
+        rules = cast(ChatModelCostData, model.cost_data).hosted_tool_cost_rules
         assert rules is not None
         assert len(rules) == 1
         assert rules[0].usage_key == "grounded_prompt"
@@ -391,15 +501,17 @@ def test_dai_131_google_hosted_tool_usage_failure_preserves_token_usage(caplog):
 
     with caplog.at_level("ERROR"):
         usage = client._get_usage_from_provider_response(
-            SimpleNamespace(
-                usage_metadata=SimpleNamespace(
-                    total_token_count=210,
-                    prompt_token_count=100,
-                    candidates_token_count=80,
-                    thoughts_token_count=20,
-                    tool_use_prompt_token_count=10,
-                ),
-                candidates=[BadCandidate()],
+            _provider_response(
+                SimpleNamespace(
+                    usage_metadata=SimpleNamespace(
+                        total_token_count=210,
+                        prompt_token_count=100,
+                        candidates_token_count=80,
+                        thoughts_token_count=20,
+                        tool_use_prompt_token_count=10,
+                    ),
+                    candidates=[BadCandidate()],
+                )
             )
         )
 
@@ -422,11 +534,13 @@ def test_dai_132_anthropic_hosted_tool_usage_failure_preserves_token_usage(caplo
 
     with caplog.at_level("ERROR"):
         usage = client._get_usage_from_provider_response(
-            SimpleNamespace(
-                usage=SimpleNamespace(
-                    input_tokens=100,
-                    output_tokens=50,
-                    server_tool_use=BadServerToolUse(),
+            _provider_response(
+                SimpleNamespace(
+                    usage=SimpleNamespace(
+                        input_tokens=100,
+                        output_tokens=50,
+                        server_tool_use=BadServerToolUse(),
+                    )
                 )
             )
         )
