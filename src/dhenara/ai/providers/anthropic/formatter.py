@@ -303,7 +303,10 @@ class AnthropicFormatter(BaseFormatter):
         if not schema:
             return {"type": "object"}
 
-        # Manual transform: remove common unsupported constraints and force strict object-typing.
+        # Manual transform: remove common unsupported constraints and non-contract
+        # metadata, then force strict object-typing. The metadata is useful in
+        # tool schemas, but in native constrained decoding it inflates Anthropic's
+        # compiled grammar without changing the accepted JSON shape.
         #
         # Key detail: Anthropic's constrained decoding compiles a grammar from the provided schema.
         # If many object properties are optional, the grammar can blow up combinatorially (all
@@ -319,6 +322,9 @@ class AnthropicFormatter(BaseFormatter):
             "minItems",
             "maxItems",
             "pattern",
+            "title",
+            "description",
+            "default",
         }
 
         def _walk(node: Any) -> Any:

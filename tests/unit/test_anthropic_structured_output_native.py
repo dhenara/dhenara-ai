@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from dhenara.ai.providers.anthropic.chat import AnthropicChat
 from dhenara.ai.types import AIModelCallConfig, AIModelEndpoint
@@ -29,6 +29,32 @@ class TravelPlan(BaseModel):
     interests: list[str]
 
 
+class VerboseChild(BaseModel):
+    primary: str = Field(description="Primary nested value with intentionally verbose schema metadata.")
+    secondary: str | None = Field(
+        default=None,
+        description="Secondary optional nested value with intentionally verbose schema metadata.",
+    )
+    notes: list[str] = Field(
+        default_factory=list,
+        description="Nested note rows with intentionally verbose schema metadata.",
+    )
+
+
+class VerboseEnvelope(BaseModel):
+    child_a: VerboseChild = Field(description="First nested child object with verbose descriptive metadata.")
+    child_b: VerboseChild | None = Field(
+        default=None,
+        description="Second optional nested child object with verbose descriptive metadata.",
+    )
+    child_rows: list[VerboseChild] = Field(description="Repeated child rows with verbose descriptive metadata.")
+    summary: str | None = Field(default=None, description="Optional prose summary with verbose metadata.")
+    evidence_gaps: list[str] = Field(
+        default_factory=list,
+        description="List of gaps with verbose metadata.",
+    )
+
+
 def _mk_ep(model) -> AIModelEndpoint:
     api = AIModelAPI(
         provider=AIModelAPIProviderEnum.ANTHROPIC,
@@ -47,6 +73,16 @@ def _mk_tool(name: str = "fetch_signal") -> ToolDefinition:
     return ToolDefinition(
         function=FunctionDefinition(name=name, description="Fetch verification data", parameters=params)
     )
+
+
+def _contains_schema_metadata(value) -> bool:
+    if isinstance(value, dict):
+        if any(key in value for key in ("title", "description", "default")):
+            return True
+        return any(_contains_schema_metadata(item) for item in value.values())
+    if isinstance(value, list):
+        return any(_contains_schema_metadata(item) for item in value)
+    return False
 
 
 @pytest.mark.case_id("DAI-112")
@@ -68,6 +104,26 @@ def test_dai_112_anthropic_native_structured_output_uses_output_config_for_45_mo
 
     # Native structured output should not inject a structured-output tool.
     assert "tools" not in chat_args or chat_args["tools"] in (None, [])
+
+
+@pytest.mark.case_id("DAI-305")
+def test_dai_305_anthropic_native_schema_strips_non_contract_metadata():
+    ep = _mk_ep(ClaudeOpus47)
+    cfg = AIModelCallConfig(structured_output=VerboseEnvelope)
+
+    client = AnthropicChat(model_endpoint=ep, config=cfg, is_async=False)
+    client._client = object()
+    client._input_validation_pending = False
+
+    params = client.get_api_call_params(prompt={"role": "user", "content": "hi"})
+    chat_args = params["chat_args"]
+    schema = chat_args["output_config"]["format"]["schema"]
+
+    assert chat_args["output_config"]["format"]["type"] == "json_schema"
+    assert "tools" not in chat_args or chat_args["tools"] in (None, [])
+    assert not _contains_schema_metadata(schema)
+    assert schema["properties"]["child_a"]["$ref"] == "#/$defs/VerboseChild"
+    assert sorted(schema["required"]) == sorted(schema["properties"].keys())
 
 
 @pytest.mark.case_id("DAI-304")
