@@ -4,6 +4,10 @@ import pytest
 from pydantic import BaseModel, Field
 
 from dhenara.ai.providers.anthropic.chat import AnthropicChat
+from dhenara.ai.providers.anthropic.formatter import (
+    AnthropicFormatter,
+    AnthropicNativeStructuredOutputSchemaTooLargeError,
+)
 from dhenara.ai.types import AIModelCallConfig, AIModelEndpoint
 from dhenara.ai.types.genai.ai_model import AIModelAPI, AIModelAPIProviderEnum
 from dhenara.ai.types.genai.dhenara.request import (
@@ -124,6 +128,36 @@ def test_dai_305_anthropic_native_schema_strips_non_contract_metadata():
     assert not _contains_schema_metadata(schema)
     assert schema["properties"]["child_a"]["$ref"] == "#/$defs/VerboseChild"
     assert sorted(schema["required"]) == sorted(schema["properties"].keys())
+
+
+@pytest.mark.case_id("DAI-306")
+def test_dai_306_anthropic_native_schema_size_fallback_logs_error(caplog, monkeypatch):
+    ep = _mk_ep(ClaudeSonnet45)
+    cfg = AIModelCallConfig(structured_output=TravelPlan)
+
+    def fake_output_config(_cls, *, structured_output, model_endpoint=None):
+        raise AnthropicNativeStructuredOutputSchemaTooLargeError(
+            "Anthropic native json_schema too large (5001 bytes > 4000 bytes)"
+        )
+
+    monkeypatch.setattr(
+        AnthropicFormatter,
+        "format_structured_output_output_config",
+        classmethod(fake_output_config),
+    )
+
+    client = AnthropicChat(model_endpoint=ep, config=cfg, is_async=False)
+    client._client = object()
+    client._input_validation_pending = False
+
+    with caplog.at_level("ERROR"):
+        params = client.get_api_call_params(prompt={"role": "user", "content": "hi"})
+
+    chat_args = params["chat_args"]
+    assert "output_config" not in chat_args
+    assert any(t.get("name") in ("TravelPlan", "structured_output") for t in chat_args["tools"])
+    assert "fallback to tool mode" in caplog.text
+    assert "5001 bytes > 4000 bytes" in caplog.text
 
 
 @pytest.mark.case_id("DAI-304")

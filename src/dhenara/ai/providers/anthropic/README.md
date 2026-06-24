@@ -8,6 +8,15 @@ This provider supports two Anthropic structured-output paths:
 Tools and structured output are separate concerns for the native path. The provider keeps
 native structured output enabled when actual tools are present.
 
+Native `output_config.format` schemas are guarded by provider-transformed schema size.
+Anthropic compiles the JSON schema into a constrained-decoding grammar, and large schemas
+can be rejected as too large. The local guard is a minified schema size of `<= 4000`
+bytes after Anthropic compatibility transforms. When a Claude 4.6+ schema exceeds that
+guard, the provider logs an error and falls back to the older structured-output tool
+path. That fallback is a compatibility escape hatch, not the desired path for live dVI
+stage contracts; simplify oversized schemas and cover important live-stage schemas with
+a formatter test that asserts native `json_schema` output.
+
 Anthropic still rejects requests that combine all of the following:
 
 - `thinking` enabled

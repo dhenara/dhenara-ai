@@ -317,7 +317,7 @@ class AnthropicChat(AnthropicClientBase):
                 # Anthropic may reject complex schemas with:
                 # "The compiled grammar is too large".
                 # Fall back to the legacy tool_use workaround to keep structured output reliable.
-                logger.warning(f"Anthropic native structured output disabled (fallback to tool mode): {e}")
+                logger.error(f"Anthropic native structured output disabled (fallback to tool mode): {e}")
                 structured_output_mode = "tool"
                 self._structured_output_mode = structured_output_mode
 
