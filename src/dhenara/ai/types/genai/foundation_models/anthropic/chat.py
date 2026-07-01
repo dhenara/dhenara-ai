@@ -21,6 +21,61 @@ def _anthropic_web_search_cost_rules() -> list[HostedToolCostRule]:
     ]
 
 
+ClaudeFable5 = FoundationModel(
+    model_name="claude-fable-5",
+    display_name="Claude Fable 5",
+    provider=AIModelProviderEnum.ANTHROPIC,
+    functional_type=AIModelFunctionalTypeEnum.TEXT_GENERATION,
+    settings=ChatModelSettings(
+        max_context_window_tokens=1000000,
+        max_output_tokens=128000,
+        supports_reasoning=True,
+        max_output_tokens_reasoning_mode=128000,
+        reasoning_control="effort",
+    ),
+    valid_options={},
+    metadata={
+        "details": (
+            "Anthropic's most capable widely released model for demanding reasoning and long-horizon agentic work."
+        ),
+    },
+    order=60,
+    cost_data=ChatModelCostData(
+        input_token_cost_per_million=10.0,
+        output_token_cost_per_million=50.0,
+        hosted_tool_cost_rules=_anthropic_web_search_cost_rules(),
+    ),
+)
+
+
+ClaudeMythos5 = FoundationModel(
+    model_name="claude-mythos-5",
+    display_name="Claude Mythos 5",
+    provider=AIModelProviderEnum.ANTHROPIC,
+    functional_type=AIModelFunctionalTypeEnum.TEXT_GENERATION,
+    enabled=False,
+    beta=True,
+    settings=ChatModelSettings(
+        max_context_window_tokens=1000000,
+        max_output_tokens=128000,
+        supports_reasoning=True,
+        max_output_tokens_reasoning_mode=128000,
+        reasoning_control="effort",
+    ),
+    valid_options={},
+    metadata={
+        "details": ("Limited-availability Project Glasswing model sharing Claude Fable 5 capabilities."),
+        "limited_availability": True,
+    },
+    order=61,
+    cost_data=ChatModelCostData(
+        input_token_cost_per_million=10.0,
+        output_token_cost_per_million=50.0,
+        hosted_tool_cost_rules=_anthropic_web_search_cost_rules(),
+    ),
+)
+
+
 ClaudeOpus48 = FoundationModel(
     model_name="claude-opus-4-8",
     display_name="Claude Opus 4.8",
@@ -32,6 +87,7 @@ ClaudeOpus48 = FoundationModel(
         supports_reasoning=True,
         max_reasoning_tokens=32000,
         max_output_tokens_reasoning_mode=128000,
+        reasoning_control="effort",
     ),
     valid_options={},
     metadata={
@@ -57,6 +113,7 @@ ClaudeOpus47 = FoundationModel(
         supports_reasoning=True,
         max_reasoning_tokens=32000,
         max_output_tokens_reasoning_mode=128000,
+        reasoning_control="effort",
     ),
     valid_options={},
     metadata={
@@ -81,6 +138,7 @@ ClaudeOpus46 = FoundationModel(
         supports_reasoning=True,
         max_reasoning_tokens=32000,
         max_output_tokens_reasoning_mode=128000,
+        reasoning_control="effort",
     ),
     valid_options={},
     metadata={},
@@ -88,6 +146,30 @@ ClaudeOpus46 = FoundationModel(
     cost_data=ChatModelCostData(
         input_token_cost_per_million=5.0,
         output_token_cost_per_million=25.0,
+        hosted_tool_cost_rules=_anthropic_web_search_cost_rules(),
+    ),
+)
+
+ClaudeSonnet5 = FoundationModel(
+    model_name="claude-sonnet-5",
+    display_name="Claude Sonnet 5",
+    provider=AIModelProviderEnum.ANTHROPIC,
+    functional_type=AIModelFunctionalTypeEnum.TEXT_GENERATION,
+    settings=ChatModelSettings(
+        max_context_window_tokens=1000000,
+        max_output_tokens=128000,
+        supports_reasoning=True,
+        max_output_tokens_reasoning_mode=128000,
+        reasoning_control="effort",
+    ),
+    valid_options={},
+    metadata={
+        "details": "Anthropic's current Sonnet model with strong speed, intelligence, and adaptive thinking.",
+    },
+    order=68,
+    cost_data=ChatModelCostData(
+        input_token_cost_per_million=3.0,
+        output_token_cost_per_million=15.0,
         hosted_tool_cost_rules=_anthropic_web_search_cost_rules(),
     ),
 )
@@ -103,6 +185,7 @@ ClaudeSonnet46 = FoundationModel(
         supports_reasoning=True,
         max_reasoning_tokens=32000,
         max_output_tokens_reasoning_mode=64000,
+        reasoning_control="effort",
     ),
     valid_options={},
     metadata={},
@@ -125,6 +208,7 @@ ClaudeOpus45 = FoundationModel(
         supports_reasoning=True,
         max_reasoning_tokens=32000,
         max_output_tokens_reasoning_mode=64000,
+        reasoning_control="token_budget",
     ),
     valid_options={},
     metadata={},
@@ -148,6 +232,7 @@ ClaudeSonnet45 = FoundationModel(
         supports_reasoning=True,
         max_reasoning_tokens=32000,
         max_output_tokens_reasoning_mode=64000,
+        reasoning_control="token_budget",
     ),
     valid_options={},
     metadata={},
@@ -171,6 +256,7 @@ ClaudeHaiku45 = FoundationModel(
         supports_reasoning=True,
         max_reasoning_tokens=32000,
         max_output_tokens_reasoning_mode=64000,
+        reasoning_control="token_budget",
     ),
     valid_options={},
     metadata={},
@@ -194,6 +280,7 @@ ClaudeSonnet40 = FoundationModel(
         supports_reasoning=True,
         max_reasoning_tokens=32000,
         max_output_tokens_reasoning_mode=64000,
+        reasoning_control="token_budget",
     ),
     valid_options={},
     metadata={
@@ -217,6 +304,7 @@ ClaudeOpus40 = FoundationModel(
         supports_reasoning=True,
         max_reasoning_tokens=32000,
         max_output_tokens_reasoning_mode=32000,
+        reasoning_control="token_budget",
     ),
     valid_options={},
     metadata={},
@@ -238,6 +326,7 @@ Claude37Sonnet = FoundationModel(
         supports_reasoning=True,
         max_reasoning_tokens=32000,
         max_output_tokens_reasoning_mode=64000,
+        reasoning_control="token_budget",
     ),
     valid_options={},
     metadata={
@@ -318,9 +407,12 @@ Claude3Opus = FoundationModel(
 
 Claude40Sonnet = ClaudeSonnet40
 CHAT_MODELS = [
+    ClaudeFable5,
+    ClaudeMythos5,
     ClaudeOpus48,
     ClaudeOpus47,
     ClaudeOpus46,
+    ClaudeSonnet5,
     ClaudeSonnet46,
     ClaudeOpus45,
     ClaudeSonnet45,

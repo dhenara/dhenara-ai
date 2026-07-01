@@ -3,6 +3,8 @@
 Tests cover max_output_tokens and reasoning configuration behavior.
 """
 
+from typing import Literal
+
 import pytest
 
 from dhenara.ai.types.genai.ai_model import (
@@ -13,6 +15,8 @@ from dhenara.ai.types.genai.ai_model import (
     FoundationModel,
 )
 from dhenara.ai.types.genai.dhenara.request import AIModelCallConfig
+
+ReasoningEffort = Literal["minimal", "low", "medium", "high", "xhigh", "max"]
 
 
 @pytest.mark.unit
@@ -152,6 +156,41 @@ def test_reasoning_model_without_reasoning_mode_tokens_falls_back():
 
 
 @pytest.mark.unit
+@pytest.mark.case_id("DAI-007")
+def test_effort_reasoning_control_does_not_use_reasoning_token_budget():
+    model = FoundationModel(
+        model_name="test-adaptive-effort-model",
+        display_name="Test Adaptive Effort Model",
+        provider=AIModelProviderEnum.ANTHROPIC,
+        functional_type=AIModelFunctionalTypeEnum.TEXT_GENERATION,
+        settings=ChatModelSettings(
+            max_input_tokens=100000,
+            max_output_tokens=4096,
+            max_output_tokens_reasoning_mode=12000,
+            max_reasoning_tokens=10000,
+            supports_reasoning=True,
+            reasoning_control="effort",
+        ),
+        valid_options={},
+        cost_data=ChatModelCostData(
+            input_token_cost_per_million=5.0,
+            output_token_cost_per_million=15.0,
+        ),
+    )
+
+    config = AIModelCallConfig(
+        reasoning=True,
+        max_output_tokens=2000,
+        max_reasoning_tokens=3000,
+        reasoning_effort="high",
+    )
+
+    assert config.get_max_output_token_limit(model) == 2000
+    assert config.get_reasoning_token_budget(model) is None
+    assert config.get_max_output_tokens(model) == (2000, None)
+
+
+@pytest.mark.unit
 @pytest.mark.case_id("DAI-005")
 def test_reasoning_effort_minimal_maps_low():
     """
@@ -169,6 +208,7 @@ def test_reasoning_effort_minimal_maps_low():
     assert config.reasoning is True
 
     # Test all valid reasoning effort values
-    for effort in ["minimal", "low", "medium", "high"]:
+    efforts: tuple[ReasoningEffort, ...] = ("minimal", "low", "medium", "high", "xhigh", "max")
+    for effort in efforts:
         config = AIModelCallConfig(reasoning=True, reasoning_effort=effort)
         assert config.reasoning_effort == effort

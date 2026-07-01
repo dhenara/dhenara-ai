@@ -252,7 +252,8 @@ class GoogleAIChat(GoogleAIClientBase):
         return stream
 
     def get_default_generate_config_args(self) -> dict:
-        max_output_tokens, max_reasoning_tokens = self.config.get_max_output_tokens(self.model_endpoint.ai_model)
+        max_output_tokens = self.config.get_max_output_token_limit(self.model_endpoint.ai_model)
+        reasoning_token_budget = self.config.get_reasoning_token_budget(self.model_endpoint.ai_model)
         model_settings = self.model_endpoint.ai_model.get_settings()
         safety_settings = [
             SafetySetting(
@@ -270,27 +271,24 @@ class GoogleAIChat(GoogleAIClientBase):
             config_params["max_output_tokens"] = max_output_tokens
 
         if self.config.reasoning and model_settings.supports_reasoning:
-            thinking_level_supported = not self.model_endpoint.ai_model.model_name.startswith(("gemini-2", "gemini-1"))
-            if thinking_level_supported:
+            if model_settings.reasoning_control == "effort":
                 effort = self.config.reasoning_effort
-
-                # To google thinking_level
-                if effort in ["minimal", "low"]:
-                    thinking_level = "low"
-                elif effort in ["medium", "high", "max"]:
-                    thinking_level = "high"
-                else:
-                    logger.error(f"Illegal reasoning effort {effort}. Setting thinking_level to 'low'")
-                    thinking_level = "low"
-
+                thinking_config_args: dict[str, Any] = {"include_thoughts": True}
+                if effort is not None:
+                    if effort in ["xhigh", "max"]:
+                        thinking_level = "high"
+                    else:
+                        thinking_level = effort
+                    thinking_config_args["thinking_level"] = thinking_level
                 config_params["thinking_config"] = ThinkingConfig(
-                    include_thoughts=True,
-                    thinking_level=cast(Any, thinking_level),
+                    **cast(Any, thinking_config_args),
                 )
-            else:
+            elif model_settings.reasoning_control == "token_budget":
+                thinking_config_args = {"include_thoughts": True}
+                if reasoning_token_budget is not None:
+                    thinking_config_args["thinking_budget"] = reasoning_token_budget
                 config_params["thinking_config"] = ThinkingConfig(
-                    include_thoughts=True,
-                    thinking_budget=max_reasoning_tokens,
+                    **cast(Any, thinking_config_args),
                 )
 
         return config_params

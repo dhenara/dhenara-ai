@@ -12,6 +12,20 @@ from dhenara.ai.types.genai.ai_model import (
     FoundationModel,
 )
 from dhenara.ai.types.genai.dhenara.request import AIModelCallConfig
+from dhenara.ai.types.genai.foundation_models.openai.chat import GPT55, GPT55Pro
+
+
+def _mk_responses_client(model: FoundationModel, cfg: AIModelCallConfig) -> OpenAIResponses:
+    api = AIModelAPI(
+        provider=AIModelAPIProviderEnum.OPEN_AI,
+        api_key="test-key",
+    )
+    endpoint = AIModelEndpoint(api=api, ai_model=model)
+
+    client = OpenAIResponses(model_endpoint=endpoint, config=cfg, is_async=False)
+    client._client = object()
+    client._input_validation_pending = False
+    return client
 
 
 @pytest.mark.unit
@@ -54,3 +68,56 @@ def test_openai_responses_omits_reasoning_when_model_not_supported():
     args = params["response_args"]
 
     assert "reasoning" not in args
+
+
+@pytest.mark.unit
+@pytest.mark.case_id("DAI-063")
+def test_openai_responses_maps_max_reasoning_effort_to_xhigh():
+    client = _mk_responses_client(
+        GPT55,
+        AIModelCallConfig(reasoning=True, reasoning_effort="max"),
+    )
+
+    params = client.get_api_call_params(prompt=None, context=[], instructions=None, messages=[])
+
+    assert params["response_args"]["reasoning"]["effort"] == "xhigh"
+
+
+@pytest.mark.unit
+@pytest.mark.case_id("DAI-064")
+def test_openai_responses_omits_unspecified_effort_for_provider_default():
+    client = _mk_responses_client(
+        GPT55Pro,
+        AIModelCallConfig(reasoning=True),
+    )
+
+    params = client.get_api_call_params(prompt=None, context=[], instructions=None, messages=[])
+
+    assert params["response_args"]["reasoning"]["summary"] == "detailed"
+    assert "effort" not in params["response_args"]["reasoning"]
+
+
+@pytest.mark.unit
+@pytest.mark.case_id("DAI-066")
+def test_openai_responses_accepts_xhigh_for_current_frontier_models():
+    client = _mk_responses_client(
+        GPT55Pro,
+        AIModelCallConfig(reasoning=True, reasoning_effort="xhigh"),
+    )
+
+    params = client.get_api_call_params(prompt=None, context=[], instructions=None, messages=[])
+
+    assert params["response_args"]["reasoning"]["effort"] == "xhigh"
+
+
+@pytest.mark.unit
+@pytest.mark.case_id("DAI-067")
+def test_openai_responses_passes_explicit_unsupported_effort_through_to_provider():
+    client = _mk_responses_client(
+        GPT55Pro,
+        AIModelCallConfig(reasoning=True, reasoning_effort="low"),
+    )
+
+    params = client.get_api_call_params(prompt=None, context=[], instructions=None, messages=[])
+
+    assert params["response_args"]["reasoning"]["effort"] == "low"

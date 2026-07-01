@@ -16,6 +16,12 @@ from dhenara.ai.types.shared.base import BaseModel
 
 logger = logging.getLogger(__name__)
 
+ReasoningControlMode = Literal[
+    "none",
+    "effort",
+    "token_budget",
+]
+
 
 class ValidOptionValue(BaseModel):
     """
@@ -312,11 +318,25 @@ class ChatModelSettings(BaseModel):
     )
     max_reasoning_tokens: int | None = Field(
         default=None,
-        description="Maximum reasoning tokens allowed",
+        description="Explicit reasoning-token budget. Used only when reasoning_control is token_budget.",
     )
     max_output_tokens_reasoning_mode: int | None = Field(
         default=None,
         description="Maximum output tokens (including reasoning) in reasoning mode",
+    )
+    reasoning_control: ReasoningControlMode | None = Field(
+        default=None,
+        description=(
+            "Provider-neutral reasoning control kind. effort uses qualitative reasoning_effort; "
+            "token_budget uses max_reasoning_tokens."
+        ),
+    )
+    supported_reasoning_efforts: tuple[str, ...] | None = Field(
+        default=None,
+        description=(
+            "Provider effort values accepted by this model. Used only for generic alias mapping "
+            "such as minimal and max; explicit unsupported values are left to the provider."
+        ),
     )
 
     @model_validator(mode="after")
@@ -354,6 +374,15 @@ class ChatModelSettings(BaseModel):
         # Update the model attributes directly
         for key, value in values_to_update.items():
             object.__setattr__(self, key, value)
+
+        if self.reasoning_control is None:
+            if not self.supports_reasoning:
+                control: ReasoningControlMode = "none"
+            elif self.max_reasoning_tokens is not None:
+                control = "token_budget"
+            else:
+                control = "effort"
+            object.__setattr__(self, "reasoning_control", control)
 
         return self
 

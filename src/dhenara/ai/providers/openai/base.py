@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Sequence
 from typing import Any
 
 from openai import AsyncOpenAI, OpenAI
@@ -24,6 +25,33 @@ def _normalize_microsoft_openai_base_url(endpoint: str) -> str:
     if normalized.endswith("/openai/v1"):
         return f"{normalized}/"
     return f"{normalized}/openai/v1/"
+
+
+def map_openai_reasoning_effort(
+    effort: str | None,
+    supported_efforts: Sequence[str] | None = None,
+) -> str | None:
+    """Map Dhenara-only aliases while leaving explicit provider values unchanged."""
+    if effort is None:
+        return None
+
+    value = (effort or "").lower()
+    supported = tuple(item.lower() for item in supported_efforts or ())
+
+    if value == "minimal":
+        return supported[0] if supported else "low"
+    if value == "max":
+        return supported[-1] if supported else "high"
+    return value
+
+
+def map_deepseek_reasoning_effort(effort: str | None) -> str | None:
+    if effort is None:
+        return None
+    value = effort.lower()
+    if value in {"max", "xhigh"}:
+        return "max"
+    return "high"
 
 
 # -----------------------------------------------------------------------------
@@ -53,6 +81,15 @@ class OpenAIClientBase(AIModelProviderClientBase):
             params = {
                 "api_key": client_params["api_key"],
                 "base_url": _normalize_microsoft_openai_base_url(client_params["base_url"]),
+                **http_params,
+            }
+            return "openai", params
+
+        elif api.provider == AIModelAPIProviderEnum.DEEPSEEK:
+            client_params = api.get_provider_credentials()
+            params = {
+                "api_key": client_params["api_key"],
+                "base_url": client_params["base_url"].rstrip("/"),
                 **http_params,
             }
             return "openai", params

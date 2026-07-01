@@ -49,7 +49,7 @@ logger = logging.getLogger(__name__)
 # We intentionally gate behaviors by explicit model-name allowlists/denylists.
 # - Structured outputs: keep the legacy tool workaround only for explicitly-listed legacy models.
 #   All other models (including future models) use native `output_config.format` with no fallback.
-# - Adaptive thinking: enable only for explicitly-listed models (conservative).
+# - Reasoning request shape comes from Dhenara's provider-neutral model metadata.
 _LEGACY_STRUCTURED_OUTPUT_TOOL_MODELS = frozenset(
     {
         "claude-sonnet-4-0",
@@ -61,12 +61,10 @@ _LEGACY_STRUCTURED_OUTPUT_TOOL_MODELS = frozenset(
     }
 )
 
-_NON_ADAPTIVE_THINKING_MODELS = frozenset(
+_ALWAYS_ON_ADAPTIVE_THINKING_MODELS = frozenset(
     {
-        *_LEGACY_STRUCTURED_OUTPUT_TOOL_MODELS,
-        "claude-opus-4-5",
-        "claude-sonnet-4-5",
-        "claude-haiku-4-5",
+        "claude-fable-5",
+        "claude-mythos-5",
     }
 )
 
@@ -87,6 +85,13 @@ class AnthropicChat(AnthropicClientBase):
         model = getattr(self.model_endpoint, "ai_model", None)
         name = getattr(model, "model_name", None)
         return (name or "").lower()
+
+    def _get_reasoning_control(self) -> str:
+        settings = self.model_endpoint.ai_model.get_settings()
+        return settings.reasoning_control or "none"
+
+    def _has_always_on_adaptive_thinking(self) -> bool:
+        return self._get_base_model_name() in _ALWAYS_ON_ADAPTIVE_THINKING_MODELS
 
     @staticmethod
     def _tool_choice_forces_tool_use(tool_choice: Any) -> bool:
@@ -118,12 +123,12 @@ class AnthropicChat(AnthropicClientBase):
         """Return Anthropic `output_config.effort` value, if applicable.
 
         Per Anthropic docs (adaptive thinking), effort is configured via output_config.
-        We apply this only on models that explicitly support adaptive thinking.
         """
         if self.config.reasoning_effort is None:
             return None
-        base_name = self._get_base_model_name()
-        if base_name in _NON_ADAPTIVE_THINKING_MODELS:
+        if not self.config.reasoning:
+            return None
+        if self._get_reasoning_control() != "effort":
             return None
 
         effort = self.config.reasoning_effort
@@ -131,7 +136,7 @@ class AnthropicChat(AnthropicClientBase):
         if effort == "minimal":
             effort = "low"
 
-        # For Anthropic adaptive thinking, supported values include low/medium/high/max.
+        # For Anthropic adaptive thinking, supported values include low/medium/high/xhigh/max.
         # We allow passing through "max" if present.
         return effort
 
@@ -241,20 +246,23 @@ class AnthropicChat(AnthropicClientBase):
         if user:
             chat_args["metadata"] = {"user_id": user}
 
-        max_output_tokens, max_reasoning_tokens = self.config.get_max_output_tokens(self.model_endpoint.ai_model)
+        max_output_tokens = self.config.get_max_output_token_limit(self.model_endpoint.ai_model)
+        reasoning_token_budget = self.config.get_reasoning_token_budget(self.model_endpoint.ai_model)
         chat_args["max_tokens"] = max_output_tokens
 
-        if max_reasoning_tokens is not None:
-            base_name = self._get_base_model_name()
-            if base_name not in _NON_ADAPTIVE_THINKING_MODELS:
-                # Claude Opus 4.6: prefer adaptive thinking (budget_tokens is deprecated).
+        reasoning_control = self._get_reasoning_control()
+        always_on_adaptive_thinking = self._has_always_on_adaptive_thinking()
+        if self.config.reasoning:
+            if reasoning_control == "effort" and not always_on_adaptive_thinking:
                 chat_args["thinking"] = {"type": "adaptive"}
-            else:
+            elif reasoning_control == "token_budget" and reasoning_token_budget is not None:
                 # Older models: manual/extended thinking with budget_tokens.
                 chat_args["thinking"] = {
                     "type": "enabled",
-                    "budget_tokens": max_reasoning_tokens,
+                    "budget_tokens": reasoning_token_budget,
                 }
+        elif reasoning_control == "effort" and not always_on_adaptive_thinking:
+            chat_args["thinking"] = {"type": "disabled"}
 
         if self.config.options:
             chat_args.update(self.config.options)
@@ -350,10 +358,14 @@ class AnthropicChat(AnthropicClientBase):
         # Reasoning effort populates output_config, so this mitigation must run even when
         # output_config exists only for effort and not for native structured outputs.
         _tools = chat_args.get("tools")
+        thinking_arg = chat_args.get("thinking")
+        thinking_arg_type = thinking_arg.get("type") if isinstance(thinking_arg, dict) else None
+        thinking_active_for_tool_choice = ("thinking" in chat_args and thinking_arg_type != "disabled") or (
+            reasoning_control == "effort" and always_on_adaptive_thinking
+        )
         if (
-            max_reasoning_tokens is not None
+            thinking_active_for_tool_choice
             and _tools
-            and "thinking" in chat_args
             and self._tool_choice_forces_tool_use(chat_args.get("tool_choice"))
         ):
             # TODO_FUTURE: Revisit this later if Anthropic supports forced tool use with thinking.

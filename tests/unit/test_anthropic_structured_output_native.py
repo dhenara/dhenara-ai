@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 from pydantic import BaseModel, Field
 
@@ -19,8 +21,12 @@ from dhenara.ai.types.genai.dhenara.request import (
 )
 from dhenara.ai.types.genai.foundation_models.anthropic.chat import (
     Claude37Sonnet,
+    ClaudeFable5,
+    ClaudeMythos5,
     ClaudeOpus46,
     ClaudeOpus47,
+    ClaudeOpus48,
+    ClaudeSonnet5,
     ClaudeSonnet45,
 )
 
@@ -169,7 +175,8 @@ def test_dai_304_anthropic_formatter_preserves_boolean_type_and_date_format_for_
         }
     )
 
-    converted = AnthropicChat.formatter.convert_function_definition(
+    formatter = cast(AnthropicFormatter, AnthropicChat.formatter)
+    converted = formatter.convert_function_definition(
         FunctionDefinition(name="gmail_workspace_search", description="Search Gmail", parameters=params)
     )
     properties = converted["input_schema"]["properties"]
@@ -211,8 +218,9 @@ def test_dai_114_anthropic_opus46_uses_adaptive_thinking_and_output_config_effor
 
 
 @pytest.mark.case_id("DAI-116")
-def test_dai_116_anthropic_opus47_uses_adaptive_thinking_and_output_config_effort():
-    ep = _mk_ep(ClaudeOpus47)
+@pytest.mark.parametrize("model", [ClaudeOpus48, ClaudeOpus47])
+def test_dai_116_anthropic_opus47_plus_uses_adaptive_thinking_and_output_config_effort(model):
+    ep = _mk_ep(model)
     cfg = AIModelCallConfig(
         structured_output=TravelPlan,
         reasoning=True,
@@ -232,6 +240,91 @@ def test_dai_116_anthropic_opus47_uses_adaptive_thinking_and_output_config_effor
     assert chat_args["output_config"]["format"]["type"] == "json_schema"
     assert "schema" in chat_args["output_config"]["format"]
     assert "tools" not in chat_args or chat_args["tools"] in (None, [])
+
+
+@pytest.mark.case_id("DAI-307")
+@pytest.mark.parametrize("model", [ClaudeFable5, ClaudeMythos5, ClaudeSonnet5])
+def test_dai_307_latest_anthropic_models_use_default_adaptive_thinking_and_native_structured_output(model):
+    ep = _mk_ep(model)
+    cfg = AIModelCallConfig(
+        structured_output=TravelPlan,
+        reasoning=True,
+        reasoning_effort="xhigh",
+    )
+
+    client = AnthropicChat(model_endpoint=ep, config=cfg, is_async=False)
+    client._client = object()
+    client._input_validation_pending = False
+
+    params = client.get_api_call_params(prompt={"role": "user", "content": "hi"})
+    chat_args = params["chat_args"]
+
+    if model in (ClaudeFable5, ClaudeMythos5):
+        assert "thinking" not in chat_args
+    else:
+        assert chat_args.get("thinking") == {"type": "adaptive"}
+    assert chat_args["output_config"]["effort"] == "xhigh"
+    assert chat_args["output_config"]["format"]["type"] == "json_schema"
+    assert "schema" in chat_args["output_config"]["format"]
+    assert "tools" not in chat_args or chat_args["tools"] in (None, [])
+
+
+@pytest.mark.case_id("DAI-308")
+def test_dai_308_anthropic_sonnet5_disables_default_thinking_when_reasoning_false():
+    ep = _mk_ep(ClaudeSonnet5)
+    cfg = AIModelCallConfig(reasoning=False)
+
+    client = AnthropicChat(model_endpoint=ep, config=cfg, is_async=False)
+    client._client = object()
+    client._input_validation_pending = False
+
+    params = client.get_api_call_params(prompt={"role": "user", "content": "hi"})
+    chat_args = params["chat_args"]
+
+    assert chat_args["thinking"] == {"type": "disabled"}
+
+
+@pytest.mark.case_id("DAI-309")
+@pytest.mark.parametrize("model", [ClaudeFable5, ClaudeMythos5])
+def test_dai_309_anthropic_always_on_effort_models_omit_disabled_thinking(model):
+    ep = _mk_ep(model)
+    cfg = AIModelCallConfig(reasoning=False)
+
+    client = AnthropicChat(model_endpoint=ep, config=cfg, is_async=False)
+    client._client = object()
+    client._input_validation_pending = False
+
+    params = client.get_api_call_params(prompt={"role": "user", "content": "hi"})
+    chat_args = params["chat_args"]
+
+    assert "thinking" not in chat_args
+
+
+@pytest.mark.case_id("DAI-310")
+@pytest.mark.parametrize("model", [ClaudeFable5, ClaudeSonnet5])
+def test_dai_310_anthropic_effort_thinking_relaxes_forced_tool_choice(model):
+    ep = _mk_ep(model)
+    cfg = AIModelCallConfig(
+        tools=[_mk_tool()],
+        tool_choice=ToolChoice(type="one_or_more"),
+        reasoning=True,
+        reasoning_effort="medium",
+    )
+
+    client = AnthropicChat(model_endpoint=ep, config=cfg, is_async=False)
+    client._client = object()
+    client._input_validation_pending = False
+
+    params = client.get_api_call_params(prompt={"role": "user", "content": "hi"})
+    chat_args = params["chat_args"]
+
+    if model == ClaudeFable5:
+        assert "thinking" not in chat_args
+    else:
+        assert chat_args.get("thinking") == {"type": "adaptive"}
+    assert chat_args["output_config"]["effort"] == "medium"
+    assert chat_args["tool_choice"] == {"type": "auto"}
+    assert chat_args["tools"][0]["name"] == "fetch_signal"
 
 
 @pytest.mark.case_id("DAI-117")
@@ -299,7 +392,7 @@ def test_dai_119_anthropic_opus47_keeps_forced_tool_choice_without_thinking():
     params = client.get_api_call_params(prompt={"role": "user", "content": "hi"})
     chat_args = params["chat_args"]
 
-    assert "thinking" not in chat_args
+    assert chat_args["thinking"] == {"type": "disabled"}
     assert chat_args["tool_choice"]["type"] in ("any", "tool")
     assert chat_args["tool_choice"] != {"type": "auto"}
 
@@ -323,3 +416,23 @@ def test_dai_113_anthropic_structured_output_falls_back_to_tool_mode_for_37_mode
     # In tool mode (without thinking), we enforce that tool.
     assert "tool_choice" in chat_args
     assert chat_args["tool_choice"]["type"] in ("tool", "auto")
+
+
+@pytest.mark.case_id("DAI-311")
+def test_dai_311_anthropic_legacy_models_keep_manual_reasoning_budget():
+    ep = _mk_ep(Claude37Sonnet)
+    cfg = AIModelCallConfig(
+        reasoning=True,
+        reasoning_effort="high",
+        max_reasoning_tokens=2048,
+    )
+
+    client = AnthropicChat(model_endpoint=ep, config=cfg, is_async=False)
+    client._client = object()
+    client._input_validation_pending = False
+
+    params = client.get_api_call_params(prompt={"role": "user", "content": "hi"})
+    chat_args = params["chat_args"]
+
+    assert chat_args["thinking"] == {"type": "enabled", "budget_tokens": 2048}
+    assert "output_config" not in chat_args

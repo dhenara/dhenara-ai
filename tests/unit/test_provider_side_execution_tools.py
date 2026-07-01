@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 
@@ -26,11 +27,14 @@ from dhenara.ai.types.genai.dhenara.request import (
     WebSearchHostedTool,
 )
 from dhenara.ai.types.genai.foundation_models.anthropic.chat import (
+    ClaudeFable5,
     ClaudeHaiku45,
+    ClaudeMythos5,
     ClaudeOpus45,
     ClaudeOpus46,
     ClaudeOpus47,
     ClaudeOpus48,
+    ClaudeSonnet5,
     ClaudeSonnet45,
     ClaudeSonnet46,
 )
@@ -57,12 +61,18 @@ from dhenara.ai.types.genai.foundation_models.openai.chat import (
     GPT51Codex,
     GPT51CodexMini,
     GPT52Pro,
+    GPT53Codex,
     GPT54Mini,
     GPT54Nano,
     GPT54Pro,
+    GPT55Pro,
 )
 
 pytestmark = [pytest.mark.unit]
+
+
+def _provider_response(value: object) -> Any:
+    return cast(Any, value)
 
 
 def _make_endpoint(
@@ -144,6 +154,82 @@ def test_dai_122_google_hosted_web_search_in_generate_config():
     assert getattr(tools[0], "google_search", None) is not None
 
 
+@pytest.mark.case_id("DAI-127")
+def test_dai_127_google_xhigh_reasoning_effort_maps_to_high_thinking_level():
+    ep = AIModelEndpoint(
+        api=AIModelAPI(provider=AIModelAPIProviderEnum.GOOGLE_AI, api_key="test-key"),
+        ai_model=Gemini35Flash,
+    )
+    cfg = AIModelCallConfig(reasoning=True, reasoning_effort="xhigh")
+    client = GoogleAIChat(model_endpoint=ep, config=cfg, is_async=False)
+    client._client = object()
+    client._input_validation_pending = False
+
+    params = client.get_api_call_params(prompt={"role": "user", "parts": [{"text": "hi"}]})
+    thinking_config = params["generate_config"].thinking_config
+
+    assert thinking_config is not None
+    level = getattr(thinking_config, "thinking_level", None)
+    assert str(getattr(level, "value", level)).lower() == "high"
+
+
+@pytest.mark.case_id("DAI-137")
+def test_dai_137_google_medium_reasoning_effort_maps_to_medium_thinking_level():
+    ep = AIModelEndpoint(
+        api=AIModelAPI(provider=AIModelAPIProviderEnum.GOOGLE_AI, api_key="test-key"),
+        ai_model=Gemini35Flash,
+    )
+    cfg = AIModelCallConfig(reasoning=True, reasoning_effort="medium")
+    client = GoogleAIChat(model_endpoint=ep, config=cfg, is_async=False)
+    client._client = object()
+    client._input_validation_pending = False
+
+    params = client.get_api_call_params(prompt={"role": "user", "parts": [{"text": "hi"}]})
+    thinking_config = params["generate_config"].thinking_config
+
+    assert thinking_config is not None
+    level = getattr(thinking_config, "thinking_level", None)
+    assert str(getattr(level, "value", level)).lower() == "medium"
+
+
+@pytest.mark.case_id("DAI-128")
+def test_dai_128_google_reasoning_without_effort_uses_provider_default_thinking_level():
+    ep = AIModelEndpoint(
+        api=AIModelAPI(provider=AIModelAPIProviderEnum.GOOGLE_AI, api_key="test-key"),
+        ai_model=Gemini35Flash,
+    )
+    cfg = AIModelCallConfig(reasoning=True)
+    client = GoogleAIChat(model_endpoint=ep, config=cfg, is_async=False)
+    client._client = object()
+    client._input_validation_pending = False
+
+    params = client.get_api_call_params(prompt={"role": "user", "parts": [{"text": "hi"}]})
+    thinking_config = params["generate_config"].thinking_config
+
+    assert thinking_config is not None
+    assert thinking_config.include_thoughts is True
+    assert getattr(thinking_config, "thinking_level", None) is None
+
+
+@pytest.mark.case_id("DAI-129")
+def test_dai_129_google_legacy_25_models_use_thinking_budget():
+    ep = AIModelEndpoint(
+        api=AIModelAPI(provider=AIModelAPIProviderEnum.GOOGLE_AI, api_key="test-key"),
+        ai_model=Gemini25Flash,
+    )
+    cfg = AIModelCallConfig(reasoning=True, max_reasoning_tokens=2048)
+    client = GoogleAIChat(model_endpoint=ep, config=cfg, is_async=False)
+    client._client = object()
+    client._input_validation_pending = False
+
+    params = client.get_api_call_params(prompt={"role": "user", "parts": [{"text": "hi"}]})
+    thinking_config = params["generate_config"].thinking_config
+
+    assert thinking_config is not None
+    assert thinking_config.include_thoughts is True
+    assert getattr(thinking_config, "thinking_budget", None) == 2048
+
+
 @pytest.mark.case_id("DAI-123")
 def test_dai_123_openai_hosted_web_search_usage_is_normalized():
     ep = _make_endpoint(AIModelProviderEnum.OPEN_AI, AIModelAPIProviderEnum.OPEN_AI, "gpt-5")
@@ -174,11 +260,13 @@ def test_dai_124_anthropic_hosted_web_search_usage_is_normalized():
     client = AnthropicChat(model_endpoint=ep, config=AIModelCallConfig(), is_async=False)
 
     usage = client._get_usage_from_provider_response(
-        SimpleNamespace(
-            usage=SimpleNamespace(
-                input_tokens=100,
-                output_tokens=50,
-                server_tool_use=SimpleNamespace(model_dump=lambda: {"web_search_requests": 2}),
+        _provider_response(
+            SimpleNamespace(
+                usage=SimpleNamespace(
+                    input_tokens=100,
+                    output_tokens=50,
+                    server_tool_use=SimpleNamespace(model_dump=lambda: {"web_search_requests": 2}),
+                )
             )
         )
     )
@@ -195,21 +283,23 @@ def test_dai_125_google_hosted_web_search_usage_is_normalized():
     client = GoogleAIChat(model_endpoint=ep, config=AIModelCallConfig(), is_async=False)
 
     usage = client._get_usage_from_provider_response(
-        SimpleNamespace(
-            usage_metadata=SimpleNamespace(
-                total_token_count=210,
-                prompt_token_count=100,
-                candidates_token_count=80,
-                thoughts_token_count=20,
-                tool_use_prompt_token_count=10,
-            ),
-            candidates=[
-                SimpleNamespace(
-                    grounding_metadata=SimpleNamespace(
-                        web_search_queries=["latest news"],
+        _provider_response(
+            SimpleNamespace(
+                usage_metadata=SimpleNamespace(
+                    total_token_count=210,
+                    prompt_token_count=100,
+                    candidates_token_count=80,
+                    thoughts_token_count=20,
+                    tool_use_prompt_token_count=10,
+                ),
+                candidates=[
+                    SimpleNamespace(
+                        grounding_metadata=SimpleNamespace(
+                            web_search_queries=["latest news"],
+                        )
                     )
-                )
-            ],
+                ],
+            )
         )
     )
 
@@ -226,10 +316,12 @@ def test_dai_125_google_hosted_web_search_usage_is_normalized():
 def test_dai_126_current_foundation_models_include_hosted_web_search_cost_rules():
     openai_models = [
         GPT55,
+        GPT55Pro,
         GPT54,
         GPT54Pro,
         GPT54Mini,
         GPT54Nano,
+        GPT53Codex,
         GPT52,
         GPT52Pro,
         GPT51,
@@ -240,23 +332,26 @@ def test_dai_126_current_foundation_models_include_hosted_web_search_cost_rules(
         GPT5Nano,
     ]
     for model in openai_models:
-        rules = model.cost_data.hosted_tool_cost_rules
+        rules = cast(ChatModelCostData, model.cost_data).hosted_tool_cost_rules
         assert rules is not None
         assert len(rules) == 1
         assert rules[0].usage_key == "web_search"
         assert rules[0].flat_cost_per_unit == 0.01
 
     anthropic_models = [
+        ClaudeFable5,
+        ClaudeMythos5,
         ClaudeOpus48,
         ClaudeOpus47,
         ClaudeOpus46,
+        ClaudeSonnet5,
         ClaudeSonnet46,
         ClaudeOpus45,
         ClaudeSonnet45,
         ClaudeHaiku45,
     ]
     for model in anthropic_models:
-        rules = model.cost_data.hosted_tool_cost_rules
+        rules = cast(ChatModelCostData, model.cost_data).hosted_tool_cost_rules
         assert rules is not None
         assert len(rules) == 1
         assert rules[0].usage_key == "web_search"
@@ -272,7 +367,7 @@ def test_dai_126_current_foundation_models_include_hosted_web_search_cost_rules(
         Gemini31FlashLitePreview,
     ]
     for model in gemini3_models:
-        rules = model.cost_data.hosted_tool_cost_rules
+        rules = cast(ChatModelCostData, model.cost_data).hosted_tool_cost_rules
         assert rules is not None
         assert len(rules) == 1
         assert rules[0].usage_key == "web_search_queries"
@@ -280,7 +375,7 @@ def test_dai_126_current_foundation_models_include_hosted_web_search_cost_rules(
 
     gemini25_models = [Gemini25Pro, Gemini25Flash, Gemini25FlashLite]
     for model in gemini25_models:
-        rules = model.cost_data.hosted_tool_cost_rules
+        rules = cast(ChatModelCostData, model.cost_data).hosted_tool_cost_rules
         assert rules is not None
         assert len(rules) == 1
         assert rules[0].usage_key == "grounded_prompt"
@@ -391,15 +486,17 @@ def test_dai_131_google_hosted_tool_usage_failure_preserves_token_usage(caplog):
 
     with caplog.at_level("ERROR"):
         usage = client._get_usage_from_provider_response(
-            SimpleNamespace(
-                usage_metadata=SimpleNamespace(
-                    total_token_count=210,
-                    prompt_token_count=100,
-                    candidates_token_count=80,
-                    thoughts_token_count=20,
-                    tool_use_prompt_token_count=10,
-                ),
-                candidates=[BadCandidate()],
+            _provider_response(
+                SimpleNamespace(
+                    usage_metadata=SimpleNamespace(
+                        total_token_count=210,
+                        prompt_token_count=100,
+                        candidates_token_count=80,
+                        thoughts_token_count=20,
+                        tool_use_prompt_token_count=10,
+                    ),
+                    candidates=[BadCandidate()],
+                )
             )
         )
 
@@ -422,11 +519,13 @@ def test_dai_132_anthropic_hosted_tool_usage_failure_preserves_token_usage(caplo
 
     with caplog.at_level("ERROR"):
         usage = client._get_usage_from_provider_response(
-            SimpleNamespace(
-                usage=SimpleNamespace(
-                    input_tokens=100,
-                    output_tokens=50,
-                    server_tool_use=BadServerToolUse(),
+            _provider_response(
+                SimpleNamespace(
+                    usage=SimpleNamespace(
+                        input_tokens=100,
+                        output_tokens=50,
+                        server_tool_use=BadServerToolUse(),
+                    )
                 )
             )
         )

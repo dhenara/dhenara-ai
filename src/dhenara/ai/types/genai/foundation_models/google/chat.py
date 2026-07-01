@@ -45,6 +45,7 @@ Gemini3Pro = FoundationModel(
         supports_reasoning=True,
         max_reasoning_tokens=32768,
         max_output_tokens_reasoning_mode=64000,  # TODO: Review this simple workaround when google api has more control
+        reasoning_control="effort",
     ),
     valid_options={},
     metadata={
@@ -73,6 +74,7 @@ Gemini35Flash = FoundationModel(
         supports_reasoning=True,
         max_reasoning_tokens=32768,
         max_output_tokens_reasoning_mode=64000,
+        reasoning_control="effort",
     ),
     valid_options={},
     metadata={
@@ -100,6 +102,7 @@ Gemini31ProPreview = FoundationModel(
         supports_reasoning=True,
         max_reasoning_tokens=32768,
         max_output_tokens_reasoning_mode=64000,
+        reasoning_control="effort",
     ),
     valid_options={},
     metadata={
@@ -127,6 +130,7 @@ Gemini31ProPreviewCustomTools = FoundationModel(
         supports_reasoning=True,
         max_reasoning_tokens=32768,
         max_output_tokens_reasoning_mode=64000,
+        reasoning_control="effort",
     ),
     valid_options={},
     metadata={
@@ -157,6 +161,7 @@ Gemini3FlashPreview = FoundationModel(
         supports_reasoning=True,
         max_reasoning_tokens=32768,
         max_output_tokens_reasoning_mode=64000,
+        reasoning_control="effort",
     ),
     valid_options={},
     metadata={
@@ -187,6 +192,7 @@ Gemini31FlashLite = FoundationModel(
         supports_reasoning=True,
         max_reasoning_tokens=24576,
         max_output_tokens_reasoning_mode=64000,
+        reasoning_control="effort",
     ),
     valid_options={},
     metadata={
@@ -214,6 +220,7 @@ Gemini31FlashLitePreview = FoundationModel(
         supports_reasoning=True,
         max_reasoning_tokens=24576,
         max_output_tokens_reasoning_mode=64000,
+        reasoning_control="effort",
     ),
     valid_options={},
     metadata={
@@ -242,6 +249,7 @@ Gemini25Pro = FoundationModel(
         supports_reasoning=True,
         max_reasoning_tokens=32768,
         max_output_tokens_reasoning_mode=64000,  # TODO: Review this simple workaround when google api has more control
+        reasoning_control="token_budget",
     ),
     valid_options={},
     metadata={
@@ -267,6 +275,7 @@ Gemini25Flash = FoundationModel(
         supports_reasoning=True,
         max_reasoning_tokens=32768,
         max_output_tokens_reasoning_mode=64000,  # TODO: Review this simple workaround when google api has more control
+        reasoning_control="token_budget",
     ),
     valid_options={},
     metadata={
@@ -293,6 +302,7 @@ Gemini25FlashLite = FoundationModel(
         supports_reasoning=True,
         max_reasoning_tokens=24576,
         max_output_tokens_reasoning_mode=64000,  # TODO: Review this simple workaround when google api has more control
+        reasoning_control="token_budget",
     ),
     valid_options={},
     metadata={

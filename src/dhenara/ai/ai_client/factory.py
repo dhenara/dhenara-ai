@@ -1,7 +1,7 @@
 from dhenara.ai.providers.anthropic import AnthropicChat
 from dhenara.ai.providers.base import AIModelCallConfig, AIModelProviderClientBase
 from dhenara.ai.providers.google import GoogleAIChat, GoogleAIImage
-from dhenara.ai.providers.openai import OpenAIImage, OpenAIResponses
+from dhenara.ai.providers.openai import OpenAIChatCompletions, OpenAIImage, OpenAIResponses
 from dhenara.ai.types.genai.ai_model import AIModelEndpoint, AIModelFunctionalTypeEnum, AIModelProviderEnum
 
 
@@ -14,7 +14,7 @@ class AIModelClientFactory:
             AIModelProviderEnum.OPEN_AI: OpenAIResponses,
             AIModelProviderEnum.ANTHROPIC: AnthropicChat,
             AIModelProviderEnum.GOOGLE_AI: GoogleAIChat,
-            AIModelProviderEnum.DEEPSEEK: OpenAIResponses,
+            AIModelProviderEnum.DEEPSEEK: OpenAIChatCompletions,
         },
         AIModelFunctionalTypeEnum.IMAGE_GENERATION: {
             AIModelProviderEnum.OPEN_AI: OpenAIImage,

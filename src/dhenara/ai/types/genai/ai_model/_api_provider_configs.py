@@ -95,10 +95,22 @@ PROVIDER_CONFIGS: dict[AIModelAPIProviderEnum, ProviderCredentialsConfig] = {
     ),
     AIModelAPIProviderEnum.DEEPSEEK: ProviderCredentialsConfig(
         api_key_required=True,
+        config_optional_fields=[
+            CredentialFieldConfig(
+                field_name="base_url",
+                error_msg="DeepSeek base_url must be a valid OpenAI-format API base URL",
+            ),
+        ],
         output_mappings=[
             CredentialOutputMapping(
                 source="api_key",
                 output_key="api_key",
+            ),
+            CredentialOutputMapping(
+                source="config",
+                source_key="base_url",
+                output_key="base_url",
+                default_value="https://api.deepseek.com",
             ),
         ],
     ),

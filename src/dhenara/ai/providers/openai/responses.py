@@ -3,6 +3,7 @@ from collections.abc import AsyncIterator, Iterator, Sequence
 from typing import Any, cast
 
 from dhenara.ai.providers.openai import OpenAIClientBase
+from dhenara.ai.providers.openai.base import map_openai_reasoning_effort
 from dhenara.ai.providers.openai.formatter import OpenAIFormatter
 from dhenara.ai.providers.openai.message_converter import OpenAIMessageConverter
 from dhenara.ai.types.genai import (
@@ -135,15 +136,13 @@ class OpenAIResponses(OpenAIClientBase):
             # Instruction at this point are in provider prompt format
             args["instructions"] = instructions.get("content")
 
-        # Max tokens (Responses uses max_output_tokens)
-        # Note: Responses API doesn't have a separate max_reasoning_tokens parameter.
-        # Reasoning tokens come out of max_output_tokens budget.
-        max_output_tokens, max_reasoning_tokens = self.config.get_max_output_tokens(self.model_endpoint.ai_model)
+        # Max tokens (Responses uses max_output_tokens). Reasoning tokens come out of this budget.
+        max_output_tokens = self.config.get_max_output_token_limit(self.model_endpoint.ai_model)
         if max_output_tokens:
             args["max_output_tokens"] = max_output_tokens
 
         # Reasoning configuration
-        # Responses API: reasoning = {effort: "low"|"medium"|"high",
+        # Responses API: reasoning = {effort: model-specific supported effort,
         #                             generate_summary: "auto"|"concise"|"detailed"}
         # Note: Unlike Anthropic's budget_tokens, OpenAI uses max_output_tokens for
         # total (text + reasoning)
@@ -152,19 +151,12 @@ class OpenAIResponses(OpenAIClientBase):
         if self.config.reasoning and model_settings.supports_reasoning:
             reasoning_config: dict[str, Any] = {}
 
-            # Effort level
-            if self.config.reasoning_effort is not None:
-                effort = self.config.reasoning_effort
-                # Normalize Dhenara "minimal" -> OpenAI "low"
-                if effort.lower() == "minimal":
-                    effort = "low"
-                # OpenAI doesn't support "max"; map to the strongest supported level.
-                if effort.lower() == "max":
-                    effort = "high"
+            effort = map_openai_reasoning_effort(
+                self.config.reasoning_effort,
+                model_settings.supported_reasoning_efforts,
+            )
+            if effort is not None:
                 reasoning_config["effort"] = effort
-            else:
-                # Default effort if reasoning is enabled but not specified
-                reasoning_config["effort"] = "low"
 
             # Inorder to get the reasoning text, OpenAI need to pass `summary` as any of the
             # : "auto", "concise", "detailed"
@@ -172,13 +164,6 @@ class OpenAIResponses(OpenAIClientBase):
 
             if reasoning_config:
                 args["reasoning"] = reasoning_config
-
-        # Log warning about reasoning token budget (informational)
-        if max_reasoning_tokens is not None:
-            logger.debug(
-                f"Responses API: max_reasoning_tokens ({max_reasoning_tokens}) is advisory only. "
-                f"Reasoning tokens come from max_output_tokens budget ({max_output_tokens})."
-            )
 
         # Tools and tool choice
         tools_formatted: list[dict[str, Any]] = []

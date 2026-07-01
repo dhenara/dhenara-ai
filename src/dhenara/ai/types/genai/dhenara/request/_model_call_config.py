@@ -56,15 +56,17 @@ class AIModelCallConfig(BaseModel):
     reasoning: bool = False
     max_reasoning_tokens: int | None = Field(
         default=None,
-        description="Maximum reasoning tokens when reasoning is enabled. Ignored for OpenAI APIs. "
-        "Deprecated/ignored for Anthropic Opus 4.6 adaptive thinking.",
+        description="Explicit reasoning-token budget. Used only by token-budget reasoning models; "
+        "ignored by effort-based reasoning models.",
     )
-    reasoning_effort: Literal["minimal", "low", "medium", "high", "max"] | None = Field(
+    reasoning_effort: Literal["minimal", "low", "medium", "high", "xhigh", "max"] | None = Field(
         default=None,
         description="Controls provider-specific thinking/reasoning depth when reasoning is enabled. "
-        "OpenAI supports low|medium|high (minimal is normalized to low; max is normalized to high). "
-        "Google supports low|high (minimal/low -> low; medium/high/max -> high). "
-        "Anthropic (> Claude-4.6) supports output_config.effort low|medium|high|max.",
+        "OpenAI supports model-specific low|medium|high|xhigh "
+        "(minimal maps to the lowest known level; max maps to the strongest known level; "
+        "explicit values are passed through). "
+        "Google supports model-specific minimal|low|medium|high (xhigh/max -> high). "
+        "Anthropic adaptive-thinking models support output_config.effort low|medium|high|xhigh|max.",
     )
     options: dict = {}
 
@@ -104,9 +106,12 @@ class AIModelCallConfig(BaseModel):
 
         return user
 
-    def get_max_output_tokens(self, model: BaseAIModel) -> tuple[int, int | None]:
-        """Returns max_output_tokens and max_reasoning_tokens based on the model settings and call-config"""
+    def get_max_output_token_limit(self, model: BaseAIModel) -> int:
+        """Return the provider output-token cap for this call.
 
+        Reasoning-capable providers account for thinking inside the output-token cap.
+        This is intentionally separate from numeric reasoning-token budgets.
+        """
         if not model:
             raise ValueError("Model should be passed when max_token is not set in the call-config")
 
@@ -120,8 +125,7 @@ class AIModelCallConfig(BaseModel):
             _settings_max_output_tokens = _settings.max_output_tokens
             _reasoning_capable = False
         else:
-            # OpenAI/Google models mark supports_reasoning=True but may not explicitly support max_reasoning_tokens
-            #  In that case, fall back to max_output_tokensinstead of raising an error.
+            # Effort-based reasoning models may not expose a separate output cap for reasoning mode.
             _settings_max_output_tokens = _settings.max_output_tokens_reasoning_mode or _settings.max_output_tokens
             _reasoning_capable = True
 
@@ -135,13 +139,28 @@ class AIModelCallConfig(BaseModel):
             _settings_max_output_tokens,
         )
 
-        # Set max reasoning tokens
-        if not _reasoning_capable or not self.reasoning or _settings.max_reasoning_tokens is None:
-            max_reasoning_tokens = None
-        else:
-            max_reasoning_tokens = min(
-                self.max_reasoning_tokens if self.max_reasoning_tokens is not None else _settings.max_reasoning_tokens,
-                _settings.max_reasoning_tokens,
-            )
+        return max_output_tokens
 
-        return (max_output_tokens, max_reasoning_tokens)
+    def get_reasoning_token_budget(self, model: BaseAIModel) -> int | None:
+        """Return a numeric reasoning budget only for token-budget controls."""
+        if not self.reasoning or not model:
+            return None
+
+        _settings = model.get_settings()
+        if not _settings.supports_reasoning or _settings.max_reasoning_tokens is None:
+            return None
+
+        if _settings.reasoning_control != "token_budget":
+            return None
+
+        return min(
+            self.max_reasoning_tokens if self.max_reasoning_tokens is not None else _settings.max_reasoning_tokens,
+            _settings.max_reasoning_tokens,
+        )
+
+    def get_max_output_tokens(self, model: BaseAIModel) -> tuple[int, int | None]:
+        """Compatibility wrapper returning output cap plus numeric reasoning budget."""
+        return (
+            self.get_max_output_token_limit(model),
+            self.get_reasoning_token_budget(model),
+        )

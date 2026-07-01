@@ -21,6 +21,11 @@ def _openai_web_search_cost_rules() -> list[HostedToolCostRule]:
     ]
 
 
+_OPENAI_EFFORTS_STANDARD = ("low", "medium", "high")
+_OPENAI_EFFORTS_XHIGH = ("low", "medium", "high", "xhigh")
+_OPENAI_EFFORTS_PRO = ("medium", "high", "xhigh")
+
+
 GPT55 = FoundationModel(
     model_name="gpt-5.5",
     display_name="GPT-5.5",
@@ -30,6 +35,7 @@ GPT55 = FoundationModel(
         max_context_window_tokens=1050000,
         max_output_tokens=128000,
         supports_reasoning=True,
+        supported_reasoning_efforts=_OPENAI_EFFORTS_XHIGH,
     ),
     valid_options={},
     metadata={
@@ -43,6 +49,29 @@ GPT55 = FoundationModel(
     ),
 )
 
+GPT55Pro = FoundationModel(
+    model_name="gpt-5.5-pro",
+    display_name="GPT-5.5 Pro",
+    provider=AIModelProviderEnum.OPEN_AI,
+    functional_type=AIModelFunctionalTypeEnum.TEXT_GENERATION,
+    settings=ChatModelSettings(
+        max_context_window_tokens=1050000,
+        max_output_tokens=128000,
+        supports_reasoning=True,
+        supported_reasoning_efforts=_OPENAI_EFFORTS_PRO,
+    ),
+    valid_options={},
+    metadata={
+        "details": "Higher-compute GPT-5.5 variant for the toughest reasoning and professional workloads.",
+    },
+    order=0,
+    cost_data=ChatModelCostData(
+        input_token_cost_per_million=30.0,
+        output_token_cost_per_million=180.0,
+        hosted_tool_cost_rules=_openai_web_search_cost_rules(),
+    ),
+)
+
 GPT54 = FoundationModel(
     model_name="gpt-5.4",
     display_name="GPT-5.4",
@@ -52,6 +81,7 @@ GPT54 = FoundationModel(
         max_context_window_tokens=1050000,
         max_output_tokens=128000,
         supports_reasoning=True,
+        supported_reasoning_efforts=_OPENAI_EFFORTS_XHIGH,
     ),
     valid_options={},
     metadata={
@@ -74,6 +104,7 @@ GPT54Pro = FoundationModel(
         max_context_window_tokens=1050000,
         max_output_tokens=128000,
         supports_reasoning=True,
+        supported_reasoning_efforts=_OPENAI_EFFORTS_PRO,
     ),
     valid_options={},
     metadata={
@@ -96,6 +127,7 @@ GPT54Mini = FoundationModel(
         max_context_window_tokens=400000,
         max_output_tokens=128000,
         supports_reasoning=True,
+        supported_reasoning_efforts=_OPENAI_EFFORTS_XHIGH,
     ),
     valid_options={},
     metadata={
@@ -118,6 +150,7 @@ GPT54Nano = FoundationModel(
         max_context_window_tokens=400000,
         max_output_tokens=128000,
         supports_reasoning=True,
+        supported_reasoning_efforts=_OPENAI_EFFORTS_XHIGH,
     ),
     valid_options={},
     metadata={
@@ -131,6 +164,29 @@ GPT54Nano = FoundationModel(
     ),
 )
 
+GPT53Codex = FoundationModel(
+    model_name="gpt-5.3-codex",
+    display_name="GPT-5.3 Codex",
+    provider=AIModelProviderEnum.OPEN_AI,
+    functional_type=AIModelFunctionalTypeEnum.TEXT_GENERATION,
+    settings=ChatModelSettings(
+        max_context_window_tokens=400000,
+        max_output_tokens=128000,
+        supports_reasoning=True,
+        supported_reasoning_efforts=_OPENAI_EFFORTS_XHIGH,
+    ),
+    valid_options={},
+    metadata={
+        "details": "OpenAI coding model optimized for long-horizon agentic coding tasks.",
+    },
+    order=5,
+    cost_data=ChatModelCostData(
+        input_token_cost_per_million=1.75,
+        output_token_cost_per_million=14.0,
+        hosted_tool_cost_rules=_openai_web_search_cost_rules(),
+    ),
+)
+
 GPT52 = FoundationModel(
     model_name="gpt-5.2",
     display_name="GPT-5.2",
@@ -140,6 +196,7 @@ GPT52 = FoundationModel(
         max_context_window_tokens=400000,
         max_output_tokens=128000,
         supports_reasoning=True,
+        supported_reasoning_efforts=_OPENAI_EFFORTS_XHIGH,
     ),
     valid_options={},
     metadata={},
@@ -160,6 +217,7 @@ GPT52Pro = FoundationModel(
         max_context_window_tokens=400000,
         max_output_tokens=128000,
         supports_reasoning=True,
+        supported_reasoning_efforts=_OPENAI_EFFORTS_PRO,
     ),
     valid_options={},
     metadata={},
@@ -180,6 +238,7 @@ GPT51 = FoundationModel(
         max_context_window_tokens=400000,
         max_output_tokens=128000,
         supports_reasoning=True,
+        supported_reasoning_efforts=_OPENAI_EFFORTS_STANDARD,
     ),
     valid_options={},
     metadata={
@@ -202,6 +261,7 @@ GPT51Codex = FoundationModel(
         max_context_window_tokens=400000,
         max_output_tokens=128000,
         supports_reasoning=True,
+        supported_reasoning_efforts=_OPENAI_EFFORTS_STANDARD,
     ),
     valid_options={},
     metadata={
@@ -225,6 +285,7 @@ GPT51CodexMini = FoundationModel(
         max_context_window_tokens=400000,
         max_output_tokens=128000,
         supports_reasoning=True,
+        supported_reasoning_efforts=_OPENAI_EFFORTS_STANDARD,
     ),
     valid_options={},
     metadata={
@@ -247,6 +308,7 @@ GPT5 = FoundationModel(
         max_context_window_tokens=400000,
         max_output_tokens=128000,
         supports_reasoning=True,
+        supported_reasoning_efforts=_OPENAI_EFFORTS_STANDARD,
     ),
     valid_options={},
     metadata={
@@ -260,7 +322,6 @@ GPT5 = FoundationModel(
     ),
 )
 
-
 GPT5Mini = FoundationModel(
     model_name="gpt-5-mini",
     display_name="GPT-5 Mini",
@@ -270,6 +331,7 @@ GPT5Mini = FoundationModel(
         max_context_window_tokens=400000,
         max_output_tokens=128000,
         supports_reasoning=True,
+        supported_reasoning_efforts=_OPENAI_EFFORTS_STANDARD,
     ),
     valid_options={},
     metadata={
@@ -293,6 +355,7 @@ GPT5Nano = FoundationModel(
         max_context_window_tokens=400000,
         max_output_tokens=128000,
         supports_reasoning=True,
+        supported_reasoning_efforts=_OPENAI_EFFORTS_STANDARD,
     ),
     valid_options={},
     metadata={
@@ -519,10 +582,12 @@ GPT41Nano = FoundationModel(
 
 CHAT_MODELS = [
     GPT55,
+    GPT55Pro,
     GPT54,
     GPT54Pro,
     GPT54Mini,
     GPT54Nano,
+    GPT53Codex,
     GPT52,
     GPT52Pro,
     GPT51,

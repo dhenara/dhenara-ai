@@ -5,7 +5,11 @@ from typing import Any
 from openai.types.chat import ChatCompletion, ChatCompletionMessage
 from openai.types.chat.chat_completion_chunk import ChatCompletionChunk, ChoiceDelta
 
-from dhenara.ai.providers.openai.base import OpenAIClientBase
+from dhenara.ai.providers.openai.base import (
+    OpenAIClientBase,
+    map_deepseek_reasoning_effort,
+    map_openai_reasoning_effort,
+)
 from dhenara.ai.providers.openai.chat_completions_api.message_converter import (
     OpenAIMessageConverterChatCompletions as OpenAIMessageConverter,
 )
@@ -96,22 +100,29 @@ class OpenAIChatCompletions(OpenAIClientBase):
             if self.model_endpoint.api.provider != AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
                 chat_args["safety_identifier"] = user
 
-        max_output_tokens, _max_reasoning_tokens = self.config.get_max_output_tokens(self.model_endpoint.ai_model)
+        max_output_tokens = self.config.get_max_output_token_limit(self.model_endpoint.ai_model)
 
-        if self.model_endpoint.api.provider != AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
+        if (
+            self.model_endpoint.api.provider != AIModelAPIProviderEnum.MICROSOFT_AZURE_AI
+            and self.model_endpoint.ai_model.provider != AIModelProviderEnum.DEEPSEEK
+        ):
             # NOTE: With reasoning models, `max_output_tokens` is deprecated in favour of `max_completion_tokens`.
             chat_args["max_completion_tokens"] = max_output_tokens
         else:
             chat_args["max_tokens"] = max_output_tokens
 
         model_settings = self.model_endpoint.ai_model.get_settings()
-        if self.config.reasoning and model_settings.supports_reasoning and self.config.reasoning_effort is not None:
-            effort = self.config.reasoning_effort
-            if effort == "minimal":
-                effort = "low"
-            elif effort == "max":
-                effort = "high"
-            chat_args["reasoning_effort"] = effort
+        if (
+            self.model_endpoint.ai_model.provider != AIModelProviderEnum.DEEPSEEK
+            and self.config.reasoning
+            and model_settings.supports_reasoning
+        ):
+            effort = map_openai_reasoning_effort(
+                self.config.reasoning_effort,
+                model_settings.supported_reasoning_efforts,
+            )
+            if effort is not None:
+                chat_args["reasoning_effort"] = effort
 
         if self.config.streaming:
             if self.model_endpoint.api.provider != AIModelAPIProviderEnum.MICROSOFT_AZURE_AI:
@@ -119,6 +130,23 @@ class OpenAIChatCompletions(OpenAIClientBase):
 
         if self.config.options:
             chat_args.update(self.config.options)
+
+        if (
+            self.model_endpoint.ai_model.provider == AIModelProviderEnum.DEEPSEEK
+            and self.model_endpoint.api.provider == AIModelAPIProviderEnum.DEEPSEEK
+            and model_settings.supports_reasoning
+        ):
+            extra_body = chat_args.get("extra_body")
+            if not isinstance(extra_body, dict):
+                extra_body = {}
+            if self.config.reasoning:
+                extra_body["thinking"] = {"type": "enabled"}
+                effort = map_deepseek_reasoning_effort(self.config.reasoning_effort)
+                if effort is not None:
+                    extra_body["reasoning_effort"] = effort
+            else:
+                extra_body["thinking"] = {"type": "disabled"}
+            chat_args["extra_body"] = extra_body
 
         # --- Tools ---
         if self.config.tools:

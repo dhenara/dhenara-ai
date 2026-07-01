@@ -28,11 +28,14 @@ from dhenara.ai.types.genai.dhenara.request import (
     WebSearchHostedTool,
 )
 from dhenara.ai.types.genai.foundation_models.anthropic.chat import (
+    ClaudeFable5,
     ClaudeHaiku45,
+    ClaudeMythos5,
     ClaudeOpus45,
     ClaudeOpus46,
     ClaudeOpus47,
     ClaudeOpus48,
+    ClaudeSonnet5,
     ClaudeSonnet45,
     ClaudeSonnet46,
 )
@@ -59,9 +62,11 @@ from dhenara.ai.types.genai.foundation_models.openai.chat import (
     GPT51Codex,
     GPT51CodexMini,
     GPT52Pro,
+    GPT53Codex,
     GPT54Mini,
     GPT54Nano,
     GPT54Pro,
+    GPT55Pro,
 )
 
 
@@ -336,10 +341,12 @@ def test_dai_125_google_hosted_web_search_usage_is_normalized():
 def test_dai_126_current_foundation_models_include_hosted_web_search_cost_rules():
     openai_models = [
         GPT55,
+        GPT55Pro,
         GPT54,
         GPT54Pro,
         GPT54Mini,
         GPT54Nano,
+        GPT53Codex,
         GPT52,
         GPT52Pro,
         GPT51,
@@ -357,9 +364,12 @@ def test_dai_126_current_foundation_models_include_hosted_web_search_cost_rules(
         assert rules[0].flat_cost_per_unit == 0.01
 
     anthropic_models = [
+        ClaudeFable5,
+        ClaudeMythos5,
         ClaudeOpus48,
         ClaudeOpus47,
         ClaudeOpus46,
+        ClaudeSonnet5,
         ClaudeSonnet46,
         ClaudeOpus45,
         ClaudeSonnet45,
